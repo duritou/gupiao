@@ -1,0 +1,61 @@
+{
+  "compileType": "miniprogram",
+  "libVersion": "3.16.1",
+  "packOptions": {
+    "ignore": [
+      { "type": "folder", "value": "hotel" },
+      { "type": "folder", "value": "photo" },
+      { "type": "folder", "value": "scripts" },
+      { "type": "folder", "value": "~" },
+      { "type": "folder", "value": "images" },
+      { "type": "folder", "value": "node_modules" },
+      { "type": "folder", "value": "cloudfunctions" },
+      { "type": "folder", "value": ".claude" },
+      { "type": "folder", "value": "tmp" },
+      { "type": "glob",    "value": "*.md" },
+      { "type": "glob",    "value": "*.txt" },
+      { "type": "glob",    "value": "*.bat" },
+      { "type": "glob",    "value": "*.ps1" },
+      { "type": "file",    "value": "package.json" },
+      { "type": "file",    "value": "package-lock.json" },
+      { "type": "file",    "value": "database_init.json" }
+    ],
+    "include": []
+  },
+  "setting": {
+    "coverView": true,
+    "es6": true,
+    "postcss": true,
+    "minified": true,
+    "enhance": true,
+    "showShadowRootInWxmlPanel": true,
+    "packNpmRelationList": [],
+    "babelSetting": {
+      "ignore": [],
+      "disablePlugins": [],
+      "outputPath": ""
+    },
+    "compileWorklet": false,
+    "uglifyFileName": false,
+    "uploadWithSourceMap": true,
+    "packNpmManually": false,
+    "minifyWXSS": true,
+    "minifyWXML": true,
+    "localPlugins": false,
+    "condition": false,
+    "swc": false,
+    "disableSWC": true,
+    "disableUseStrict": false,
+    "useCompilerPlugins": false
+  },
+  "condition": {},
+  "editorSetting": {
+    "tabIndent": "auto",
+    "tabSize": 2
+  },
+  "appid": "wx304383a4e4580853",
+  "cloudfunctionRoot": "cloudfunctions/",
+  "cloudEnv": "cloud1-d2gek3mad0a97e6a8",
+  "simulatorPluginLibVersion": {},
+  "cloudfunctionTemplateRoot": "cloudfunctionTemplate/"
+}

@@ -1,0 +1,120 @@
+<view class="container safe-bottom">
+  <view class="page-title">库存管理</view>
+
+  <!-- Tab 切换（全局分段控制器） -->
+  <view class="tab-bar">
+    <view class="tab-bar-item {{activeTab === 'stock' ? 'active' : ''}}" bindtap="switchTab" data-tab="stock">库存总览</view>
+    <view class="tab-bar-item {{activeTab === 'search' ? 'active' : ''}}" bindtap="switchTab" data-tab="search">流水搜索</view>
+  </view>
+
+  <!-- ====== 库存总览 Tab ====== -->
+  <view wx:if="{{activeTab === 'stock'}}">
+    <view wx:if="{{stockLoading}}" class="empty-state">
+      <text class="empty-state-text">加载中...</text>
+    </view>
+    <view wx:elif="{{stockList.length === 0}}" class="empty-state">
+      <text class="empty-state-text">暂无库存数据</text>
+    </view>
+
+    <view wx:else class="stock-list">
+      <view
+        wx:for="{{stockList}}"
+        wx:key="tireId"
+        class="card stock-card status-{{item.stockStatus}}"
+        bindtap="goTireDetail"
+        data-tireid="{{item.tireId}}"
+      >
+        <view class="sc-header">
+          <text class="sc-size">{{item.size}} {{item.pattern}}</text>
+          <text class="sc-brand">{{item.brand}}</text>
+        </view>
+        <view class="sc-body">
+          <view class="sc-stat">
+            <text class="sc-val">{{item.stock}}</text>
+            <text class="sc-lbl">库存(条)</text>
+          </view>
+          <view class="sc-stat">
+            <text class="sc-val">¥{{item.lastPrice}}</text>
+            <text class="sc-lbl">最近进价</text>
+          </view>
+          <view class="sc-stat">
+            <text class="sc-val">{{item.totalIn}}</text>
+            <text class="sc-lbl">累计进货</text>
+          </view>
+          <view class="sc-stat">
+            <text class="sc-val">{{item.totalOut}}</text>
+            <text class="sc-lbl">累计出库</text>
+          </view>
+        </view>
+        <!-- 库存进度条 -->
+        <view class="stock-progress-bar">
+          <view class="stock-progress-fill {{item.stockStatus}}" style="width:{{item.stockRatio}}%"></view>
+        </view>
+      </view>
+    </view>
+
+    <!-- 重置库存（危险操作） -->
+    <view class="card clear-section">
+      <view class="clear-title">危险操作</view>
+      <button class="btn btn-danger btn-block" bindtap="resetStock">重置库存（清空全部流水）</button>
+    </view>
+  </view>
+
+  <!-- ====== 流水搜索 Tab ====== -->
+  <view wx:if="{{activeTab === 'search'}}">
+    <view class="search-form">
+      <input class="input-group" placeholder="关键词搜索（客户/备注）" value="{{searchKeyword}}" bindinput="onKeywordInput" />
+
+      <view class="type-filter">
+        <view class="type-tag {{searchType === '' ? 'active' : ''}}" bindtap="onTypeChange" data-type="">全部</view>
+        <view class="type-tag {{searchType === 'purchase' ? 'active' : ''}}" bindtap="onTypeChange" data-type="purchase">进货</view>
+        <view class="type-tag {{searchType === 'sale' ? 'active' : ''}}" bindtap="onTypeChange" data-type="sale">出库</view>
+      </view>
+
+      <view class="date-filter">
+        <picker mode="date" value="{{searchDateFrom}}" bindchange="onDateFromChange">
+          <view class="date-picker-val">{{searchDateFrom || '开始日期'}}</view>
+        </picker>
+        <text class="date-sep">至</text>
+        <picker mode="date" value="{{searchDateTo}}" bindchange="onDateToChange">
+          <view class="date-picker-val">{{searchDateTo || '结束日期'}}</view>
+        </picker>
+      </view>
+
+      <button class="btn btn-primary btn-block" bindtap="doSearch">搜索</button>
+    </view>
+
+    <!-- 批量清空操作 -->
+    <view class="card clear-section">
+      <view class="clear-title">批量操作</view>
+      <view class="clear-btns">
+        <button class="btn btn-danger" bindtap="clearPurchases">清空进货记录</button>
+        <button class="btn btn-danger" bindtap="clearSales">清空出货记录</button>
+      </view>
+    </view>
+
+    <view class="search-results">
+      <view wx:for="{{searchResults}}" wx:key="_id" class="result-item" bindtap="showActions" data-record="{{item}}">
+        <view class="ri-header">
+          <text class="ri-tag {{item.recordType === 'purchase' ? 'tag-in' : 'tag-out'}}">{{item.recordType === 'purchase' ? '进货' : '出库'}}</text>
+          <text class="ri-date">{{item.date}}</text>
+        </view>
+        <view class="ri-body">
+          <text wx:if="{{item.recordType === 'purchase'}}">数量: {{item.qty}} | 单价: ¥{{item.unitPrice}} | 总价: ¥{{item.total}}</text>
+          <text wx:else>客户: {{item.customer}} | 数量: {{item.qty}} | 总价: ¥{{item.total}}</text>
+        </view>
+        <view wx:if="{{item.note}}" class="ri-note">{{item.note}}</view>
+      </view>
+    </view>
+  </view>
+
+  <!-- ====== 操作菜单（底部弹出） ====== -->
+  <view wx:if="{{showActionSheet}}" class="overlay" bindtap="closeActions">
+    <view class="action-sheet" catchtap="">
+      <text class="as-title">操作记录</text>
+      <view class="as-action" bindtap="editRecord">编辑</view>
+      <view class="as-action danger" bindtap="deleteRecord">删除</view>
+      <view class="as-action cancel" bindtap="closeActions">取消</view>
+    </view>
+  </view>
+</view>

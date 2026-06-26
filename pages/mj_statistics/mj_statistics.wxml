@@ -1,0 +1,95 @@
+<!-- 麻将个人数据统计页 -->
+<view class="container safe-bottom">
+
+  <!-- 页面标题 -->
+  <view class="page-title">麻将个人数据</view>
+
+  <!-- ===== 加载中 ===== -->
+  <view wx:if="{{loading}}" class="empty-state">
+    <text class="empty-state-text">加载中...</text>
+  </view>
+
+  <!-- ===== 空数据 ===== -->
+  <view wx:elif="{{isEmpty}}" class="empty-state">
+    <view class="empty-state-icon">🀄</view>
+    <text class="empty-state-text">暂无对局记录</text>
+    <text class="page-subtitle">完成一局麻将结算后即可查看个人数据</text>
+  </view>
+
+  <!-- ===== 正常数据 ===== -->
+  <block wx:else>
+
+    <!-- 2×3 统计卡片网格 -->
+    <view class="stats-grid">
+      <view class="stat-card">
+        <view class="sc-label">总对局数</view>
+        <view class="sc-value">{{totalGames}}<text class="sc-unit"> 局</text></view>
+      </view>
+      <view class="stat-card">
+        <view class="sc-label">总得分</view>
+        <view class="sc-value {{totalScore >= 0 ? 'score-positive' : 'score-negative'}}">{{totalScore >= 0 ? '+' : ''}}{{totalScore}}</view>
+      </view>
+      <view class="stat-card">
+        <view class="sc-label">胜率</view>
+        <view class="sc-value">{{winRate}}<text class="sc-unit">%</text></view>
+      </view>
+      <view class="stat-card">
+        <view class="sc-label">场均得分</view>
+        <view class="sc-value {{avgScore >= 0 ? 'score-positive' : 'score-negative'}}">{{avgScore >= 0 ? '+' : ''}}{{avgScore}}</view>
+      </view>
+      <view class="stat-card">
+        <view class="sc-label">最高得分</view>
+        <view class="sc-value score-positive">{{bestScore >= 0 ? '+' : ''}}{{bestScore}}</view>
+      </view>
+      <view class="stat-card">
+        <view class="sc-label">最低得分</view>
+        <view class="sc-value score-negative">{{worstScore <= 0 ? '' : '+'}}{{worstScore}}</view>
+      </view>
+    </view>
+
+    <!-- 最近对局时间 -->
+    <view class="last-game-row" wx:if="{{lastGameTime}}">
+      <text class="last-game-label">最近对局：</text>
+      <text class="last-game-value">{{lastGameTime}}</text>
+    </view>
+
+    <!-- 分割线 -->
+    <view class="section-divider"></view>
+
+    <!-- 历史对局标题 -->
+    <view class="history-header">
+      <text class="history-header-title">历史对局</text>
+      <text class="history-header-count">共 {{totalGames}} 局</text>
+    </view>
+
+    <!-- 历史对局列表 -->
+    <scroll-view class="history-scroll" scroll-y enhanced show-scrollbar="{{false}}">
+      <view wx:for="{{historyList}}" wx:key="settleTime" class="history-card">
+        <!-- 房间号 + 时间 -->
+        <view class="h-card-top">
+          <text class="h-room-code">房间 {{item.roomCode}}</text>
+          <text class="h-settle-time">{{item.settleTimeFormatted || ''}}</text>
+        </view>
+
+        <!-- 玩家分数 chips -->
+        <view class="h-players-row">
+          <block wx:for="{{item.players}}" wx:for-item="p" wx:key="openId">
+            <view class="h-player-chip {{p.netScore > 0 ? 'h-player-win' : (p.netScore < 0 ? 'h-player-lose' : 'h-player-draw')}}">
+              <text class="h-player-name">{{p.nickName}}</text>
+              <text class="h-player-score">{{p.netScore >= 0 ? '+' : ''}}{{p.netScore}}</text>
+            </view>
+          </block>
+        </view>
+      </view>
+
+      <view wx:if="{{historyList.length === 0}}" class="empty-state">
+        <text class="empty-state-text">暂无历史记录</text>
+      </view>
+    </scroll-view>
+  </block>
+
+  <!-- ===== 错误提示 ===== -->
+  <view wx:if="{{loadError && !loading}}" class="error-hint">
+    数据加载失败，请下拉重试
+  </view>
+</view>

@@ -1,0 +1,47 @@
+<view class="container safe-bottom">
+  <view class="page-title">轮胎进销存</view>
+  <view class="page-subtitle">{{today}}</view>
+
+  <view wx:if="{{loading}}" class="empty-state">
+    <text class="empty-state-text">加载中...</text>
+  </view>
+
+  <view wx:else>
+    <!-- 统计卡片 -->
+    <view class="stat-grid">
+      <view class="stat-card">
+        <view class="stat-value">¥{{purchaseTotal}}</view>
+        <view class="stat-label">今日进货总额</view>
+      </view>
+      <view class="stat-card">
+        <view class="stat-value">{{saleTotalQty}}<text class="stat-unit">条</text></view>
+        <view class="stat-label">今日出库数量</view>
+      </view>
+    </view>
+
+    <!-- 快捷入口 -->
+    <view class="shortcut-title">快捷操作</view>
+    <view class="shortcut-grid">
+      <view class="shortcut-card" bindtap="goPurchase">
+        <view class="sc-icon">📥</view>
+        <view class="sc-name">进货登记</view>
+      </view>
+      <view class="shortcut-card" bindtap="goSale">
+        <view class="sc-icon">📤</view>
+        <view class="sc-name">出库登记</view>
+      </view>
+      <view class="shortcut-card" bindtap="goStock">
+        <view class="sc-icon">📊</view>
+        <view class="sc-name">库存总览</view>
+      </view>
+      <view class="shortcut-card" bindtap="goExport">
+        <view class="sc-icon">📋</view>
+        <view class="sc-name">数据导出</view>
+      </view>
+      <view class="shortcut-card" bindtap="goStatistics">
+        <view class="sc-icon">📈</view>
+        <view class="sc-name">流水统计</view>
+      </view>
+    </view>
+  </view>
+</view>

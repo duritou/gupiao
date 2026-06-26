@@ -1,0 +1,52 @@
+<view class="container safe-bottom">
+  <view class="page-title">流水统计</view>
+
+  <!-- 时间范围 Tab（药丸风格） -->
+  <view class="tab-bar">
+    <view
+      wx:for="{{tabs}}"
+      wx:key="key"
+      class="tab-item {{activeTab === item.key ? 'active' : ''}}"
+      data-key="{{item.key}}"
+      bindtap="onTabChange"
+    >{{item.label}}</view>
+  </view>
+
+  <!-- 加载中 -->
+  <view wx:if="{{loading}}" class="empty-state">
+    <text class="empty-state-text">加载中...</text>
+  </view>
+
+  <!-- 统计卡片网格（2×2） -->
+  <view wx:else class="stats-grid">
+    <view class="stat-card">
+      <view class="sc-label">进库数量</view>
+      <view class="sc-value">{{inQty}} <text class="sc-unit">条</text></view>
+    </view>
+
+    <view class="stat-card">
+      <view class="sc-label">进货总额</view>
+      <view class="sc-value">¥{{inAmount}}</view>
+    </view>
+
+    <view class="stat-card">
+      <view class="sc-label">出库数量</view>
+      <view class="sc-value">{{outQty}} <text class="sc-unit">条</text></view>
+    </view>
+
+    <view class="stat-card">
+      <view class="sc-label">出货总额</view>
+      <view class="sc-value">¥{{outAmount}}</view>
+    </view>
+  </view>
+
+  <!-- 统计范围提示 -->
+  <view wx:if="{{!loading && !loadError}}" class="range-hint">
+    统计范围：{{activeLabel}}
+  </view>
+
+  <!-- 错误提示 -->
+  <view wx:if="{{loadError && !loading}}" class="error-hint">
+    数据加载失败，请下拉重试
+  </view>
+</view>

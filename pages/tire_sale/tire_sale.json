@@ -1,0 +1,5 @@
+{
+  "usingComponents": {
+    "license-plate-input": "/components/license-plate-input/license-plate-input"
+  }
+}

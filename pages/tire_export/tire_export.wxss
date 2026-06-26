@@ -1,0 +1,102 @@
+/* 数据导出 — 页面特有样式（通用类已在 app.wxss 定义） */
+
+/* 卡片间距（全局 .card 使用，加下边距） */
+.card{margin-bottom:var(--space-base);}
+
+/* 筛选标签 */
+.filter-label{
+  font-size:var(--font-size-body);
+  color:var(--color-text-secondary);
+  margin-bottom:var(--space-sm);
+}
+
+.type-filter{display:flex;gap:var(--space-sm);margin-bottom:var(--space-base);}
+
+.type-tag{
+  padding:var(--space-sm) var(--space-base);
+  border-radius:var(--radius-sm);
+  font-size:var(--font-size-body);
+  background:#f0f0f0;
+  color:var(--color-text-secondary);
+  transition:all var(--transition-fast);
+}
+
+.type-tag.active{
+  background:var(--color-primary);
+  color:var(--color-text-inverse);
+}
+
+/* 日期范围选择 */
+.date-row{display:flex;align-items:center;gap:var(--space-sm);margin-bottom:var(--space-lg);}
+.date-row picker{flex:1;}
+
+.date-picker-val{
+  display:block;
+  background:var(--color-bg-input);
+  padding:var(--space-md) var(--space-base);
+  border-radius:var(--radius-sm);
+  font-size:var(--font-size-body);
+  color:var(--color-text-body);
+  text-align:center;
+  box-sizing:border-box;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+
+.date-sep{
+  color:var(--color-text-hint);
+  font-size:var(--font-size-caption);
+  flex-shrink:0;
+}
+
+/* 导出按钮 — 全宽醒目 */
+.export-btn{
+  width:100%;
+  padding:var(--space-base);
+  background:var(--color-primary);
+  color:var(--color-text-inverse);
+  font-size:34rpx;
+  font-weight:bold;
+  border-radius:var(--radius-md);
+}
+
+.export-btn[disabled]{opacity:0.4;}
+
+/* 导出结果 */
+.result-info{
+  padding:var(--space-md) 0;
+  border-top:2rpx solid #f0f0f0;
+}
+
+.ri-line{
+  display:block;
+  font-size:var(--font-size-body);
+  color:var(--color-text-secondary);
+  padding:var(--space-xs) 0;
+}
+
+.result-actions{display:flex;gap:var(--space-md);margin-top:var(--space-base);}
+
+.action-btn{
+  flex:1;
+  padding:var(--space-md);
+  border-radius:var(--radius-sm);
+  font-size:var(--font-size-body);
+  background:var(--color-primary);
+  color:var(--color-text-inverse);
+  text-align:center;
+}
+
+.action-btn.outline{
+  background:transparent;
+  border:2rpx solid var(--color-primary);
+  color:var(--color-primary);
+}
+
+.result-hint{
+  font-size:var(--font-size-caption);
+  color:var(--color-text-hint);
+  text-align:center;
+  margin-top:var(--space-md);
+}

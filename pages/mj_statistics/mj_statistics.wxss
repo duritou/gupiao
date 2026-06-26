@@ -1,0 +1,177 @@
+/* 麻将个人数据 — 统计卡片 + 历史列表 */
+
+/* ---- 2×3 统计卡片网格 ---- */
+.stats-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-md);
+  margin-bottom: var(--space-base);
+}
+
+.stat-card {
+  flex: 1 1 calc(33.33% - 8rpx);
+  min-width: 0;
+  background: var(--color-bg-card);
+  border-radius: var(--radius-md);
+  padding: var(--space-xl) var(--space-base);
+  box-shadow: var(--shadow-card);
+  box-sizing: border-box;
+}
+
+.sc-label {
+  font-size: var(--font-size-caption);
+  color: var(--color-text-hint);
+  margin-bottom: var(--space-sm);
+}
+
+.sc-value {
+  font-size: var(--font-size-display);
+  font-weight: bold;
+  color: var(--color-text-primary);
+  font-family: var(--font-family-mono);
+  line-height: 1.1;
+  word-break: break-all;
+}
+
+.sc-unit {
+  font-size: var(--font-size-subtitle);
+  font-weight: normal;
+  color: var(--color-text-hint);
+}
+
+/* 得分正负颜色 */
+.score-positive { color: var(--color-success); }
+.score-negative { color: var(--color-danger); }
+
+/* ---- 最近对局 ---- */
+.last-game-row {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: var(--space-md) 0;
+  gap: var(--space-sm);
+}
+
+.last-game-label {
+  font-size: var(--font-size-body);
+  color: var(--color-text-hint);
+}
+
+.last-game-value {
+  font-size: var(--font-size-body);
+  color: var(--color-text-secondary);
+  font-weight: 500;
+}
+
+/* ---- 分割线 ---- */
+.section-divider {
+  height: 1rpx;
+  background: #f0f0f0;
+  margin: var(--space-md) 0;
+}
+
+/* ---- 历史对局标题 ---- */
+.history-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0 0 var(--space-md) 0;
+}
+
+.history-header-title {
+  font-size: var(--font-size-subtitle);
+  font-weight: bold;
+  color: var(--color-text-primary);
+}
+
+.history-header-count {
+  font-size: var(--font-size-caption);
+  color: var(--color-text-hint);
+}
+
+/* ---- 历史列表滚动区 ---- */
+.history-scroll {
+  height: 600rpx;
+}
+
+/* ---- 对局卡片 ---- */
+.history-card {
+  background: var(--color-bg-card);
+  border-radius: var(--radius-md);
+  padding: var(--space-base) var(--space-lg);
+  margin-bottom: var(--space-md);
+  box-shadow: var(--shadow-card);
+}
+
+.h-card-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--space-sm);
+  padding-bottom: var(--space-sm);
+  border-bottom: 1rpx solid #f5f5f5;
+}
+
+.h-room-code {
+  font-size: var(--font-size-body);
+  font-weight: 600;
+  color: var(--color-text-body);
+}
+
+.h-settle-time {
+  font-size: var(--font-size-caption);
+  color: var(--color-text-hint);
+}
+
+/* ---- 玩家分数 chips ---- */
+.h-players-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+}
+
+.h-player-chip {
+  display: flex;
+  align-items: center;
+  gap: 8rpx;
+  padding: 6rpx 16rpx;
+  border-radius: var(--radius-round);
+  font-size: var(--font-size-caption);
+}
+
+.h-player-win {
+  background: var(--color-success-light);
+}
+
+.h-player-lose {
+  background: var(--color-danger-light);
+}
+
+.h-player-draw {
+  background: var(--color-bg-input);
+}
+
+.h-player-name {
+  color: var(--color-text-body);
+  max-width: 120rpx;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.h-player-score {
+  font-weight: bold;
+  font-family: var(--font-family-mono);
+}
+
+.h-player-win .h-player-score  { color: var(--color-success); }
+.h-player-lose .h-player-score { color: var(--color-danger); }
+.h-player-draw .h-player-score { color: var(--color-text-hint); }
+
+/* ---- 错误提示 ---- */
+.error-hint {
+  text-align: center;
+  padding: var(--space-xxl);
+  color: var(--color-warning);
+  font-size: var(--font-size-body);
+}

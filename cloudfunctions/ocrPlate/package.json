@@ -1,0 +1,9 @@
+{
+  "name": "ocrPlate",
+  "version": "1.0.0",
+  "description": "微信云开发车牌 OCR 识别",
+  "main": "index.js",
+  "dependencies": {
+    "wx-server-sdk": "latest"
+  }
+}

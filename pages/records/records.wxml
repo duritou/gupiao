@@ -1,0 +1,113 @@
+<wxs module="fmt">
+/** 时间戳 → YYYY-MM-DD HH:MM:SS */
+var formatTime = function(ts) {
+  if (!ts) return '';
+  var d = getDate(ts);
+  if (!d.getTime()) return '';
+  var pad = function(n) { return n < 10 ? '0' + n : n; };
+  return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) +
+    ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds());
+};
+/** 名字首字 */
+var firstChar = function(name) {
+  return (name || '?').charAt(0);
+};
+module.exports = { formatTime: formatTime, firstChar: firstChar };
+</wxs>
+
+<view class="rec-page">
+
+  <!-- ════ 顶部双 Tab ════ -->
+  <view class="rec-tabs">
+    <view class="rec-tab {{recordTab === 'active' ? 'rec-tab--on' : ''}}" bindtap="onRecordTab" data-tab="active">进行中</view>
+    <view class="rec-tab {{recordTab === 'settled' ? 'rec-tab--on' : ''}}" bindtap="onRecordTab" data-tab="settled">已结束</view>
+  </view>
+
+  <!-- ════ 筛选行（仅已结束 Tab 显示） ════ -->
+  <view class="rec-filter-row" wx:if="{{recordTab === 'settled'}}">
+    <text class="rec-filter-label">最近记录</text>
+    <picker mode="selector" range="{{monthPickerRange}}" bindchange="onMonthPickerChange">
+      <view class="rec-filter-picker">
+        <text class="rec-filter-picker-text">{{selectedMonth || '选择月份'}}</text>
+        <text class="rec-filter-picker-arrow">▼</text>
+      </view>
+    </picker>
+  </view>
+
+  <!-- ════ 主体内容区域（scroll-view 包裹） ════ -->
+  <scroll-view scroll-y class="rec-body" enhanced>
+
+    <!-- 加载中 -->
+    <view class="rec-loading" wx:if="{{loading}}">
+      <text>加载中…</text>
+    </view>
+
+    <!-- 记录列表 -->
+    <view wx:if="{{!loading && records.length > 0}}">
+      <view wx:for="{{records}}" wx:key="_id" class="rec-card">
+
+        <!-- 删除按钮（右上角） -->
+        <view class="rec-card-del" data-id="{{item._id}}" data-room="{{item.roomCode}}" bindtap="onDeleteRound">
+          <text class="rec-card-del-icon">🗑</text>
+        </view>
+
+        <!-- 上半部分：玩家分数 -->
+        <view class="rec-players">
+          <view wx:for="{{item.playerDeltas}}" wx:for-item="p" wx:for-index="pi" wx:key="name" class="rec-player">
+            <!-- 盈利: 圆形头像 -->
+            <image wx:if="{{p.delta > 0}}" class="rec-player-avatar" src="{{p.avatarUrl || '/img/default-avatar.png'}}" mode="aspectFill" />
+            <!-- 亏损 / 零: 方形标签 -->
+            <view wx:else class="rec-player-tag rec-player-tag--{{pi}}">
+              <text class="rec-player-tag-text">{{fmt.firstChar(p.name)}}</text>
+            </view>
+            <!-- 分数 -->
+            <text class="rec-player-score {{p.delta > 0 ? 'rec-player-score--plus' : p.delta < 0 ? 'rec-player-score--minus' : 'rec-player-score--zero'}}">{{p.delta > 0 ? '+' : ''}}{{p.delta}}</text>
+          </view>
+        </view>
+
+        <!-- 底部：居中时间戳 -->
+        <view class="rec-card-foot">
+          <text class="rec-card-time">{{fmt.formatTime(item.createTime)}}</text>
+        </view>
+
+      </view>
+    </view>
+
+    <!-- 空状态 -->
+    <view class="rec-empty" wx:if="{{!loading && records.length === 0}}">
+      <view class="rec-empty-icon">📋</view>
+      <text class="rec-empty-text">近2个月没有数据</text>
+    </view>
+
+  </scroll-view>
+
+  <!-- ════ 底部三 Tab 导航 ════ -->
+  <view class="rec-nav">
+    <view class="rec-nav-item" bindtap="onNavHome">
+      <text class="rec-nav-icon">🏠</text>
+      <text class="rec-nav-label rec-nav-label--off">首页</text>
+    </view>
+    <view class="rec-nav-item rec-nav-item--on">
+      <text class="rec-nav-icon">📊</text>
+      <text class="rec-nav-label rec-nav-label--on">记录</text>
+    </view>
+    <view class="rec-nav-item" bindtap="onNavMine">
+      <text class="rec-nav-icon">👤</text>
+      <text class="rec-nav-label rec-nav-label--off">我的</text>
+    </view>
+  </view>
+
+</view>
+
+<!-- ════ 删除确认弹窗 ════ -->
+<view class="rec-modal" wx:if="{{showDeleteConfirm}}" catchtouchmove="noop">
+  <view class="rec-modal-mask" bindtap="cancelDelete"></view>
+  <view class="rec-modal-box">
+    <view class="rec-modal-title">确认删除</view>
+    <view class="rec-modal-body">删除后数据不可恢复，确定要删除这条记录吗？</view>
+    <view class="rec-modal-actions">
+      <view class="rec-modal-btn rec-modal-btn--cancel" bindtap="cancelDelete">取消</view>
+      <view class="rec-modal-btn rec-modal-btn--danger" bindtap="confirmDelete">删除</view>
+    </view>
+  </view>
+</view>

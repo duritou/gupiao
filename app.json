@@ -1,0 +1,71 @@
+{
+  "pages": [
+    "pages/index/index",
+    "pages/walk_scoring/walk_scoring",
+    "pages/mahjong_scoring/mahjong_scoring",
+    "pages/mj_statistics/mj_statistics",
+    "pages/tire_dashboard/tire_dashboard",
+    "pages/tire_purchase/tire_purchase",
+    "pages/tire_sale/tire_sale",
+    "pages/tire_stock/tire_stock",
+    "pages/tire_detail/tire_detail",
+    "pages/tire_export/tire_export",
+    "pages/records/records",
+    "pages/statistics/statistics",
+    "pages/logs/logs"
+  ],
+  "subpackages": [
+    {
+      "root": "pages/hotel",
+      "pages": [
+        "index/index",
+        "room/index",
+        "roomDetails/index",
+        "news/index",
+        "newsDetails/index",
+        "about/index",
+        "my/index",
+        "order/index",
+        "orderDetails/index",
+        "buy/index",
+        "pay/index",
+        "food/index",
+        "foodBuy/index",
+        "success/index",
+        "foodDetails/index",
+        "foodOrder/index",
+        "foodOrderDetails/index",
+        "foodEval/index",
+        "foodMyEval/index",
+        "admin/index"
+      ]
+    }
+  ],
+  "window": {
+    "navigationBarTitleText": "多合一计分器",
+    "navigationBarBackgroundColor": "#1989fa",
+    "navigationBarTextStyle": "white"
+  },
+  "usingComponents": {
+    "van-tabbar": "./vant-weapp/dist/tabbar/index",
+    "van-tabbar-item": "./vant-weapp/dist/tabbar-item/index",
+    "van-image": "./vant-weapp/dist/image/index",
+    "van-calendar": "./vant-weapp/dist/calendar/index",
+    "van-empty": "./vant-weapp/dist/empty/index",
+    "van-icon": "./vant-weapp/dist/icon/index",
+    "van-loading": "./vant-weapp/dist/loading/index",
+    "van-count-down": "./vant-weapp/dist/count-down/index",
+    "van-dialog": "./vant-weapp/dist/dialog/index",
+    "van-divider": "./vant-weapp/dist/divider/index",
+    "van-cell": "./vant-weapp/dist/cell/index",
+    "van-cell-group": "./vant-weapp/dist/cell-group/index",
+    "van-field": "./vant-weapp/dist/field/index",
+    "van-stepper": "./vant-weapp/dist/stepper/index",
+    "van-popup": "./vant-weapp/dist/popup/index",
+    "van-action-sheet": "./vant-weapp/dist/action-sheet/index"
+  },
+  "__usePrivacyCheck__": true,
+  "cloud": true,
+  "style": "v2",
+  "sitemapLocation": "sitemap.json"
+}

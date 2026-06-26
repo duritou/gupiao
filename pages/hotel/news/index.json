@@ -1,0 +1,8 @@
+{
+    "usingComponents":  {
+                            "tabbar": "../components/tabbar/index"
+                        },
+    "navigationBarTitleText":  "促销动态",
+    "navigationBarBackgroundColor":  "#ffffff",
+    "navigationBarTextStyle":  "black"
+}

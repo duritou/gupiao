@@ -1,0 +1,162 @@
+<!-- 分段车牌虚拟键盘 v2 — 8 格位框 + 省份滑动 + 双输入模式 -->
+<view class="lp-container">
+
+  <!-- ====== 车牌展示区 ====== -->
+  <view class="lp-display-row" bindtap="onToggleKeyboard">
+    <!-- 8 个位框 -->
+    <view
+      wx:for="{{slots}}"
+      wx:key="*this"
+      class="lp-cell {{index === 0 ? 'lp-cell-province' : ''}} {{index === 7 ? 'lp-cell-energy' : ''}} {{index === cursorIndex && showKeyboard ? 'lp-cell-cursor' : ''}} {{slots[index] ? 'lp-cell-filled' : 'lp-cell-empty'}}"
+      data-index="{{index}}"
+      catchtap="onSlotTap"
+    >
+      <text wx:if="{{slots[index]}}" class="lp-cell-char">{{slots[index]}}</text>
+      <text wx:elif="{{index === 7}}" class="lp-cell-hint">新</text>
+      <!-- 光标线 -->
+      <view wx:if="{{index === cursorIndex && showKeyboard}}" class="lp-cursor-blink"></view>
+    </view>
+  </view>
+
+  <!-- 车辆类型标记 -->
+  <view class="lp-type-row" wx:if="{{plateType}}">
+    <text class="lp-type-badge {{plateType === 'newEnergy' ? 'energy' : 'fuel'}}">
+      {{plateType === 'newEnergy' ? '新能源车·8位' : '燃油车·7位'}}
+    </text>
+  </view>
+
+  <!-- 未展开时的占位提示 -->
+  <view class="lp-tap-hint" wx:if="{{!showKeyboard && !disabled}}" bindtap="onToggleKeyboard">
+    <text>👆 点击上方格子输入车牌</text>
+  </view>
+
+  <!-- ====== 虚拟键盘区 ====== -->
+  <view class="lp-keyboard {{showKeyboard && inputMode === 'virtual' ? 'show' : ''}}">
+
+    <!-- ---- 省份简称滑动条 ---- -->
+    <view class="lp-section-label">
+      <text class="lp-label-icon">📍</text> 选择省份简称
+      <text wx:if="{{cursorIndex === 0}}" class="lp-current-hint"> ← 当前位</text>
+    </view>
+    <scroll-view
+      class="lp-province-scroller"
+      scroll-x="true"
+      enhanced="true"
+      show-scrollbar="{{false}}"
+      scroll-into-view="{{slots[0] ? 'prov-' + slots[0] : ''}}"
+    >
+      <view class="lp-province-track">
+        <view
+          wx:for="{{provinces}}"
+          wx:key="*this"
+          id="prov-{{item}}"
+          class="lp-prov-key {{slots[0] === item ? 'active' : ''}}"
+          data-prov="{{item}}"
+          bindtap="onProvinceTap"
+        >{{item}}</view>
+      </view>
+    </scroll-view>
+
+    <!-- ---- 字母数字键盘 ---- -->
+    <view class="lp-section-label">
+      <text class="lp-label-icon">🔤</text> 字母 / 数字
+      <text wx:if="{{cursorIndex >= 1 && cursorIndex <= 7}}" class="lp-current-hint"> ← 当前位: 第{{cursorIndex + 1}}格</text>
+    </view>
+
+    <view class="lp-key-area">
+      <!-- 数字行 -->
+      <view class="lp-key-row">
+        <view
+          wx:for="{{digitKeys}}"
+          wx:key="*this"
+          class="lp-key lp-digit-key {{cursorIndex === 0 ? 'dim' : ''}}"
+          data-key="{{item}}"
+          bindtap="onKeyTap"
+        >{{item}}</view>
+      </view>
+      <!-- 字母行 1 -->
+      <view class="lp-key-row">
+        <view
+          wx:for="{{letterRow1}}"
+          wx:key="*this"
+          class="lp-key lp-letter-key {{cursorIndex === 0 ? 'dim' : ''}}"
+          data-key="{{item}}"
+          bindtap="onKeyTap"
+        >{{item}}</view>
+      </view>
+      <!-- 字母行 2 -->
+      <view class="lp-key-row">
+        <view
+          wx:for="{{letterRow2}}"
+          wx:key="*this"
+          class="lp-key lp-letter-key {{cursorIndex === 0 ? 'dim' : ''}}"
+          data-key="{{item}}"
+          bindtap="onKeyTap"
+        >{{item}}</view>
+      </view>
+      <!-- 字母行 3 + 退格 -->
+      <view class="lp-key-row lp-last-row">
+        <view class="lp-key lp-func-key lp-backspace {{cursorIndex === 0 ? 'dim' : ''}}" bindtap="onBackspace">⌫</view>
+        <view
+          wx:for="{{letterRow3}}"
+          wx:key="*this"
+          class="lp-key lp-letter-key {{cursorIndex === 0 ? 'dim' : ''}}"
+          data-key="{{item}}"
+          bindtap="onKeyTap"
+        >{{item}}</view>
+        <!-- 占位撑开对齐 -->
+        <view class="lp-key-spacer" wx:if="{{letterRow3.length < 4}}"></view>
+      </view>
+    </view>
+
+    <!-- ---- 底部操作栏 ---- -->
+    <view class="lp-action-bar">
+      <view class="lp-action-btn" bindtap="onClear">
+        <text>🗑 清空</text>
+      </view>
+      <view class="lp-action-btn" bindtap="onToggleNativeMode">
+        <text>⌨ 键盘输入</text>
+      </view>
+      <view class="lp-action-btn primary {{plateComplete ? 'ready' : ''}}" bindtap="onConfirm">
+        <text>✓ 确认</text>
+      </view>
+    </view>
+
+    <!-- 收起 -->
+    <view class="lp-close-bar" bindtap="onCloseKeyboard">
+      <text>▼ 收起</text>
+    </view>
+  </view>
+
+  <!-- ====== 原生键盘模式 ====== -->
+  <view class="lp-keyboard {{showKeyboard && inputMode === 'native' ? 'show' : ''}}">
+    <view class="lp-section-label">⌨ 手动输入车牌号（字母/数字，不含 I/O）</view>
+    <view class="lp-native-box">
+      <input
+        class="lp-native-input"
+        type="text"
+        value="{{nativeValue}}"
+        placeholder="如：粤B12345"
+        maxlength="8"
+        focus="{{_nativeFocus}}"
+        bindinput="onNativeInput"
+        bindconfirm="onNativeConfirm"
+        bindblur="onNativeBlur"
+        adjust-position="{{true}}"
+      />
+    </view>
+    <view class="lp-native-hint">输入完成点击键盘「完成」或下方按钮确认</view>
+    <view class="lp-action-bar">
+      <view class="lp-action-btn" bindtap="onToggleNativeMode">
+        <text>🔢 虚拟键盘</text>
+      </view>
+      <view class="lp-action-btn primary ready" bindtap="onNativeConfirm">
+        <text>✓ 确认</text>
+      </view>
+    </view>
+    <view class="lp-close-bar" bindtap="onCloseKeyboard">
+      <text>▼ 收起</text>
+    </view>
+  </view>
+
+</view>

@@ -1,0 +1,123 @@
+/* 进货登记 — 页面特有样式 */
+
+/* 扫码 */
+.scan-bar{text-align:center;margin-bottom:var(--space-lg);}
+
+.scan-btn{
+  display:inline-block;background:#07c160;color:var(--color-text-inverse);
+  padding:var(--space-md) 64rpx;border-radius:var(--radius-md);
+  font-size:var(--font-size-body-lg);font-weight:bold;
+}
+
+.scan-icon{margin-right:6rpx;}
+
+.scan-hint{
+  display:block;color:#07c160;
+  font-size:var(--font-size-caption);margin-top:var(--space-xs);
+}
+
+/* 表单卡片 */
+.form-card{padding:var(--space-base);}
+
+.field{margin-bottom:var(--space-base);}
+
+/* 三分之一列（全局只有 half，这里需要 third） */
+.third{flex:1;}
+
+/* 匹配提示 */
+.match-hint{
+  font-size:var(--font-size-caption);padding:var(--space-sm) var(--space-base);
+  border-radius:var(--radius-sm);margin-bottom:var(--space-md);
+  background:var(--color-success-light);color:var(--color-success);
+}
+
+.match-hint.warn{
+  background:var(--color-warning-light);color:var(--color-warning);
+}
+
+.total-display{
+  font-size:var(--font-size-title);font-weight:bold;
+  color:var(--color-primary);padding:var(--space-md) 0;
+}
+
+/* 图片上传 */
+.image-list{display:flex;flex-wrap:wrap;gap:var(--space-sm);}
+
+.image-item{position:relative;width:144rpx;height:144rpx;}
+
+.thumb{width:144rpx;height:144rpx;border-radius:var(--radius-sm);}
+
+.img-del{
+  position:absolute;top:-12rpx;right:-12rpx;
+  width:40rpx;height:40rpx;background:var(--color-danger);
+  color:var(--color-text-inverse);border-radius:var(--radius-round);
+  text-align:center;line-height:36rpx;font-size:var(--font-size-body);
+}
+
+.add-img-btn{
+  width:144rpx;height:144rpx;border:2rpx dashed var(--color-bg-pressed);
+  border-radius:var(--radius-sm);display:flex;
+  align-items:center;justify-content:center;
+  font-size:64rpx;color:var(--color-text-hint);
+}
+
+/* 提交 */
+.submit-bar{margin-top:var(--space-xl);text-align:center;}
+
+.submit-btn{
+  display:inline-block;background:var(--color-primary);
+  color:var(--color-text-inverse);padding:var(--space-base) 120rpx;
+  border-radius:var(--radius-md);font-size:var(--font-size-subtitle);
+}
+
+/* 弹窗内滚动列表 */
+.picker-list{max-height:560rpx;margin-bottom:var(--space-md);}
+
+.picker-item{
+  padding:var(--space-base) var(--space-md);
+  font-size:var(--font-size-body-lg);color:var(--color-text-body);
+  border-bottom:1rpx solid var(--color-bg-pressed);
+}
+
+.picker-item:active{background:var(--color-bg-pressed);}
+
+.picker-empty{
+  text-align:center;padding:var(--space-xl);
+  color:var(--color-text-hint);font-size:var(--font-size-body);
+}
+
+/* 对话框内输入框 */
+.dialog-inp{
+  width:100%;background:var(--color-bg-input);
+  padding:var(--space-md) var(--space-base);border-radius:var(--radius-sm);
+  font-size:var(--font-size-body);color:var(--color-text-body);
+  box-sizing:border-box;margin-bottom:var(--space-md);
+  min-height:var(--min-touch);line-height:1.5;
+}
+
+/* 扫码拍照弹窗 */
+.scan-photo-dialog{max-width:600rpx;}
+
+.scan-photo-body{text-align:center;padding:var(--space-md) 0 var(--space-lg);}
+
+.scan-photo-desc{
+  font-size:var(--font-size-body-lg);color:var(--color-text-body);
+  display:block;margin-bottom:var(--space-sm);
+}
+
+.scan-photo-hint{
+  font-size:var(--font-size-caption);color:var(--color-text-hint);
+}
+
+/* 手动URL弹窗 */
+.url-modal-hint{
+  display:block;font-size:var(--font-size-caption);
+  color:var(--color-text-secondary);text-align:center;
+  margin-bottom:var(--space-md);line-height:1.5;
+}
+
+.url-error{
+  display:block;font-size:var(--font-size-caption);
+  color:var(--color-danger);margin-bottom:var(--space-sm);
+  text-align:center;
+}

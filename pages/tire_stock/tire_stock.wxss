@@ -1,0 +1,145 @@
+/* 库存管理 — 页面特有样式 */
+
+/* 库存卡片 */
+.stock-card{padding:var(--space-base);margin-bottom:var(--space-md);}
+
+/* 状态左边框 */
+.stock-card.status-healthy{border-left:6rpx solid var(--color-stock-healthy);}
+.stock-card.status-low{border-left:6rpx solid var(--color-stock-low);}
+.stock-card.status-out{border-left:6rpx solid var(--color-stock-out);}
+
+.sc-header{
+  display:flex;justify-content:space-between;align-items:center;
+  margin-bottom:var(--space-md);
+}
+
+.sc-size{
+  font-size:var(--font-size-subtitle);font-weight:bold;
+  color:var(--color-text-primary);overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap;max-width:65vw;
+}
+
+.sc-brand{font-size:var(--font-size-caption);color:var(--color-primary);}
+
+.sc-body{display:flex;justify-content:space-around;margin-bottom:var(--space-md);}
+
+.sc-stat{text-align:center;}
+
+.sc-val{
+  display:block;font-size:var(--font-size-subtitle);
+  font-weight:bold;color:var(--color-primary);
+}
+
+.sc-lbl{
+  font-size:var(--font-size-caption);color:var(--color-text-hint);
+  margin-top:var(--space-xs);
+}
+
+/* 库存进度条 */
+.stock-progress-bar{
+  height:8rpx;background:var(--color-bg-input);
+  border-radius:4rpx;overflow:hidden;
+}
+
+.stock-progress-fill{
+  height:100%;border-radius:4rpx;
+  transition:width var(--transition-normal);
+}
+
+.stock-progress-fill.healthy{background:var(--color-stock-healthy);}
+.stock-progress-fill.low{background:var(--color-stock-low);}
+.stock-progress-fill.out{background:var(--color-stock-out);}
+
+/* 搜索表单 */
+.search-form{margin-bottom:var(--space-base);}
+
+.type-filter{display:flex;gap:var(--space-sm);margin-bottom:var(--space-md);}
+
+.type-tag{
+  padding:var(--space-xs) var(--space-base);
+  border-radius:var(--radius-round);font-size:var(--font-size-caption);
+  background:var(--color-bg-pressed);color:var(--color-text-secondary);
+}
+
+.type-tag.active{
+  background:var(--color-primary);color:var(--color-text-inverse);
+}
+
+.date-filter{
+  display:flex;align-items:center;gap:var(--space-sm);
+  margin-bottom:var(--space-md);
+}
+
+.date-filter picker{flex:1;}
+
+.date-picker-val{
+  background:var(--color-bg-input);padding:var(--space-md) var(--space-base);
+  border-radius:var(--radius-sm);font-size:var(--font-size-body);
+  color:var(--color-text-body);text-align:center;box-sizing:border-box;
+}
+
+.date-sep{
+  color:var(--color-text-hint);font-size:var(--font-size-caption);
+  flex-shrink:0;
+}
+
+/* 搜索结果 */
+.result-item{
+  background:var(--color-bg-card);padding:var(--space-md) var(--space-base);
+  border-radius:var(--radius-sm);margin-bottom:var(--space-sm);
+  box-shadow:var(--shadow-card);
+}
+
+.ri-header{display:flex;align-items:center;gap:var(--space-sm);margin-bottom:var(--space-xs);}
+
+.ri-tag{
+  padding:var(--space-xs) var(--space-sm);border-radius:var(--radius-sm);
+  font-size:var(--font-size-caption);color:var(--color-text-inverse);
+}
+
+.tag-in{background:var(--color-success);}
+.tag-out{background:var(--color-warning);}
+
+.ri-date{font-size:var(--font-size-caption);color:var(--color-text-hint);}
+.ri-body{font-size:var(--font-size-caption);color:var(--color-text-body);}
+.ri-note{font-size:var(--font-size-caption);color:var(--color-text-hint);margin-top:var(--space-xs);}
+
+/* 底部弹出层（覆盖全局 overlay 居中对齐） */
+.overlay{align-items:flex-end;}
+
+.action-sheet{
+  width:100%;background:var(--color-bg-card);
+  border-radius:var(--radius-lg) var(--radius-lg) 0 0;
+  padding:var(--space-xl);
+}
+
+.as-title{
+  display:block;text-align:center;font-size:var(--font-size-body);
+  color:var(--color-text-hint);margin-bottom:var(--space-md);
+}
+
+.as-action{
+  text-align:center;padding:var(--space-base);
+  font-size:var(--font-size-body);color:var(--color-text-body);
+  border-top:1rpx solid var(--color-bg-pressed);
+}
+
+.as-action.danger{color:var(--color-danger);}
+
+.as-action.cancel{
+  color:var(--color-text-hint);margin-top:var(--space-sm);
+  border-top:none;
+}
+
+/* 危险操作区 */
+.clear-section{
+  padding:var(--space-base);border-radius:var(--radius-md);
+  box-shadow:var(--shadow-card);margin-top:var(--space-xl);
+}
+
+.clear-title{
+  font-size:var(--font-size-body);color:var(--color-text-hint);
+  margin-bottom:var(--space-md);text-align:center;
+}
+
+.clear-btns{display:flex;gap:var(--space-md);}

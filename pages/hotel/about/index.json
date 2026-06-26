@@ -1,0 +1,8 @@
+{
+    "usingComponents":  {
+                            "tabbar": "../components/tabbar/index",
+                            "van-divider":  "../../../vant-weapp/dist/divider/index"
+                        },
+    "navigationBarBackgroundColor":  "#ffffff",
+    "navigationBarTextStyle":  "black"
+}

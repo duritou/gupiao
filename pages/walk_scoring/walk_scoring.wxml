@@ -1,0 +1,204 @@
+<view class="container">
+  <!-- ====== 加载中 ====== -->
+  <view wx:if="{{loading}}" class="loading">加载中...</view>
+
+  <!-- ====== 未加入房间：创建/加入 ====== -->
+  <view wx:elif="{{!roomCode}}">
+    <view class="title">🃏 打牌计分</view>
+    <view class="set-box">
+      <view class="profile-row">
+        <button class="avatar-btn" open-type="chooseAvatar" bindchooseavatar="onChooseAvatar">
+          <image wx:if="{{myAvatarUrl}}" class="my-avatar" src="{{myAvatarUrl}}" mode="aspectFill" />
+          <view wx:else class="my-avatar my-avatar-placeholder">{{myNickName[0] || '👤'}}</view>
+        </button>
+        <input class="nickname-inp" type="nickname" placeholder="你的昵称" value="{{myNickName}}" bindblur="onNickNameBlur" />
+      </view>
+      <view class="room-actions">
+        <button bindtap="createRoom">创建房间</button>
+        <button class="btn-outline" bindtap="showJoinInput">加入房间</button>
+      </view>
+    </view>
+  </view>
+
+  <!-- ====== 房间信息 ====== -->
+  <view wx:else class="room-view">
+    <!-- ====== 顶部固定区 ====== -->
+    <view class="room-top">
+    <!-- 房间栏 -->
+    <view class="room-bar">
+      <text class="room-label">房间号</text>
+      <text class="room-code-num">{{roomCode}}</text>
+      <button wx:if="{{isCreator}}" class="btn-sm btn-base" bindtap="addBaseScoreSelf">加底分</button>
+      <button class="btn-sm btn-outline" bindtap="refreshRoom">↻ 刷新</button>
+      <button class="btn-sm btn-outline" bindtap="leaveRoom">退出</button>
+      <button class="btn-sm btn-outline" bindtap="showSettle">结算</button>
+    </view>
+
+    <!-- 成员头像横排 -->
+    <view class="member-row">
+      <scroll-view scroll-x enhanced show-scrollbar="{{false}}" class="member-scroll">
+        <view class="member-cards">
+          <view wx:for="{{players}}" wx:key="openId" class="member-card {{item.openId === myOpenId ? 'me' : ''}}">
+            <image wx:if="{{item.avatarUrl}}" class="m-avatar-lg" src="{{item.avatarUrl}}" mode="aspectFill" bindtap="showPlayerBaseScore" data-nickname="{{item.nickName}}" data-base="{{item.baseScore}}" data-net="{{item.netScore}}" />
+            <view wx:else class="m-avatar-lg m-avatar-placeholder-lg" bindtap="showPlayerBaseScore" data-nickname="{{item.nickName}}" data-base="{{item.baseScore}}" data-net="{{item.netScore}}">{{item.nickName[0] || '👤'}}</view>
+            <text class="m-name">{{item.nickName}}</text>
+            <text class="m-score">{{item.netScore}}</text>
+          </view>
+          <!-- 添加好友 -->
+          <view class="member-card member-add">
+            <button class="m-add-btn" open-type="share">
+              <view class="m-add-icon">+</view>
+            </button>
+            <text class="m-add-label">添加好友</text>
+          </view>
+        </view>
+      </scroll-view>
+    </view>
+
+    <!-- 公共池（置顶） -->
+    <view class="pool-box">
+      <view class="pool-label">公共池</view>
+      <view class="pool-score {{poolScore > 0 ? 'positive' : poolScore < 0 ? 'negative' : 'zero'}}">
+        {{poolScore >= 0 ? '+' : ''}}{{poolScore}}
+      </view>
+      <view wx:if="{{fractionMode}}" class="pool-frac-info">
+        {{fractionMode === 'half' ? '½' : '⅓'}}模式 · 每人{{fractionAmount}}分 · {{fractionTakenCount}}/{{fractionTotalSlots}}人已取 · 余{{poolRemainder}}分
+      </view>
+      <view wx:if="{{!verify}}" class="pool-verify">⚠ 数据校验不通过</view>
+
+      <view wx:if="{{isCreator}}" class="pool-actions">
+        <view class="pool-select-row">
+          <text class="pool-action-label">取分→</text>
+          <view class="pool-target-inline" wx:if="{{poolTargetOpenId}}" bindtap="cyclePoolTarget">
+            <image wx:if="{{poolTargetAvatar}}" class="pool-target-avatar" src="{{poolTargetAvatar}}" mode="aspectFill" />
+            <view wx:else class="pool-target-avatar pool-target-placeholder">{{poolTargetName[0] || '👤'}}</view>
+          </view>
+          <view class="pool-target-inline" wx:else bindtap="cyclePoolTarget">
+            <view class="pool-target-avatar pool-target-placeholder">{{players[0].nickName[0] || '👤'}}</view>
+          </view>
+        </view>
+        <view class="pool-frac-btns">
+          <button class="btn-pool-take" bindtap="takeAll">取全部</button>
+          <button class="btn-pool-take btn-pool-half {{fractionMode && fractionMode !== 'half' ? 'disabled' : ''}}"
+                  bindtap="takeHalf"
+                  disabled="{{fractionMode && fractionMode !== 'half'}}">
+            取½
+          </button>
+          <button class="btn-pool-take btn-pool-third {{fractionMode && fractionMode !== 'third' ? 'disabled' : ''}}"
+                  bindtap="takeThird"
+                  disabled="{{fractionMode && fractionMode !== 'third'}}">
+            取⅓
+          </button>
+          <button class="btn-pool-take btn-pool-custom" bindtap="showCustomTake">自定义</button>
+        </view>
+      </view>
+    </view>
+
+    <!-- 本人信息卡：头像 + 快捷上分 -->
+    <view class="section-title">我的信息<text class="avatar-hint">点击下方头像自主上分</text></view>
+    <view class="my-score-bar">
+      <image wx:if="{{myAvatarUrl}}" class="my-bar-avatar" src="{{myAvatarUrl}}" mode="aspectFill" bindtap="showCustomUpScore" />
+      <view wx:else class="my-bar-avatar my-bar-avatar-placeholder" bindtap="showCustomUpScore">{{myNickName[0] || '👤'}}</view>
+      <button wx:if="{{isCreator}}" class="btn-qscore" bindtap="quickScoreSelf" data-val="1">+1</button>
+      <button wx:if="{{isCreator}}" class="btn-qscore" bindtap="quickScoreSelf" data-val="2">+2</button>
+      <button wx:if="{{isCreator}}" class="btn-qscore" bindtap="quickScoreSelf" data-val="3">+3</button>
+      <button wx:if="{{isCreator}}" class="btn-qscore" bindtap="quickScoreSelf" data-val="4">+4</button>
+      <button wx:if="{{isCreator}}" class="btn-qscore" bindtap="quickScoreSelf" data-val="5">+5</button>
+      <button wx:if="{{isCreator}}" class="btn-qscore" bindtap="quickScoreSelf" data-val="10">+10</button>
+    </view>
+
+    </view>
+    <!-- ====== 中间弹性区：流水记录 ====== -->
+    <view class="room-mid">
+    <!-- 流水记录标题行（含筛选） -->
+    <view class="section-title records-title">
+      <text class="records-label">流水记录</text>
+      <scroll-view class="record-filter-scroll" scroll-x enhanced show-scrollbar="{{false}}">
+        <view class="record-filter-row">
+          <view class="record-filter-item {{recordFilterOpenId === '' ? 'active' : ''}}" bindtap="clearRecordFilter">
+            <view class="record-filter-avatar record-filter-all">全部</view>
+          </view>
+          <view wx:for="{{players}}" wx:key="openId" class="record-filter-item {{recordFilterOpenId === item.openId ? 'active' : ''}}" bindtap="filterRecordsByPlayer" data-openid="{{item.openId}}">
+            <image wx:if="{{item.avatarUrl}}" class="record-filter-avatar" src="{{item.avatarUrl}}" mode="aspectFill" />
+            <view wx:else class="record-filter-avatar record-filter-avatar-placeholder">{{item.nickName[0] || '👤'}}</view>
+          </view>
+        </view>
+      </scroll-view>
+      <text class="records-count">{{records.length}}条<text wx:if="{{recordFilterOpenId}}">（已筛选）</text></text>
+    </view>
+    <scroll-view class="records-scroll" scroll-y enhanced show-scrollbar="{{true}}" bounces="{{false}}">
+      <view wx:if="{{records.length === 0}}" class="empty-records">暂无记录，开始计分吧</view>
+      <block wx:for="{{records}}" wx:key="_id">
+        <view wx:if="{{!recordFilterOpenId || item.playerOpenId === recordFilterOpenId}}" class="record-item">
+          <view class="record-left">
+            <text class="name">{{item.playerNickName}}</text>
+            <text class="record-action {{item.type}}">{{item.type === 'up' ? '上分' : '取分'}}</text>
+            <text class="record-time">{{item.timeStr}}</text>
+          </view>
+          <text class="record-score {{item.type}}">{{item.type === 'up' ? '-' : '+'}}{{item.score}}</text>
+        </view>
+      </block>
+      <view wx:if="{{records.length > 0}}" class="records-end">— 已加载全部记录 —</view>
+    </scroll-view>
+
+    </view>
+  </view>
+
+  <!-- ====== 加入房间弹窗 ====== -->
+  <view wx:if="{{showJoinInput}}" class="overlay" bindtap="cancelJoin">
+    <view class="dialog" catchtap="_preventBubble" style="border:3px solid red">
+      <text class="d-title">输入房间号</text>
+      <input class="d-inp" type="digit" placeholder="6位数字" bindinput="setJoinRoomCode" bindconfirm="joinRoom" value="{{joinRoomCode}}" maxlength="6" />
+      <view class="d-btns">
+        <button bindtap="joinRoom">加入</button>
+        <button class="btn-outline" bindtap="cancelJoin">取消</button>
+      </view>
+    </view>
+  </view>
+
+  <!-- ====== 自定义上分弹窗（点击头像触发） ====== -->
+  <view wx:if="{{showCustomUpDialog}}" class="overlay" bindtap="cancelCustomUpScore">
+    <view class="dialog" catchtap="_preventBubble">
+      <text class="d-title">自定义上分</text>
+      <input class="d-inp d-inp-score" type="number" placeholder="输入上分数值" bindinput="setCustomUpAmount" value="{{customUpAmount}}" bindconfirm="confirmCustomUpScore" focus="{{true}}" />
+      <view class="d-btns">
+        <button class="btn-confirm" bindtap="confirmCustomUpScore">确认</button>
+        <button class="btn-outline" bindtap="cancelCustomUpScore">取消</button>
+      </view>
+    </view>
+  </view>
+
+  <!-- ====== 自定义取分弹窗 ====== -->
+  <view wx:if="{{showCustomTakeDialog}}" class="overlay" bindtap="cancelCustomTake">
+    <view class="dialog" catchtap="_preventBubble">
+      <text class="d-title">自定义取分 → {{customTakeTargetName}}</text>
+      <view class="pool-remainder-hint" wx:if="{{poolScore > 0}}">公共池可用：{{poolScore}} 分</view>
+      <input class="d-inp d-inp-score" type="number" placeholder="输入取分值" bindinput="setCustomTakeAmount" value="{{customTakeAmount}}" bindconfirm="confirmCustomTake" focus="{{true}}" />
+      <view class="d-btns">
+        <button class="btn-confirm" bindtap="confirmCustomTake">确认取分</button>
+        <button class="btn-outline" bindtap="cancelCustomTake">取消</button>
+      </view>
+    </view>
+  </view>
+  <!-- ====== 结算弹窗 ====== -->
+  <view wx:if="{{showSettleDialog}}" class="overlay" bindtap="cancelSettle">
+    <view class="dialog" catchtap="_preventBubble">
+      <text class="d-title">🏁 结算</text>
+      <view class="settle-list">
+        <view wx:for="{{players}}" wx:key="openId" class="settle-item">
+          <image wx:if="{{item.avatarUrl}}" class="settle-avatar" src="{{item.avatarUrl}}" mode="aspectFill" />
+          <view wx:else class="settle-avatar settle-avatar-placeholder">{{item.nickName[0] || '👤'}}</view>
+          <text class="settle-name">{{item.nickName}}</text>
+          <view class="settle-scores">
+            <text class="settle-net {{item.netScore < 0 ? 'negative' : ''}}">{{item.netScore >= 0 ? '+' : ''}}{{item.netScore}}</text>
+            <text class="settle-base">底分 {{item.baseScore}}</text>
+          </view>
+        </view>
+      </view>
+      <view class="d-btns" style="margin-top:16px;">
+        <button class="btn-confirm btn-gold" bindtap="confirmSettle">确认结算并退出</button>
+        <button class="btn-outline" bindtap="cancelSettle">取消</button>
+      </view>
+    </view>
+  </view>
+</view>

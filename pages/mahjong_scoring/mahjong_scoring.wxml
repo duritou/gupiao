@@ -1,0 +1,429 @@
+<wxs module="recfmt">
+/** 时间戳 → YYYY-MM-DD HH:MM:SS */
+var formatTime = function(ts) {
+  if (!ts) return '';
+  var d = getDate(ts);
+  if (!d.getTime()) return '';
+  var pad = function(n) { return n < 10 ? '0' + n : n; };
+  return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) +
+    ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds());
+};
+/** 名字首字 */
+var firstChar = function(name) {
+  return (name || '?').charAt(0);
+};
+module.exports = { formatTime: formatTime, firstChar: firstChar };
+</wxs>
+
+<!-- 麻将计分 — 主页面模板 --><view class="page">
+
+  <!-- ====== 加载中 ====== --><view wx:if="{{loading}}" class="loading-box">
+    <text>加载中...</text>
+  </view>
+
+  <!-- ====== 无房间：Tab 首页 ====== --><block wx:elif="{{!roomCode}}">
+
+    <!-- ==================== 首页 Tab ==================== --><view wx:if="{{homeActiveTab === 'home'}}" class="home-tab-content">
+
+      <!-- 头像 + 昵称 --><view class="home-profile">
+        <button class="home-avatar-btn" open-type="chooseAvatar" bindchooseavatar="onChooseAvatar">
+          <image wx:if="{{myAvatarUrl}}" class="home-avatar" src="{{myAvatarUrl}}" mode="aspectFill" />
+          <view wx:else class="home-avatar home-avatar-placeholder">{{myNickName[0] || '😊'}}</view>
+        </button>
+        <input class="home-nickname" type="nickname" placeholder="点击填入微信昵称" value="{{myNickName}}" bindblur="onNickNameBlur" />
+      </view>
+
+      <!-- 创建房间按钮 --><button class="home-invite-btn" bindtap="onHomeCreateRoom">
+        创建房间
+      </button>
+
+    </view>
+
+    <!-- ==================== 我的 Tab ==================== --><view wx:if="{{homeActiveTab === 'mine'}}" class="home-mine-content">
+
+      <!-- 个人信息头部 --><view class="mine-header">
+        <view class="mine-header-left">
+          <button class="mine-avatar-btn" open-type="chooseAvatar" bindchooseavatar="onChooseAvatar">
+            <image wx:if="{{myAvatarUrl}}" class="mine-avatar" src="{{myAvatarUrl}}" mode="aspectFill" />
+            <view wx:else class="mine-avatar mine-avatar-placeholder">{{myNickName[0] || '😊'}}</view>
+          </button>
+          <text class="mine-nickname">{{myNickName || '未设置昵称'}}</text>
+        </view>
+        <view class="mine-header-right">
+          <button class="mine-edit-btn" bindtap="onProfileEdit">修改个人资料</button>
+        </view>
+      </view>
+      <view class="mine-divider"></view>
+
+      <!-- 功能图标网格 --><view class="mine-grid">
+        <view class="mine-grid-item" bindtap="onPersonalData">
+          <view class="mine-grid-icon mine-icon-blue">📊</view>
+          <text class="mine-grid-label">个人数据</text>
+        </view>
+        <view class="mine-grid-item" bindtap="onFeedback">
+          <view class="mine-grid-icon mine-icon-light-blue">📋</view>
+          <text class="mine-grid-label">优化建议</text>
+        </view>
+        <view class="mine-grid-item" bindtap="onClearCache">
+          <view class="mine-grid-icon mine-icon-green">🧹</view>
+          <text class="mine-grid-label">清除记录</text>
+        </view>
+        <view class="mine-grid-item" bindtap="onOpenHistory">
+          <view class="mine-grid-icon mine-icon-purple">📜</view>
+          <text class="mine-grid-label">历史记录</text>
+        </view>
+      </view>
+
+    </view>
+
+    <!-- ==================== 记录 Tab ==================== --><view wx:if="{{homeActiveTab === 'records'}}" class="home-rec-content">
+
+      <!-- 顶部双 Tab -->
+      <view class="rec-tabs">
+        <view class="rec-tab {{homeRecordTab === 'active' ? 'rec-tab--on' : ''}}" bindtap="onHomeRecordTab" data-tab="active">进行中</view>
+        <view class="rec-tab {{homeRecordTab === 'settled' ? 'rec-tab--on' : ''}}" bindtap="onHomeRecordTab" data-tab="settled">已结束</view>
+      </view>
+
+      <!-- 筛选行（仅已结束 Tab 显示） -->
+      <view class="rec-filter-row" wx:if="{{homeRecordTab === 'settled'}}">
+        <text class="rec-filter-label">最近记录</text>
+        <picker mode="selector" range="{{monthPickerRange}}" bindchange="onMonthPickerChange">
+          <view class="rec-filter-picker">
+            <text class="rec-filter-picker-text">{{selectedMonth || '选择月份'}}</text>
+            <text class="rec-filter-picker-arrow">▼</text>
+          </view>
+        </picker>
+      </view>
+
+      <!-- 主体内容滚动区 -->
+      <scroll-view scroll-y class="rec-body" enhanced>
+
+        <!-- 记录列表 -->
+        <view wx:if="{{records.length > 0}}">
+          <view wx:for="{{records}}" wx:key="_id" class="rec-card {{item.isActive ? 'rec-card--tappable' : ''}}" data-room="{{item.roomCode}}" data-active="{{item.isActive}}" bindtap="onEnterActiveRoom">
+
+            <!-- 删除按钮（右上角；仅本地已结算卡片可删，进行中/云端快照不可删） -->
+            <view wx:if="{{!item._fromCloud && !item.isActive}}" class="rec-card-del" data-id="{{item._id}}" data-room="{{item.roomCode}}" catchtap="onDeleteRound">
+              <text class="rec-card-del-icon">🗑</text>
+            </view>
+
+            <!-- 房间号 + 状态 -->
+            <view class="rec-card-head">
+              <view class="rec-card-head-left">
+                <text class="rec-room-code">房间 {{item.roomCode}}</text>
+                <text class="rec-status-badge {{item.isActive ? 'rec-status--active' : 'rec-status--settled'}}">{{item.isActive ? '进行中' : '已结算'}}</text>
+              </view>
+              <text wx:if="{{item.isActive}}" class="rec-enter-arrow">进入 &gt;</text>
+            </view>
+
+            <!-- 玩家分数行 -->
+            <view class="rec-players">
+              <view wx:for="{{item.playerDeltas}}" wx:for-item="p" wx:for-index="pi" wx:key="name" class="rec-player">
+                <!-- 盈利: 圆形头像 -->
+                <image wx:if="{{p.delta > 0}}" class="rec-player-avatar" src="{{p.avatarUrl || '/img/default-avatar.png'}}" mode="aspectFill" />
+                <!-- 亏损 / 零: 方形标签 -->
+                <view wx:else class="rec-player-tag rec-player-tag--{{pi}}">
+                  <text class="rec-player-tag-text">{{recfmt.firstChar(p.name)}}</text>
+                </view>
+                <!-- 分数 -->
+                <text class="rec-player-score {{p.delta > 0 ? 'rec-player-score--plus' : p.delta < 0 ? 'rec-player-score--minus' : 'rec-player-score--zero'}}">{{p.delta > 0 ? '+' : ''}}{{p.delta}}</text>
+              </view>
+            </view>
+
+            <!-- 底部：居中时间戳 -->
+            <view class="rec-card-foot">
+              <text class="rec-card-time">{{recfmt.formatTime(item.createTime)}}</text>
+            </view>
+
+          </view>
+        </view>
+
+        <!-- 空状态 -->
+        <view class="rec-empty" wx:if="{{records.length === 0}}">
+          <view class="rec-empty-icon">📋</view>
+          <text class="rec-empty-text">近2个月没有数据</text>
+        </view>
+
+      </scroll-view>
+
+    </view>
+
+    <!-- ==================== 底部 Tab 栏（三等分：首页 / 记录 / 我的） ==================== --><view class="home-tab-bar">
+      <view class="home-tab-item {{homeActiveTab === 'home' ? 'active' : ''}}" bindtap="onHomeTabChange" data-tab="home">
+        <text class="home-tab-icon">🏠</text>
+        <text class="home-tab-text">首页</text>
+      </view>
+      <view class="home-tab-item {{homeActiveTab === 'records' ? 'active' : ''}}" bindtap="onHomeTabChange" data-tab="records">
+        <text class="home-tab-icon">📊</text>
+        <text class="home-tab-text">记录</text>
+      </view>
+      <view class="home-tab-item {{homeActiveTab === 'mine' ? 'active' : ''}}" bindtap="onHomeTabChange" data-tab="mine">
+        <text class="home-tab-icon">👤</text>
+        <text class="home-tab-text">我的</text>
+      </view>
+    </view>
+  </block>
+
+  <!-- ====== 在线房间模式 ====== --><block wx:elif="{{roomCode}}">
+
+    <!-- 顶部导航 --><view class="top-nav">
+      <text class="top-nav-title">🀄 麻将计分 {{roomCode}}</text>
+      <text class="top-nav-hint">点击头像转分</text>
+    </view>
+
+    <!-- 玩家头像行 --><view class="member-row">
+      <scroll-view scroll-x enhanced show-scrollbar="{{false}}" class="member-scroll">
+        <view class="member-cards">
+          <view wx:for="{{players}}" wx:key="openId" class="member-card {{item.openId === myOpenId ? 'me' : ''}}">
+            <image wx:if="{{item.avatarUrl}}" class="m-avatar" src="{{item.avatarUrl}}" mode="aspectFill" bindtap="onPlayerTap" data-openid="{{item.openId}}" data-nickname="{{item.nickName}}" data-net="{{item.netScore}}" />
+            <view wx:else class="m-avatar m-avatar-placeholder" bindtap="onPlayerTap" data-openid="{{item.openId}}" data-nickname="{{item.nickName}}" data-net="{{item.netScore}}">{{item.nickName[0] || '😊'}}</view>
+            <text class="m-name">{{item.nickName}}</text>
+            <text class="m-score {{item.netScore > 0 ? 'red' : (item.netScore < 0 ? 'green' : 'zero')}}">{{item.netScore}}</text>
+          </view>
+          <!-- 添加好友 --><view class="member-card member-add">
+            <button class="m-add-btn" open-type="share">
+              <view class="m-add-icon">+</view>
+            </button>
+            <text class="m-add-label">添加好友</text>
+          </view>
+        </view>
+      </scroll-view>
+    </view>
+
+    <!-- 快捷操作栏 --><view class="quick-bar">
+      <button class="btn-sm btn-primary" bindtap="onLocalScoring">计分</button>
+      <button class="btn-sm btn-outline" bindtap="refreshRoom">↻ 刷新</button>
+      <button class="btn-sm btn-outline" bindtap="onShowSettle">结算</button>
+      <button class="btn-sm btn-outline" bindtap="leaveRoom">退出</button>
+    </view>
+
+    <!-- 对局记录 --><scroll-view class="records-scroll" scroll-y enhanced show-scrollbar="{{true}}">
+      <view wx:if="{{rounds.length === 0}}" class="empty-module">
+        <text class="empty-icon">🀄</text>
+        <text class="empty-text">暂无对局记录</text>
+      </view>
+      <block wx:for="{{rounds}}" wx:key="_id">
+        <view class="cloud-round-card">
+          <view class="cloud-round-header">
+            <text class="cloud-round-mode">{{item.mode}}</text>
+            <text class="cloud-round-fan" wx:if="{{item.mode !== '转账'}}">{{item.fanCount}}番 × {{item.baseScore}}分</text>
+            <text class="cloud-round-fan" wx:else>{{item.fanCount}}分</text>
+          </view>
+          <view class="cloud-round-people" wx:if="{{item.mode !== '转账'}}">🎯 {{item.winnerName}}{{item.loserName ? ' | 💣 ' + item.loserName : ''}}</view>
+          <view class="cloud-round-people" wx:else>💸 {{item.loserName}} → {{item.winnerName}}</view>
+          <view class="cloud-round-deltas">
+            <block wx:for="{{item.playerDeltas}}" wx:key="name" wx:for-item="d">
+              <text class="cloud-delta-item {{d.delta > 0 ? 'red' : d.delta < 0 ? 'green' : 'zero'}}">{{d.name}} {{d.delta >= 0 ? '+' : ''}}{{d.delta}}</text>
+            </block>
+          </view>
+        </view>
+      </block>
+    </scroll-view>
+
+
+  </block>
+
+  <!-- ====== 加入房间弹窗 ====== --><view wx:if="{{showJoinInput}}" class="overlay" bindtap="cancelJoinRoom">
+    <view class="dialog" catchtap="_preventBubble" style="border:6rpx solid red">
+      <text class="d-title">输入房间号</text>
+      <input class="d-inp" type="digit" placeholder="6位数字" value="{{joinRoomCode}}" bindinput="setJoinRoomCode" bindconfirm="joinRoom" maxlength="6" />
+      <view class="d-btns">
+        <button bindtap="joinRoom">加入</button>
+        <button class="btn-outline" bindtap="cancelJoinRoom">取消</button>
+      </view>
+    </view>
+  </view>
+
+  <!-- ====== 转账弹窗（点击头像 → 自定义数字键盘） ====== --><view class="overlay" wx:if="{{showTransfer}}" catchtap="onCancelTransfer">
+    <view class="dialog dialog-transfer" catchtap="_preventBubble">
+      <view class="d-title">💸 转账给 {{transferTargetName}}</view>
+      <view class="d-desc">转账后您的分数将减少对应金额，对方分数增加。</view>
+      <!-- 金额展示区 -->
+      <view class="kpad-display">
+        <text class="kpad-display-symbol">¥</text>
+        <text class="kpad-display-val {{transferAmount ? '' : 'kpad-display-placeholder'}}">{{transferAmount || '0'}}</text>
+      </view>
+      <!-- 数字键盘 -->
+      <view class="kpad-grid">
+        <view class="kpad-row">
+          <view class="kpad-key" data-key="1" bindtap="onKpadTap">1</view>
+          <view class="kpad-key" data-key="2" bindtap="onKpadTap">2</view>
+          <view class="kpad-key" data-key="3" bindtap="onKpadTap">3</view>
+        </view>
+        <view class="kpad-row">
+          <view class="kpad-key" data-key="4" bindtap="onKpadTap">4</view>
+          <view class="kpad-key" data-key="5" bindtap="onKpadTap">5</view>
+          <view class="kpad-key" data-key="6" bindtap="onKpadTap">6</view>
+        </view>
+        <view class="kpad-row">
+          <view class="kpad-key" data-key="7" bindtap="onKpadTap">7</view>
+          <view class="kpad-key" data-key="8" bindtap="onKpadTap">8</view>
+          <view class="kpad-key" data-key="9" bindtap="onKpadTap">9</view>
+        </view>
+        <view class="kpad-row">
+          <view class="kpad-key kpad-key-double" data-key="00" bindtap="onKpadTap">00</view>
+          <view class="kpad-key" data-key="0" bindtap="onKpadTap">0</view>
+          <view class="kpad-key kpad-key-del" bindtap="onKpadDelete">⌫</view>
+        </view>
+      </view>
+      <!-- 操作按钮行 -->
+      <view class="kpad-actions">
+        <button class="kpad-cancel" bindtap="onCancelTransfer">取消</button>
+        <button class="kpad-confirm" bindtap="onConfirmTransfer">确定转账</button>
+      </view>
+    </view>
+  </view>
+
+  <!-- ====== 计分弹窗 ====== --><view class="overlay" wx:if="{{showScoring}}" catchtap="onCancelScoring">
+    <view class="dialog dialog-wide dialog-scroll" catchtap="_preventBubble">
+      <view class="d-title">📝 计分</view>
+
+      <!-- 模式切换 --><view class="scoring-mode-row">
+        <view class="scoring-mode-btn {{scoringMode === 'dianpao' ? 'active' : ''}}" wx:if="{{isCreator}}" data-mode="dianpao" bindtap="onSwitchMode">点炮胡</view>
+        <view class="scoring-mode-btn {{scoringMode === 'zimo' ? 'active' : ''}}" wx:if="{{isCreator}}" data-mode="zimo" bindtap="onSwitchMode">自摸胡</view>
+        <view class="scoring-mode-btn {{scoringMode === 'transfer' ? 'active' : ''}}" data-mode="transfer" bindtap="onSwitchMode">转账</view>
+      </view>
+
+      <!-- 胡牌 / 收款玩家 --><view class="scoring-section">
+        <view class="scoring-section-title">{{scoringMode === 'transfer' ? '💸 收款玩家' : '🎯 胡牌玩家'}}</view>
+        <view class="scoring-player-row"><block wx:for="{{scoringPlayers}}" wx:key="id">
+            <view class="scoring-player-tag {{scoringWinnerIdx === index ? 'sel-win' : ''}}" data-idx="{{index}}" bindtap="onSelectWinner">{{item.name}}</view>
+          </block>
+        </view>
+      </view>
+
+      <!-- 点炮玩家 --><view class="scoring-section" wx:if="{{scoringMode === 'dianpao'}}">
+        <view class="scoring-section-title">💣 点炮玩家</view>
+        <view class="scoring-player-row"><block wx:for="{{scoringPlayers}}" wx:key="id">
+            <view class="scoring-player-tag {{scoringLoserIdx === index ? 'sel-lose' : ''}} {{scoringWinnerIdx === index ? 'dim' : ''}}" data-idx="{{index}}" bindtap="onSelectLoser">{{item.name}}</view>
+          </block>
+        </view>
+      </view>
+
+      <!-- 番数 & 底分（非转账） / 转账金额（转账） --><view class="scoring-input-row" wx:if="{{scoringMode !== 'transfer'}}">
+        <view class="scoring-input-item">
+          <text class="scoring-input-label">番数</text>
+          <input class="scoring-input" type="number" value="{{scoringFanCount}}" bindinput="onFanCountInput" placeholder="0" />
+        </view>
+        <view class="scoring-input-item">
+          <text class="scoring-input-label">每番底分</text>
+          <input class="scoring-input" type="number" value="{{scoringBaseScore}}" bindinput="onBaseScoreInput" placeholder="0" />
+        </view>
+      </view>
+      <view class="scoring-input-row" wx:if="{{scoringMode === 'transfer'}}">
+        <view class="scoring-input-item transfer-amount-item">
+          <text class="scoring-input-label">转账金额</text>
+          <input class="scoring-input" type="digit" value="{{scoringFanCount}}" bindinput="onFanCountInput" placeholder="0" />
+        </view>
+      </view>
+
+      <!-- 杠分（非转账） --><view class="scoring-section" wx:if="{{scoringMode !== 'transfer'}}">
+        <view class="scoring-section-title">🀄 杠分（可选）</view>
+        <view class="scoring-player-row"><block wx:for="{{scoringPlayers}}" wx:key="id">
+            <view class="scoring-player-tag {{scoringBarPlayerIdx === index ? 'sel-bar' : ''}}" data-idx="{{index}}" bindtap="onSelectBarPlayer">{{item.name}}</view>
+          </block>
+        </view>
+        <view class="scoring-input-item bar-input-item" wx:if="{{scoringBarPlayerIdx >= 0}}">
+          <text class="scoring-input-label">{{scoringPlayers[scoringBarPlayerIdx].name}} 杠分</text>
+          <input class="scoring-input" type="number" value="{{scoringBarScore}}" bindinput="onBarScoreInput" placeholder="0" />
+        </view>
+      </view>
+
+      <!-- 预览（非转账） --><view class="scoring-preview" wx:if="{{scoringPreview && scoringMode !== 'transfer'}}">
+        <text>{{scoringPreview}}</text>
+      </view>
+
+      <view class="d-btns">
+        <button class="btn-outline" bindtap="onCancelScoring">取消</button>
+        <button bindtap="onConfirmScoring">{{scoringMode === 'transfer' ? '确认转账' : '确认计分'}}</button>
+      </view>
+    </view>
+  </view>
+
+  <!-- ====== C. 结算弹窗 ====== --><view class="overlay" wx:if="{{showSettle}}" catchtap="onCancelSettle">
+    <view class="dialog dialog-wide" catchtap="_preventBubble">
+      <view class="d-title">📊 收盘结算</view>
+
+      <view class="settle-list"><block wx:for="{{settleRank}}" wx:key="id">
+          <view class="settle-item {{index === 0 ? 'settle-top1' : ''}}">
+            <view class="settle-rank {{index === 0 ? 'gold' : (index === 1 ? 'silver' : (index === 2 ? 'bronze' : 'normal'))}}">{{index + 1}}</view>
+            <view class="settle-name">{{item.name || item.nickName}}</view>
+            <view class="settle-score {{(item.totalScore || item.netScore) > 0 ? 'red' : ((item.totalScore || item.netScore) < 0 ? 'green' : 'zero')}}">
+              {{(item.totalScore || item.netScore) >= 0 ? '+' : ''}}{{item.totalScore || item.netScore}}
+            </view>
+          </view>
+        </block>
+      </view>
+
+      <view class="settle-btn-row" wx:if="{{roomCode}}">
+        <button class="settle-btn settle-share" open-type="share">📤 截图分享</button>
+        <button class="settle-btn settle-reset" bindtap="confirmSettle">确认结算</button>
+      </view>
+      <view class="settle-close" bindtap="onCancelSettle">关闭</view>
+    </view>
+  </view>
+
+  <!-- ====== 记录删除确认弹窗 ====== --><view class="rec-modal" wx:if="{{showDeleteConfirm}}" catchtouchmove="noop">
+    <view class="rec-modal-mask" bindtap="cancelDelete"></view>
+    <view class="rec-modal-box">
+      <view class="rec-modal-title">确认删除</view>
+      <view class="rec-modal-body">删除后数据不可恢复，确定要删除这条记录吗？</view>
+      <view class="rec-modal-actions">
+        <view class="rec-modal-btn rec-modal-btn--cancel" bindtap="cancelDelete">取消</view>
+        <view class="rec-modal-btn rec-modal-btn--danger" bindtap="confirmDelete">删除</view>
+      </view>
+    </view>
+  </view>
+
+  <!-- ====== 清除记录确认弹窗 ====== --><view class="overlay" wx:if="{{showCacheConfirm}}" catchtap="cancelClearCache">
+    <view class="dialog" catchtap="_preventBubble">
+      <view class="d-title">🗑️ 清除记录</view>
+      <text class="d-desc">确定要清除本地所有对局记录和玩家数据吗？此操作不可恢复。</text>
+      <view class="d-btns">
+        <button class="btn-outline" bindtap="cancelClearCache">取消</button>
+        <button bindtap="confirmClearCache">确定清除</button>
+      </view>
+    </view>
+  </view>
+
+  <!-- ====== 历史记录弹窗 ====== --><view class="overlay" wx:if="{{showHistory}}" catchtap="onCloseHistory">
+    <view class="dialog dialog-wide history-dialog" catchtap="_preventBubble">
+      <view class="d-title">📜 历史记录</view>
+      <view class="history-body">
+        <!-- 加载中 -->
+        <view wx:if="{{historyLoading}}" class="history-loading">
+          <text>加载中...</text>
+        </view>
+        <!-- 无记录 -->
+        <view wx:elif="{{historyList.length === 0}}" class="history-empty">
+          <text>暂无历史记录</text>
+        </view>
+        <!-- 记录列表 -->
+        <scroll-view wx:else class="history-list" scroll-y="true">
+          <view class="history-item" wx:for="{{historyList}}" wx:key="settleTime">
+            <view class="history-item-header">
+              <text class="history-room-code">房间号：{{item.roomCode}}</text>
+              <text class="history-status">已结算</text>
+            </view>
+            <view class="history-item-times">
+              <text class="history-time-label">开始：{{recfmt.formatTime(item.startTime)}}</text>
+              <text class="history-time-label">结算：{{recfmt.formatTime(item.settleTime)}}</text>
+            </view>
+            <view class="history-item-players">
+              <text class="history-players-label">人物：</text>
+              <block wx:for="{{item.players}}" wx:for-item="p" wx:key="openId">
+                <text class="history-player-name">{{p.nickName}}</text>
+                <text class="history-player-score {{p.netScore > 0 ? 'red' : (p.netScore < 0 ? 'green' : 'zero')}}">{{p.netScore >= 0 ? '+' : ''}}{{p.netScore}}</text>
+                <text wx:if="{{index < item.players.length - 1}}" class="history-player-sep"> | </text>
+              </block>
+            </view>
+          </view>
+        </scroll-view>
+      </view>
+      <view class="history-close-row">
+        <button class="btn-outline" bindtap="onCloseHistory">关闭</button>
+      </view>
+    </view>
+  </view>
+
+</view>

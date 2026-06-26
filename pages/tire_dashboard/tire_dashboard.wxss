@@ -1,0 +1,66 @@
+/* 轮胎仪表盘 — 页面特有样式（通用类已在 app.wxss 定义） */
+
+/* 统计卡片行 */
+.stat-grid{display:flex;gap:var(--space-md);margin-bottom:var(--space-xxl);}
+
+.stat-card{
+  flex:1;
+  background:var(--color-bg-card);
+  padding:var(--space-lg) var(--space-base);
+  border-radius:var(--radius-md);
+  text-align:center;
+  box-shadow:var(--shadow-card);
+}
+
+.stat-value{
+  font-size:var(--font-size-display);
+  font-weight:bold;
+  color:var(--color-primary);
+  font-family:var(--font-family-mono);
+}
+
+.stat-unit{
+  font-size:var(--font-size-subtitle);
+  color:var(--color-text-hint);
+  margin-left:var(--space-xs);
+}
+
+.stat-label{
+  font-size:var(--font-size-caption);
+  color:var(--color-text-hint);
+  margin-top:var(--space-sm);
+}
+
+/* 快捷入口标题 */
+.shortcut-title{
+  font-size:var(--font-size-body);
+  color:var(--color-text-hint);
+  margin-bottom:var(--space-md);
+}
+
+/* 快捷入口网格 */
+.shortcut-grid{display:flex;flex-wrap:wrap;gap:var(--space-md);}
+
+.shortcut-card{
+  width:calc(50% - 8rpx);
+  background:var(--color-bg-card);
+  padding:var(--space-xxl) var(--space-md);
+  border-radius:var(--radius-md);
+  text-align:center;
+  box-shadow:var(--shadow-card);
+  box-sizing:border-box;
+  transition:box-shadow var(--transition-fast);
+}
+
+.shortcut-card:active{
+  box-shadow:var(--shadow-card-raised);
+  background:var(--color-bg-pressed);
+}
+
+.sc-icon{font-size:72rpx;margin-bottom:var(--space-sm);}
+
+.sc-name{
+  font-size:var(--font-size-body-lg);
+  color:var(--color-text-body);
+  font-weight:bold;
+}

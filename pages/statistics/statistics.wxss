@@ -1,0 +1,74 @@
+/* 流水统计 — 页面特有样式 */
+
+/* 时间范围 Tab（药丸风格，换行展示，与全局分段控制器不同） */
+.tab-bar{
+  display:flex;flex-wrap:wrap;gap:var(--space-md);
+  margin-bottom:var(--space-lg);
+}
+
+.tab-item{
+  display:inline-flex;align-items:center;justify-content:center;
+  padding:var(--space-md) 44rpx;border-radius:var(--radius-round);
+  font-size:var(--font-size-body);color:var(--color-text-secondary);
+  background:var(--color-bg-card);white-space:nowrap;
+  transition:all var(--transition-normal);
+  box-shadow:var(--shadow-card);
+}
+
+.tab-item.active{
+  background:var(--color-primary);
+  color:var(--color-text-inverse);
+  font-weight:bold;
+}
+
+/* 2×2 统计卡片网格 */
+.stats-grid{
+  display:flex;flex-wrap:wrap;gap:var(--space-md);
+  margin-bottom:var(--space-base);
+}
+
+.stat-card{
+  flex:1 1 calc(50% - 8rpx);min-width:0;
+  background:var(--color-bg-card);
+  border-radius:var(--radius-md);
+  padding:var(--space-xl) var(--space-base);
+  box-shadow:var(--shadow-card);
+  box-sizing:border-box;
+}
+
+.sc-label{
+  font-size:var(--font-size-caption);
+  color:var(--color-text-hint);
+  margin-bottom:var(--space-sm);
+}
+
+.sc-value{
+  font-size:var(--font-size-display);
+  font-weight:bold;
+  color:var(--color-text-primary);
+  font-family:var(--font-family-mono);
+  line-height:1.1;
+  word-break:break-all;
+}
+
+.sc-unit{
+  font-size:var(--font-size-subtitle);
+  font-weight:normal;
+  color:var(--color-text-hint);
+}
+
+/* 统计范围提示 */
+.range-hint{
+  text-align:center;
+  padding:var(--space-md);
+  color:var(--color-text-hint);
+  font-size:var(--font-size-caption);
+}
+
+/* 错误提示 */
+.error-hint{
+  text-align:center;
+  padding:var(--space-xxl);
+  color:var(--color-warning);
+  font-size:var(--font-size-body);
+}

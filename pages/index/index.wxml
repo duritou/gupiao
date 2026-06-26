@@ -1,0 +1,157 @@
+<view class="container safe-bottom">
+  <!-- ====== 首页双入口 ====== -->
+  <view wx:if="{{!showGameList}}">
+    <!-- 标题 -->
+    <view class="page-title">多合一计分器</view>
+    <view class="page-subtitle">实用工具 · 计分 · 轮胎管理 · 酒店预订</view>
+
+    <!-- 用户信息 -->
+    <view wx:if="{{!loading}}" class="profile-bar">
+      <button class="avatar-btn" open-type="chooseAvatar" bindchooseavatar="onChooseAvatar">
+        <image wx:if="{{myAvatarUrl}}" class="avatar-img" src="{{myAvatarUrl}}" mode="aspectFill" />
+        <view wx:else class="avatar-placeholder">{{myNickName[0] || '?'}}</view>
+      </button>
+      <view class="profile-info">
+        <view class="profile-title">
+          <text class="vip-label">👑 尊贵的用户</text>
+        </view>
+        <view class="profile-name-row">
+          <input class="nickname-inp" type="nickname" placeholder="点击填入微信昵称" value="{{myNickName}}" bindblur="onNickNameBlur" />
+          <text class="svip-badge">SVIP</text>
+        </view>
+      </view>
+    </view>
+
+    <!-- 加载中 -->
+    <view wx:if="{{loading}}" class="empty-state">
+      <text class="empty-state-text">加载中...</text>
+    </view>
+
+    <!-- 四入口卡片 2x2 网格 -->
+    <view wx:else class="entry-grid">
+      <view class="entry-card" bindtap="openScoring">
+        <view class="entry-icon">🏆</view>
+        <view class="entry-name">打牌、麻将计分</view>
+        <view class="entry-desc">公共池模式 · 随意加入 · 自动算分</view>
+      </view>
+
+      <view class="entry-card" bindtap="openTireInventory">
+        <view class="entry-icon">🛞</view>
+        <view class="entry-name">轮胎进销存</view>
+        <view class="entry-desc">进货登记 · 出库管理 · 库存总览 · 数据导出</view>
+      </view>
+
+      <view class="entry-card" bindtap="openHotelBooking">
+        <view class="entry-icon">🏨</view>
+        <view class="entry-name">酒店预订</view>
+        <view class="entry-desc">房型浏览 · 在线预订 · 订餐服务</view>
+      </view>
+
+      <view class="entry-card" bindtap="openHotelAdmin">
+        <view class="entry-icon">🖼️</view>
+        <view class="entry-name">酒店图片管理</view>
+        <view class="entry-desc">房型 · 菜品 · 文章图片上传</view>
+      </view>
+
+      <view class="entry-card" bindtap="onOpenMessageBoard">
+        <view class="entry-icon">💬</view>
+        <view class="entry-name">留言板 · 建议反馈</view>
+        <view class="entry-desc">留言交流 · 提出修改建议 · 共建更好工具</view>
+      </view>
+    </view>
+  </view>
+
+  <!-- ====== 计分分类 — 游戏列表 ====== -->
+  <view wx:else>
+    <view class="sub-header">
+      <view class="back-btn" bindtap="backToHome">← 返回</view>
+      <view class="sub-title">打牌、麻将计分</view>
+    </view>
+
+    <!-- 加入房间 -->
+    <view class="join-bar">
+      <button class="join-btn" bindtap="showJoinInput">加入房间</button>
+    </view>
+
+    <!-- 游戏卡片网格 -->
+    <view class="game-grid">
+      <view
+        wx:for="{{gameList}}"
+        wx:key="type"
+        class="game-card"
+        data-type="{{item.type}}"
+        bindtap="onCreateRoom"
+      >
+        <view class="game-icon">{{item.icon}}</view>
+        <view class="game-name">{{item.name}}</view>
+        <view class="game-desc">{{item.desc}}</view>
+        <view class="game-players">{{item.minPlayers}}-{{item.maxPlayers}}人</view>
+      </view>
+    </view>
+  </view>
+
+  <!-- ====== 留言板弹窗（遮罩与面板分离，避免 input 事件冒泡误关） ====== -->
+  <view wx:if="{{showMessageBoard}}" class="overlay" catchtouchmove="">
+    <view class="overlay-backdrop" bindtap="onCloseMessageBoard"></view>
+    <view class="msg-board">
+      <!-- 头部 -->
+      <view class="msg-header">
+        <view class="msg-header-left">
+          <text class="msg-header-title">💬 留言板 · 修改建议</text>
+          <text class="msg-header-count" wx:if="{{messages.length > 0}}">{{messages.length}}条</text>
+        </view>
+        <view class="msg-header-right">
+          <text class="msg-refresh" bindtap="onRefreshMessages">🔄</text>
+          <text class="msg-close" bindtap="onCloseMessageBoard">✕</text>
+        </view>
+      </view>
+
+      <view class="msg-hint">
+        <text>💡 欢迎留言交流，也可以提出对小程序的修改建议～</text>
+      </view>
+
+      <!-- 留言列表 -->
+      <scroll-view class="msg-list" scroll-y enhanced show-scrollbar="{{false}}">
+        <view wx:if="{{messages.length === 0}}" class="msg-empty">
+          <text class="msg-empty-icon">📝</text>
+          <text class="msg-empty-text">暂无留言，快来抢沙发！</text>
+        </view>
+        <block wx:for="{{messages}}" wx:key="id">
+          <view class="msg-item {{item.nickName === myNickName ? 'msg-mine' : ''}}">
+            <view class="msg-avatar-wrap">
+              <image wx:if="{{item.avatarUrl}}" class="msg-avatar" src="{{item.avatarUrl}}" mode="aspectFill" />
+              <view wx:else class="msg-avatar msg-avatar-def">{{item.nickName[0] || '?'}}</view>
+            </view>
+            <view class="msg-body">
+              <view class="msg-top">
+                <text class="msg-nick">{{item.nickName}}</text>
+                <text class="msg-time">{{item.timeStr}}</text>
+              </view>
+              <text class="msg-content">{{item.content}}</text>
+            </view>
+            <view wx:if="{{item.nickName === myNickName}}" class="msg-del" data-id="{{item.id}}" catchtap="onDeleteMessage">🗑</view>
+          </view>
+        </block>
+        <view style="height:120rpx;"></view>
+      </scroll-view>
+
+      <!-- 底部输入区 -->
+      <view class="msg-input-bar">
+        <input class="msg-input" type="text" placeholder="写留言或建议..." value="{{newMessageText}}" bindinput="onMessageInput" maxlength="500" confirm-type="send" bindconfirm="onSendMessage" />
+        <view class="msg-send-btn {{newMessageText ? 'active' : ''}}" bindtap="onSendMessage">发送</view>
+      </view>
+    </view>
+  </view>
+
+  <!-- ====== 加入房间弹窗 ====== -->
+  <view wx:if="{{showJoinInput}}" class="overlay" bindtap="cancelJoin">
+    <view class="dialog" catchtap="_preventBubble">
+      <text class="d-title">输入房间号</text>
+      <input class="d-inp" type="digit" placeholder="6位数字" bindinput="setJoinRoomId" bindconfirm="joinRoom" value="{{joinRoomId}}" maxlength="6" />
+      <view class="d-btns">
+        <button bindtap="joinRoom">加入</button>
+        <button class="btn-outline" bindtap="cancelJoin">取消</button>
+      </view>
+    </view>
+  </view>
+</view>

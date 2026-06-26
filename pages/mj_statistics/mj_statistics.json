@@ -1,0 +1,6 @@
+{
+  "navigationBarTitleText": "麻将个人数据",
+  "navigationBarBackgroundColor": "#ffffff",
+  "navigationBarTextStyle": "black",
+  "enablePullDownRefresh": true
+}

@@ -1,0 +1,328 @@
+/**
+ * 对局记录页样式
+ * 色板：#009944 主题绿 / #E53E3E 盈利红 / #38A169 亏损绿 / #AAAAAA 灰
+ * 圆角：12rpx 统一卡片/按钮
+ */
+
+/* ========== 页面容器 ========== */
+.rec-page {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  background: #ffffff;
+  overflow: hidden;
+}
+
+/* ========== 顶部双 Tab ========== */
+.rec-tabs {
+  display: flex;
+  background: #ffffff;
+  padding: 20rpx 40rpx;
+}
+
+.rec-tab {
+  flex: 1;
+  text-align: center;
+  font-size: 30rpx;
+  color: #666;
+  padding: 12rpx 0;
+  position: relative;
+  font-weight: 500;
+  transition: color 0.2s;
+}
+
+.rec-tab--on {
+  color: #009944;
+  font-weight: 700;
+}
+
+.rec-tab--on::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 48rpx;
+  height: 6rpx;
+  background: #009944;
+  border-radius: 3rpx;
+}
+
+/* ========== 筛选行 ========== */
+.rec-filter-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: #ffffff;
+  padding: 16rpx 32rpx 20rpx;
+}
+
+.rec-filter-label {
+  font-size: 26rpx;
+  color: #009944;
+  font-weight: 600;
+}
+
+.rec-filter-picker {
+  display: flex;
+  align-items: center;
+}
+
+.rec-filter-picker-text {
+  font-size: 26rpx;
+  color: #aaaaaa;
+  margin-right: 8rpx;
+}
+
+.rec-filter-picker-arrow {
+  font-size: 20rpx;
+  color: #aaaaaa;
+}
+
+/* ========== 加载中 ========== */
+.rec-loading {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 400rpx;
+  font-size: 28rpx;
+  color: #aaaaaa;
+}
+
+/* ========== 主体内容滚动区 ========== */
+.rec-body {
+  flex: 1;
+  padding: 20rpx 24rpx;
+  padding-bottom: 140rpx; /* 给底部固定导航让位 */
+}
+
+/* ========== 记录卡片 ========== */
+.rec-card {
+  position: relative;
+  background: #ffffff;
+  border-radius: 12rpx;
+  padding: 28rpx 24rpx 20rpx;
+  margin-bottom: 20rpx;
+  box-shadow: 0 2rpx 16rpx rgba(0, 0, 0, 0.08);
+}
+
+/* 删除按钮 */
+.rec-card-del {
+  position: absolute;
+  top: 16rpx;
+  right: 16rpx;
+  width: 48rpx;
+  height: 48rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2;
+}
+
+.rec-card-del-icon {
+  font-size: 32rpx;
+  color: #aaaaaa;
+}
+
+/* 玩家行 */
+.rec-players {
+  display: flex;
+  justify-content: space-around;
+  align-items: flex-start;
+  padding: 8rpx 0 16rpx;
+}
+
+/* 单个玩家 */
+.rec-player {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 140rpx;
+}
+
+/* 盈利头像（圆形） */
+.rec-player-avatar {
+  width: 72rpx;
+  height: 72rpx;
+  border-radius: 50%;
+  border: 3rpx solid #E53E3E;
+  background: #f0f0f0;
+}
+
+/* 亏损/零分标签（方形） */
+.rec-player-tag {
+  width: 72rpx;
+  height: 72rpx;
+  border-radius: 12rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.rec-player-tag-text {
+  font-size: 32rpx;
+  font-weight: 700;
+  color: #ffffff;
+}
+
+/* 四个玩家标签颜色 */
+.rec-player-tag--0 { background: #68D391; }
+.rec-player-tag--1 { background: #4FD1C5; }
+.rec-player-tag--2 { background: #F6AD55; }
+.rec-player-tag--3 { background: #FC8181; }
+
+/* 分数 */
+.rec-player-score {
+  margin-top: 8rpx;
+  font-size: 32rpx;
+  font-weight: 800;
+}
+
+.rec-player-score--plus  { color: #E53E3E; } /* 盈利红 */
+.rec-player-score--minus { color: #38A169; } /* 亏损绿 */
+.rec-player-score--zero  { color: #aaaaaa; } /* 零分灰 */
+
+/* 卡片底部（居中时间戳） */
+.rec-card-foot {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding-top: 12rpx;
+  border-top: 1rpx solid #f0f0f0;
+}
+
+.rec-card-time {
+  font-size: 22rpx;
+  color: #aaaaaa;
+}
+
+/* ========== 空状态 ========== */
+.rec-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 500rpx;
+}
+
+.rec-empty-icon {
+  font-size: 80rpx;
+  margin-bottom: 20rpx;
+  opacity: 0.5;
+}
+
+.rec-empty-text {
+  font-size: 28rpx;
+  color: #aaaaaa;
+}
+
+/* ========== 底部三 Tab 导航（固定） ========== */
+.rec-nav {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  background: #ffffff;
+  border-top: 1rpx solid #eeeeee;
+  padding: 8rpx 0;
+  padding-bottom: calc(8rpx + env(safe-area-inset-bottom));
+  z-index: 100;
+}
+
+.rec-nav-item {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 8rpx 0;
+}
+
+.rec-nav-icon {
+  font-size: 40rpx;
+  margin-bottom: 2rpx;
+}
+
+.rec-nav-label {
+  font-size: 22rpx;
+}
+
+.rec-nav-label--off {
+  color: #aaaaaa;
+}
+
+.rec-nav-label--on {
+  color: #009944;
+  font-weight: 600;
+}
+
+/* ========== 删除确认弹窗 ========== */
+.rec-modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.rec-modal-mask {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.45);
+}
+
+.rec-modal-box {
+  position: relative;
+  width: 560rpx;
+  background: #ffffff;
+  border-radius: 12rpx;
+  padding: 40rpx 32rpx 24rpx;
+}
+
+.rec-modal-title {
+  font-size: 34rpx;
+  font-weight: 700;
+  color: #333;
+  text-align: center;
+  margin-bottom: 16rpx;
+}
+
+.rec-modal-body {
+  font-size: 28rpx;
+  color: #666;
+  text-align: center;
+  margin-bottom: 32rpx;
+  line-height: 1.6;
+}
+
+.rec-modal-actions {
+  display: flex;
+  justify-content: space-between;
+}
+
+.rec-modal-btn {
+  flex: 1;
+  text-align: center;
+  padding: 20rpx 0;
+  font-size: 30rpx;
+  border-radius: 12rpx;
+  margin: 0 8rpx;
+}
+
+.rec-modal-btn--cancel {
+  background: #f0f0f0;
+  color: #666;
+}
+
+.rec-modal-btn--danger {
+  background: #E53E3E;
+  color: #ffffff;
+}

@@ -1,0 +1,246 @@
+<view class="container safe-bottom">
+  <view class="page-title">进货登记</view>
+
+  <!-- 扫码入库按钮 -->
+  <view class="scan-bar">
+    <button class="scan-btn" bindtap="scanCode">
+      <text class="scan-icon">📷</text> 扫码入库
+    </button>
+    <text wx:if="{{scanNote}}" class="scan-hint">{{scanNote}}</text>
+  </view>
+
+  <!-- 表单 -->
+  <view class="card form-card">
+    <!-- 入库日期 -->
+    <view class="field">
+      <text class="form-label">入库日期</text>
+      <picker mode="date" value="{{formDate}}" bindchange="onDateChange">
+        <view class="picker">{{formDate || '请选择日期'}}<text class="picker-arrow">›</text></view>
+      </picker>
+    </view>
+
+    <!-- 供应商 -->
+    <view class="field" id="field-supplier">
+      <text class="form-label">供应商</text>
+      <view class="picker" bindtap="showSupplierPicker">
+        <text wx:if="{{formSupplierName}}" class="picker-value">{{formSupplierName}}</text>
+        <text wx:else class="picker-placeholder">点击选择供应商</text>
+        <text class="picker-arrow">›</text>
+      </view>
+    </view>
+
+    <!-- 品牌选择器 -->
+    <view class="field">
+      <text class="form-label">品牌</text>
+      <view class="picker" bindtap="showBrandPicker">
+        <text wx:if="{{formBrand}}" class="picker-value">{{formBrand}}</text>
+        <text wx:else class="picker-placeholder">点击选择品牌（可筛选规格）</text>
+        <text class="picker-arrow">›</text>
+      </view>
+    </view>
+
+    <!-- 规格选择器（级联品牌） -->
+    <view wx:if="{{filteredSpecs.length > 0}}" class="field">
+      <text class="form-label">选择已有规格</text>
+      <view class="picker" bindtap="showSpecPicker">
+        <text wx:if="{{formTireId}}" class="picker-value">{{formPattern}} {{formSize}} {{formPly}} {{formLoadIndex}}</text>
+        <text wx:else class="picker-placeholder">📋 点击选取（自动填入下方字段）</text>
+        <text class="picker-arrow">›</text>
+      </view>
+    </view>
+    <view wx:elif="{{formBrandId}}" class="field">
+      <text class="form-label">默认规格</text>
+      <view class="picker picker-placeholder">暂无默认规格，请手动输入</view>
+    </view>
+
+    <!-- 规格 -->
+    <view class="field" id="field-spec">
+      <text class="form-label">规格 *</text>
+      <input class="input-group" placeholder="如 205/55R16" value="{{formSize}}" data-field="formSize" bindinput="onSizePatternInput" />
+    </view>
+
+    <!-- 花纹型号 -->
+    <view class="field" id="field-pattern">
+      <text class="form-label">花纹型号 *</text>
+      <input class="input-group" placeholder="如 SA37" value="{{formPattern}}" data-field="formPattern" bindinput="onSizePatternInput" />
+    </view>
+
+    <!-- 层级 + 负荷指数（picker） -->
+    <view class="form-row">
+      <view class="field form-row-half">
+        <text class="form-label">层级</text>
+        <picker mode="selector" range="{{plyOptions}}" value="{{plyIndex}}" bindchange="onPlyChange">
+          <view class="picker">{{formPly || '无'}}<text class="picker-arrow">›</text></view>
+        </picker>
+      </view>
+      <view class="field form-row-half">
+        <text class="form-label">负荷指数</text>
+        <picker mode="selector" range="{{loadIndexOptions}}" value="{{loadIndexIdx}}" bindchange="onLoadIndexChange">
+          <view class="picker">{{formLoadIndex || '选择负荷'}}<text class="picker-arrow">›</text></view>
+        </picker>
+      </view>
+    </view>
+
+    <!-- 已匹配轮胎提示 -->
+    <view wx:if="{{formTireId}}" class="match-hint">✅ 已匹配轮胎品类</view>
+    <view wx:else class="match-hint warn">⚠️ 未匹配 — 提交时将自动创建</view>
+
+    <!-- 数量 + 单价 + 总价 -->
+    <view class="form-row">
+      <view class="field third">
+        <text class="form-label">数量 *</text>
+        <input class="input-group" id="field-qty" type="digit" value="{{formQty}}" data-field="formQty" bindinput="onFieldInput" />
+      </view>
+      <view class="field third">
+        <text class="form-label">单价 *</text>
+        <input class="input-group" id="field-unitprice" type="digit" placeholder="¥" value="{{formUnitPrice}}" data-field="formUnitPrice" bindinput="onFieldInput" />
+      </view>
+      <view class="field third">
+        <text class="form-label">总价</text>
+        <view class="total-display">¥{{formTotal}}</view>
+      </view>
+    </view>
+
+    <!-- 备注 -->
+    <view class="field">
+      <text class="form-label">备注</text>
+      <input class="input-group" placeholder="选填" value="{{formNote}}" data-field="formNote" bindinput="onFieldInput" />
+    </view>
+
+    <!-- 图片上传 -->
+    <view class="field">
+      <text class="form-label">实拍照片</text>
+      <view class="image-list">
+        <view wx:for="{{formImageList}}" wx:key="*this" class="image-item">
+          <image src="{{item}}" mode="aspectFill" class="thumb" />
+          <view class="img-del" bindtap="removeImage" data-idx="{{index}}">×</view>
+        </view>
+        <view wx:if="{{formImageList.length < 6}}" class="add-img-btn" bindtap="chooseImage">
+          <text>+</text>
+        </view>
+      </view>
+    </view>
+  </view>
+
+  <!-- 提交按钮 -->
+  <view class="submit-bar">
+    <button class="submit-btn" bindtap="submit">确认进货</button>
+  </view>
+
+  <!-- ====== 品牌选择弹窗 ====== -->
+  <view wx:if="{{showBrandPicker}}" class="overlay" bindtap="cancelBrandPicker">
+    <view class="dialog" catchtap="">
+      <text class="dialog-title">选择品牌</text>
+      <scroll-view scroll-y="true" class="picker-list">
+        <view wx:for="{{brands}}" wx:key="_id" class="picker-item" bindtap="selectBrand" data-item="{{item}}">
+          {{item.name}}
+        </view>
+        <view wx:if="{{brands.length === 0}}" class="picker-empty">暂无品牌，请新增</view>
+      </scroll-view>
+      <view class="dialog-footer">
+        <button class="btn btn-primary" bindtap="showAddBrandInput">+ 新增品牌</button>
+        <button class="btn btn-outline" bindtap="cancelBrandPicker">取消</button>
+      </view>
+    </view>
+  </view>
+
+  <!-- ====== 规格选择弹窗（级联品牌过滤） ====== -->
+  <view wx:if="{{showSpecPicker}}" class="overlay" bindtap="cancelSpecPicker">
+    <view class="dialog" catchtap="">
+      <text class="dialog-title">选择规格（{{formBrand}}）</text>
+      <scroll-view scroll-y="true" class="picker-list">
+        <view wx:for="{{filteredSpecs}}" wx:key="_id" class="picker-item" bindtap="selectSpec" data-item="{{item}}">
+          {{item.pattern}} {{item.size}} {{item.ply}} {{item.loadIndex}}
+        </view>
+        <view wx:if="{{filteredSpecs.length === 0}}" class="picker-empty">该品牌暂无规格</view>
+      </scroll-view>
+      <view class="dialog-footer">
+        <button class="btn btn-primary" bindtap="showAddTireInput">+ 新增规格</button>
+        <button class="btn btn-outline" bindtap="cancelSpecPicker">取消</button>
+      </view>
+    </view>
+  </view>
+
+  <!-- ====== 供应商选择弹窗 ====== -->
+  <view wx:if="{{showSupplierPicker}}" class="overlay" bindtap="cancelSupplierPicker">
+    <view class="dialog" catchtap="">
+      <text class="dialog-title">选择供应商</text>
+      <scroll-view scroll-y="true" class="picker-list">
+        <view wx:for="{{suppliers}}" wx:key="_id" class="picker-item" bindtap="selectSupplier" data-item="{{item}}">{{item.name}}</view>
+        <view wx:if="{{suppliers.length === 0}}" class="picker-empty">暂无供应商，请新增</view>
+      </scroll-view>
+      <view class="dialog-footer">
+        <button class="btn btn-primary" bindtap="showAddSupplierInput">+ 新增</button>
+        <button class="btn btn-outline" bindtap="cancelSupplierPicker">取消</button>
+      </view>
+    </view>
+  </view>
+
+  <!-- ====== 新增品牌输入弹窗 ====== -->
+  <view wx:if="{{showAddBrandDialog}}" class="overlay" bindtap="cancelAddBrand">
+    <view class="dialog" catchtap="">
+      <text class="dialog-title">新增品牌</text>
+      <input class="dialog-inp" placeholder="请输入品牌名称" value="{{newBrandName}}" bindinput="onNewBrandInput" focus="{{true}}" />
+      <view class="dialog-footer">
+        <button class="btn btn-primary" bindtap="confirmAddBrand">确认新增</button>
+        <button class="btn btn-outline" bindtap="cancelAddBrand">取消</button>
+      </view>
+    </view>
+  </view>
+
+  <!-- ====== 新增供应商输入弹窗 ====== -->
+  <view wx:if="{{showAddSupplierDialog}}" class="overlay" bindtap="cancelAddSupplier">
+    <view class="dialog" catchtap="">
+      <text class="dialog-title">新增供应商</text>
+      <input class="dialog-inp" placeholder="请输入供应商名称" value="{{newSupplierName}}" bindinput="onNewSupplierInput" focus="{{true}}" />
+      <view class="dialog-footer">
+        <button class="btn btn-primary" bindtap="confirmAddSupplier">确认新增</button>
+        <button class="btn btn-outline" bindtap="cancelAddSupplier">取消</button>
+      </view>
+    </view>
+  </view>
+
+  <!-- ====== 新增轮胎规格输入弹窗 ====== -->
+  <view wx:if="{{showAddTireDialog}}" class="overlay" bindtap="cancelAddTire">
+    <view class="dialog" catchtap="">
+      <text class="dialog-title">新增轮胎规格</text>
+      <input class="dialog-inp" placeholder="规格（如 205/55R16）" value="{{newTireSize}}" data-field="newTireSize" bindinput="onNewTireFieldInput" />
+      <input class="dialog-inp" placeholder="花纹型号（如 SA37）" value="{{newTirePattern}}" data-field="newTirePattern" bindinput="onNewTireFieldInput" />
+      <input class="dialog-inp" placeholder="层级（如 4PR）" value="{{newTirePly}}" data-field="newTirePly" bindinput="onNewTireFieldInput" />
+      <input class="dialog-inp" placeholder="负荷指数（如 91V）" value="{{newTireLoadIndex}}" data-field="newTireLoadIndex" bindinput="onNewTireFieldInput" />
+      <view class="dialog-footer">
+        <button class="btn btn-primary" bindtap="confirmAddTire">确认新增</button>
+        <button class="btn btn-outline" bindtap="cancelAddTire">取消</button>
+      </view>
+    </view>
+  </view>
+
+  <!-- ====== 扫码成功拍照确认弹窗 ====== -->
+  <view wx:if="{{showScanPhotoModal}}" class="overlay">
+    <view class="dialog scan-photo-dialog" catchtap="">
+      <text class="dialog-title">📸 扫码识别成功</text>
+      <view class="scan-photo-body">
+        <text class="scan-photo-desc">是否拍摄轮胎实拍照片？</text>
+        <text class="scan-photo-hint">拍照后将保存在进货记录中</text>
+      </view>
+      <view class="dialog-footer">
+        <button class="btn btn-primary" bindtap="_takePhotoAfterScan">📷 拍照</button>
+        <button class="btn btn-outline" bindtap="onSkipPhoto">跳过</button>
+      </view>
+    </view>
+  </view>
+
+  <!-- ====== 手动粘贴URL弹窗（扫码失败兜底） ====== -->
+  <view wx:if="{{showManualUrlModal}}" class="overlay" bindtap="onManualUrlCancel">
+    <view class="dialog" catchtap="">
+      <text class="dialog-title">📋 手动输入溯源URL</text>
+      <text class="url-modal-hint">扫码失败时可手动粘贴朝阳轮胎防伪溯源页面地址</text>
+      <input class="dialog-inp url-inp" placeholder="粘贴 news.zcckj.com 网页地址" value="{{manualUrl}}" bindinput="onManualUrlInput" focus="{{true}}" />
+      <text wx:if="{{manualUrlError}}" class="url-error">{{manualUrlError}}</text>
+      <view class="dialog-footer">
+        <button class="btn btn-primary" bindtap="onManualUrlConfirm">确认解析</button>
+        <button class="btn btn-outline" bindtap="onManualUrlCancel">取消</button>
+      </view>
+    </view>
+  </view>
+</view>

@@ -1,0 +1,1627 @@
+/**
+ * 麻将计分 — 完整样式
+ * 色彩规范：
+ *   #009944  主操作绿
+ *   #36CFC9  青绿色
+ *   #E53E3E  红色（正分）
+ *   #38A169  绿色（负分）
+ *   #FF6B00  橙色（公告栏）
+ *   #333333  正文
+ *   #666666  辅助
+ *   #AAAAAA  空白
+ *   #F5F5F5  分区背景
+ *   #FFFFFF  页面底色
+ */
+
+/* ==================== 页面底色 ==================== */
+.page {
+  min-height: 100vh;
+  background: #FFFFFF;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+}
+
+/* ==================== 加载中 ==================== */
+.loading-box {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 30rpx;
+  color: #AAAAAA;
+}
+
+/* ==================== 顶部导航 ==================== */
+.top-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20rpx 28rpx;
+  background: #FFFFFF;
+  border-bottom: 1rpx solid #F0F0F0;
+}
+
+.top-nav-left {
+  width: 60rpx;
+  display: flex;
+  align-items: center;
+}
+
+.nav-back-icon {
+  font-size: 48rpx;
+  color: #333333;
+  font-weight: 300;
+  line-height: 1;
+}
+
+.top-nav-title {
+  font-size: 32rpx;
+  font-weight: 600;
+  color: #333333;
+}
+
+.top-nav-hint {
+  font-size: 22rpx;
+  color: #FF3B30;
+}
+
+.top-nav-right {
+  width: 120rpx;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.nav-action-btn {
+  font-size: 26rpx;
+  color: #009944;
+  padding: 8rpx 16rpx;
+}
+
+
+/* ==================== 设置区域（创建/加入） ==================== */
+.set-box {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 60rpx 40rpx;
+}
+
+.profile-row {
+  display: flex;
+  align-items: center;
+  gap: 24rpx;
+  margin-bottom: 40rpx;
+}
+
+.avatar-btn {
+  width: 140rpx;
+  height: 140rpx;
+  border-radius: 50%;
+  overflow: hidden;
+  padding: 0;
+  margin: 0;
+  border: none;
+  background: transparent;
+  flex-shrink: 0;
+}
+
+.avatar-btn::after { border: none; }
+
+.my-avatar {
+  width: 140rpx;
+  height: 140rpx;
+  border-radius: 50%;
+}
+
+.my-avatar-placeholder {
+  width: 140rpx;
+  height: 140rpx;
+  border-radius: 50%;
+  background: #F5F5F5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 56rpx;
+  color: #AAAAAA;
+}
+
+.nickname-inp {
+  flex: 1;
+  height: 80rpx;
+  border-bottom: 2rpx solid #E0E0E0;
+  font-size: 32rpx;
+  padding: 0 8rpx;
+}
+
+.room-actions {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 20rpx;
+}
+
+.btn-primary {
+  width: 100%;
+  height: 88rpx;
+  background: #009944;
+  color: #FFFFFF;
+  border-radius: 16rpx;
+  font-size: 32rpx;
+  font-weight: 600;
+  border: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.btn-primary::after { border: none; }
+
+.btn-outline {
+  width: 100%;
+  height: 88rpx;
+  background: #FFFFFF;
+  color: #009944;
+  border-radius: 16rpx;
+  font-size: 32rpx;
+  font-weight: 500;
+  border: 2rpx solid #009944;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.btn-outline::after { border: none; }
+
+.btn-secondary {
+  width: 100%;
+  height: 88rpx;
+  background: #F5F5F5;
+  color: #666666;
+  border-radius: 16rpx;
+  font-size: 28rpx;
+  border: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.btn-secondary::after { border: none; }
+
+/* ==================== 玩家头像行（在线模式） ==================== */
+.member-row {
+  padding: 20rpx 0;
+  border-bottom: 1rpx solid #F0F0F0;
+}
+
+.member-scroll {
+  width: 100%;
+}
+
+.member-cards {
+  display: flex;
+  gap: 16rpx;
+  padding: 0 28rpx;
+}
+
+.member-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8rpx;
+  flex-shrink: 0;
+}
+
+.member-card.me {
+  position: relative;
+}
+
+.m-avatar {
+  width: 96rpx;
+  height: 96rpx;
+  border-radius: 50%;
+  border: 3rpx solid #F0F0F0;
+}
+
+.member-card.me .m-avatar {
+  border-color: #009944;
+}
+
+.m-avatar-placeholder {
+  width: 96rpx;
+  height: 96rpx;
+  border-radius: 50%;
+  background: #F5F5F5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 40rpx;
+  color: #AAAAAA;
+  border: 3rpx solid #F0F0F0;
+}
+
+.m-name {
+  font-size: 22rpx;
+  color: #333333;
+  max-width: 120rpx;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: center;
+}
+
+.m-score {
+  font-size: 28rpx;
+  font-weight: bold;
+  color: #333333;
+}
+
+.member-add {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8rpx;
+  flex-shrink: 0;
+}
+
+.m-add-btn {
+  width: 96rpx;
+  height: 96rpx;
+  border-radius: 50%;
+  border: 3rpx dashed #E0E0E0;
+  background: #FAFAFA;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.m-add-btn::after { border: none; }
+
+.m-add-icon {
+  font-size: 48rpx;
+  color: #AAAAAA;
+  line-height: 1;
+}
+
+.m-add-label {
+  font-size: 22rpx;
+  color: #AAAAAA;
+}
+
+/* ==================== 快捷操作栏 ==================== */
+.quick-bar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16rpx;
+  padding: 16rpx 28rpx;
+  border-bottom: 1rpx solid #F0F0F0;
+}
+
+.quick-bar .btn-sm {
+  width: auto;
+  flex: 1;
+  height: 64rpx;
+  border-radius: 12rpx;
+  font-size: 26rpx;
+  font-weight: 500;
+  padding: 0 16rpx;
+}
+
+.quick-bar .btn-primary {
+  background: #009944;
+  color: #FFFFFF;
+}
+
+.quick-bar .btn-outline {
+  border: 2rpx solid #009944;
+  color: #009944;
+}
+
+.btn-sm {
+  height: 52rpx;
+  padding: 0 20rpx;
+  font-size: 24rpx;
+  border-radius: 8rpx;
+  border: 1rpx solid #E0E0E0;
+  background: #FFFFFF;
+  color: #333333;
+  display: flex;
+  align-items: center;
+}
+
+.btn-sm::after { border: none; }
+
+/* 颜色 */
+.red, .positive { color: #E53E3E; }
+.green, .negative { color: #38A169; }
+.zero { color: #AAAAAA; }
+
+/* ==================== 对局记录滚动区 ==================== */
+.records-scroll {
+  flex: 1;
+  padding: 0 28rpx;
+}
+
+.empty-module {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 120rpx 0;
+}
+
+.empty-icon {
+  font-size: 72rpx;
+}
+
+.empty-text {
+  font-size: 28rpx;
+  color: #AAAAAA;
+  margin-top: 16rpx;
+}
+
+.empty-hint {
+  font-size: 24rpx;
+  color: #CCCCCC;
+  margin-top: 8rpx;
+}
+
+/* ==================== 云端对局卡片 ==================== */
+.cloud-round-card {
+  background: #FFFFFF;
+  border-radius: 12rpx;
+  padding: 20rpx 24rpx;
+  margin-bottom: 12rpx;
+  box-shadow: 0 2rpx 8rpx rgba(0, 0, 0, 0.04);
+}
+
+.cloud-round-header {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 4rpx;
+}
+
+.cloud-round-mode {
+  font-size: 24rpx;
+  color: #009944;
+  font-weight: 500;
+}
+
+.cloud-round-people {
+  font-size: 24rpx;
+  color: #333333;
+  margin-bottom: 8rpx;
+}
+
+.cloud-round-fan {
+  font-size: 22rpx;
+  color: #666666;
+}
+
+.cloud-round-deltas {
+  display: flex;
+  gap: 12rpx;
+  flex-wrap: wrap;
+}
+
+.cloud-delta-item {
+  font-size: 26rpx;
+}
+
+
+/* ==================== 弹窗遮罩 ==================== */
+.popup-mask {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.popup-box {
+  background: #FFFFFF;
+  border-radius: 24rpx;
+  padding: 36rpx;
+  width: 560rpx;
+  max-height: 80vh;
+  overflow-y: auto;
+}
+
+.popup-title {
+  font-size: 34rpx;
+  font-weight: 600;
+  color: #333333;
+  text-align: center;
+  margin-bottom: 24rpx;
+}
+
+.popup-input-row {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+  margin-bottom: 20rpx;
+}
+
+.popup-input-label {
+  font-size: 28rpx;
+  color: #333333;
+  flex-shrink: 0;
+}
+
+.popup-input {
+  flex: 1;
+  height: 72rpx;
+  background: #F5F5F5;
+  border-radius: 12rpx;
+  padding: 0 16rpx;
+  font-size: 28rpx;
+}
+
+.popup-btns {
+  display: flex;
+  gap: 16rpx;
+  margin-top: 24rpx;
+}
+
+.popup-btn {
+  flex: 1;
+  height: 80rpx;
+  border-radius: 16rpx;
+  font-size: 28rpx;
+  font-weight: 500;
+  border: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.popup-btn::after { border: none; }
+
+.popup-btn-cancel {
+  background: #F5F5F5;
+  color: #666666;
+}
+
+.popup-btn-confirm {
+  background: #009944;
+  color: #FFFFFF;
+}
+
+/* ==================== 加入房间弹窗 ==================== */
+.join-dialog-mask {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.join-dialog-box {
+  background: #FFFFFF;
+  border-radius: 24rpx;
+  padding: 36rpx;
+  width: 520rpx;
+}
+
+.join-dialog-title {
+  font-size: 32rpx;
+  font-weight: 600;
+  text-align: center;
+  margin-bottom: 24rpx;
+}
+
+.join-dialog-input {
+  height: 80rpx;
+  background: #F5F5F5;
+  border-radius: 12rpx;
+  text-align: center;
+  font-size: 36rpx;
+  letter-spacing: 8rpx;
+  margin-bottom: 20rpx;
+}
+
+.join-dialog-btns {
+  display: flex;
+  gap: 16rpx;
+}
+
+/* ==================== 通用弹窗容器（遮罩 + 弹窗框） ==================== */
+.overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 200;
+}
+
+.dialog {
+  background: #FFFFFF;
+  padding: 40rpx 32rpx;
+  border-radius: 20rpx;
+  width: 580rpx;
+  max-width: 90vw;
+}
+
+.dialog-wide { width: 640rpx; }
+.dialog-scroll { max-height: 80vh; overflow-y: auto; }
+
+/* ==================== 通用弹窗元素（转账 / 计分 / 结算 / 加入房间 共用） ==================== */
+.d-title {
+  display: block;
+  text-align: center;
+  font-size: 34rpx;
+  font-weight: 700;
+  color: #333333;
+  margin-bottom: 8rpx;
+}
+
+.d-inp {
+  background: #F5F5F5;
+  color: #333333;
+  padding: 24rpx 20rpx;
+  border-radius: 16rpx;
+  width: 100%;
+  box-sizing: border-box;
+  text-align: center;
+  font-size: 48rpx;
+  font-weight: 700;
+  letter-spacing: 6rpx;
+  margin-bottom: 28rpx;
+  height: 96rpx;
+  line-height: 48rpx;
+}
+
+.d-btns {
+  display: flex;
+  gap: 16rpx;
+  justify-content: center;
+}
+
+.d-btns button {
+  flex: 1;
+  height: 88rpx;
+  border-radius: 16rpx;
+  font-size: 32rpx;
+  font-weight: 600;
+  border: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #009944;
+  color: #FFFFFF;
+}
+
+.d-btns button::after { border: none; }
+
+.d-btns .btn-outline {
+  background: #FFFFFF;
+  color: #009944;
+  border: 2rpx solid #009944;
+}
+
+/* ==================== 计分弹窗 ==================== */
+.popup-scoring {
+  width: 600rpx;
+}
+
+.scoring-mode-row {
+  display: flex;
+  gap: 12rpx;
+  margin-bottom: 20rpx;
+}
+
+.scoring-mode-btn {
+  flex: 1;
+  height: 64rpx;
+  border-radius: 12rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 26rpx;
+  color: #666666;
+  background: #F5F5F5;
+}
+
+.scoring-mode-btn.active {
+  background: #009944;
+  color: #FFFFFF;
+}
+
+.scoring-section {
+  margin-bottom: 16rpx;
+}
+
+.scoring-section-title {
+  font-size: 26rpx;
+  color: #666666;
+  margin-bottom: 8rpx;
+}
+
+.scoring-player-row {
+  display: flex;
+  gap: 8rpx;
+  flex-wrap: wrap;
+}
+
+.scoring-player-tag {
+  padding: 8rpx 20rpx;
+  border-radius: 12rpx;
+  font-size: 26rpx;
+  color: #333333;
+  background: #F5F5F5;
+  border: 2rpx solid transparent;
+}
+
+.scoring-player-tag.sel-win {
+  background: #E8F8E8;
+  border-color: #009944;
+  color: #009944;
+}
+
+.scoring-player-tag.sel-lose {
+  background: #FFF0F0;
+  border-color: #E53E3E;
+  color: #E53E3E;
+}
+
+.scoring-player-tag.sel-bar {
+  background: #FFFBE6;
+  border-color: #D4A017;
+  color: #D4A017;
+}
+
+.scoring-player-tag.dim {
+  opacity: 0.35;
+}
+
+.scoring-input-row {
+  display: flex;
+  gap: 12rpx;
+  margin-bottom: 12rpx;
+}
+
+.scoring-input-item {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 8rpx;
+}
+
+.bar-input-item {
+  margin-top: 8rpx;
+}
+
+.scoring-input-label {
+  font-size: 24rpx;
+  color: #666666;
+  flex-shrink: 0;
+}
+
+.scoring-input {
+  flex: 1;
+  height: 60rpx;
+  background: #F5F5F5;
+  border-radius: 8rpx;
+  padding: 0 12rpx;
+  font-size: 28rpx;
+  text-align: center;
+}
+
+.scoring-preview {
+  background: #F5F5F5;
+  border-radius: 12rpx;
+  padding: 16rpx;
+  margin-top: 8rpx;
+  font-size: 26rpx;
+  color: #E53E3E;
+  text-align: center;
+  line-height: 1.6;
+}
+
+/* ==================== 结算弹窗 ==================== */
+.popup-settle {
+  width: 600rpx;
+}
+
+.settle-list {
+  margin-bottom: 20rpx;
+}
+
+.settle-item {
+  display: flex;
+  align-items: center;
+  padding: 18rpx 12rpx;
+  border-bottom: 1rpx solid #F0F0F0;
+  gap: 16rpx;
+}
+
+.settle-item:last-child {
+  border-bottom: none;
+}
+
+.settle-top1 {
+  background: #FFFBF0;
+  border-radius: 12rpx;
+  border-bottom: none !important;
+  margin-bottom: 4rpx;
+}
+
+.settle-rank {
+  width: 52rpx;
+  height: 52rpx;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 26rpx;
+  font-weight: bold;
+  flex-shrink: 0;
+}
+
+.settle-rank.gold   { background: #FFD700; color: #FFFFFF; }
+.settle-rank.silver { background: #C0C0C0; color: #FFFFFF; }
+.settle-rank.bronze { background: #CD7F32; color: #FFFFFF; }
+.settle-rank.normal { background: #F0F0F0; color: #999999; }
+
+.settle-name {
+  flex: 1;
+  font-size: 28rpx;
+  color: #333333;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settle-score {
+  font-size: 40rpx;
+  font-weight: bold;
+}
+
+.settle-btn-row {
+  display: flex;
+  gap: 12rpx;
+  margin-top: 12rpx;
+}
+
+.settle-btn {
+  flex: 1;
+  height: 72rpx;
+  border-radius: 12rpx;
+  font-size: 26rpx;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+}
+
+.settle-btn::after { border: none; }
+
+.settle-reset { background: #FFF0F0;     color: #E53E3E; border: 1rpx solid #FED7D7; }
+.settle-share { background: #F0FAF5;     color: #009944; border: 1rpx solid #C6F6D5; }
+
+.settle-close {
+  text-align: center;
+  font-size: 26rpx;
+  color: #AAAAAA;
+  margin-top: 24rpx;
+  padding: 16rpx 0;
+}
+
+/* ==================== 安全区域兼容 ==================== */
+.safe-bottom {
+  padding-bottom: calc(20rpx + env(safe-area-inset-bottom));
+}
+
+/* ====================================================================
+   无房间状态 — Tab 首页样式（全用 home-/mine- 前缀，不碰游戏态选择器）
+   ==================================================================== */
+
+/* ---- 共享页面容器 ---- */
+.home-tab-content,
+.home-mine-content,
+.home-rec-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  background: #FFFFFF;
+  overflow-y: auto;
+}
+
+/* ---- 底部 Tab 栏 ---- */
+.home-tab-bar {
+  display: flex;
+  background: #FFFFFF;
+  border-top: 1rpx solid #F0F0F0;
+  flex-shrink: 0;
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+.home-tab-item {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 14rpx 0 10rpx;
+  gap: 4rpx;
+}
+
+.home-tab-icon {
+  font-size: 40rpx;
+}
+
+.home-tab-text {
+  font-size: 22rpx;
+  color: #AAAAAA;
+}
+
+.home-tab-item.active .home-tab-text {
+  color: #009944;
+  font-weight: 600;
+}
+
+/* ==================== 首页 Tab ==================== */
+
+/* ---- 头像区 ---- */
+.home-profile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 60rpx 0 36rpx;
+}
+
+.home-avatar-btn {
+  width: 160rpx;
+  height: 160rpx;
+  border-radius: 50%;
+  overflow: hidden;
+  padding: 0;
+  margin: 0 0 24rpx 0;
+  border: none;
+  background: transparent;
+}
+.home-avatar-btn::after { border: none; }
+
+.home-avatar {
+  width: 160rpx;
+  height: 160rpx;
+  border-radius: 50%;
+}
+
+.home-avatar-placeholder {
+  width: 160rpx;
+  height: 160rpx;
+  border-radius: 50%;
+  background: #F5F5F5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 64rpx;
+  color: #AAAAAA;
+}
+
+.home-nickname {
+  width: 400rpx;
+  font-size: 34rpx;
+  font-weight: 600;
+  color: #333333;
+  text-align: center;
+  background: transparent;
+  border: none;
+  padding: 8rpx 0;
+}
+
+/* ---- 邀请按钮 ---- */
+.home-invite-btn {
+  width: 650rpx;
+  height: 96rpx;
+  background: #009944;
+  color: #FFFFFF;
+  border-radius: 48rpx;
+  font-size: 32rpx;
+  font-weight: 600;
+  border: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 32rpx;
+}
+.home-invite-btn::after { border: none; }
+
+/* ==================== 我的 Tab ==================== */
+
+/* ---- 个人信息头部 ---- */
+.mine-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 36rpx 32rpx;
+  background: #FFFFFF;
+}
+
+.mine-header-left {
+  display: flex;
+  align-items: center;
+  gap: 20rpx;
+}
+
+.mine-avatar-btn {
+  width: 104rpx;
+  height: 104rpx;
+  border-radius: 50%;
+  overflow: hidden;
+  padding: 0;
+  margin: 0;
+  border: none;
+  background: transparent;
+  flex-shrink: 0;
+}
+.mine-avatar-btn::after { border: none; }
+
+.mine-avatar {
+  width: 104rpx;
+  height: 104rpx;
+  border-radius: 50%;
+}
+
+.mine-avatar-placeholder {
+  width: 104rpx;
+  height: 104rpx;
+  border-radius: 50%;
+  background: #F5F5F5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 44rpx;
+  color: #AAAAAA;
+}
+
+.mine-nickname {
+  font-size: 34rpx;
+  font-weight: 600;
+  color: #333333;
+}
+
+.mine-header-right {
+  flex-shrink: 0;
+}
+
+.mine-edit-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 60rpx;
+  padding: 0 28rpx;
+  font-size: 26rpx;
+  color: #666666;
+  background: #FFFFFF;
+  border: 2rpx solid #E5E5E5;
+  border-radius: 32rpx;
+}
+.mine-edit-btn::after { border: none; }
+
+.mine-divider {
+  height: 1rpx;
+  background: #F0F0F0;
+  margin: 0 32rpx;
+}
+
+/* ---- 功能图标网格（4 列均分） ---- */
+.mine-grid {
+  display: flex;
+  flex-wrap: wrap;
+  padding: 24rpx 20rpx 12rpx;
+  background: #FFFFFF;
+}
+
+.mine-grid-item {
+  width: 25%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 28rpx 8rpx 20rpx;
+  box-sizing: border-box;
+}
+
+.mine-grid-icon {
+  width: 96rpx;
+  height: 96rpx;
+  border-radius: 24rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 48rpx;
+  margin-bottom: 14rpx;
+}
+
+.mine-grid-label {
+  font-size: 24rpx;
+  color: #333333;
+  text-align: center;
+  line-height: 1.3;
+}
+
+/* 图标色板 */
+.mine-icon-orange  { background: #FFF3E0; }
+.mine-icon-blue    { background: #E3F2FD; }
+.mine-icon-green   { background: #E8F5E9; }
+.mine-icon-light-blue  { background: #E0F2F1; }
+.mine-icon-light-green { background: #F1F8E9; }
+.mine-icon-purple      { background: #EDE7F6; }
+
+/* ---- 弹窗描述文字 ---- */
+.d-desc {
+  display: block;
+  font-size: 28rpx;
+  color: #666666;
+  text-align: center;
+  padding: 20rpx 16rpx 28rpx;
+  line-height: 1.6;
+}
+
+/* ---- 转账弹窗 — 自定义数字键盘 ---- */
+.dialog-transfer {
+  width: 560rpx;
+  padding: 32rpx 24rpx 24rpx;
+}
+
+/* 金额展示区 */
+.kpad-display {
+  background: #F5F5F5;
+  border-radius: 16rpx;
+  padding: 20rpx 24rpx;
+  margin-bottom: 24rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 88rpx;
+}
+
+.kpad-display-symbol {
+  font-size: 40rpx;
+  font-weight: 700;
+  color: #333333;
+  margin-right: 6rpx;
+}
+
+.kpad-display-val {
+  font-size: 52rpx;
+  font-weight: 800;
+  color: #333333;
+  letter-spacing: 4rpx;
+}
+
+.kpad-display-placeholder {
+  color: #BBBBBB;
+  font-weight: 400;
+}
+
+/* 数字键盘网格 */
+.kpad-grid {
+  margin-bottom: 20rpx;
+}
+
+.kpad-row {
+  display: flex;
+  gap: 12rpx;
+  margin-bottom: 12rpx;
+}
+
+.kpad-key {
+  flex: 1;
+  height: 96rpx;
+  background: #F0F0F0;
+  border-radius: 16rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 40rpx;
+  font-weight: 700;
+  color: #333333;
+  transition: background 0.15s;
+}
+
+.kpad-key:active {
+  background: #D0D0D0;
+}
+
+.kpad-key-double {
+  font-size: 34rpx;
+}
+
+.kpad-key-del {
+  background: #E8E8E8;
+  font-size: 36rpx;
+}
+
+/* 操作按钮行：取消左 + 确定右 */
+.kpad-actions {
+  display: flex;
+  gap: 16rpx;
+  justify-content: flex-end;
+}
+
+.kpad-cancel {
+  width: 160rpx;
+  height: 80rpx;
+  border-radius: 16rpx;
+  font-size: 30rpx;
+  font-weight: 600;
+  border: 2rpx solid #CCCCCC;
+  background: #FFFFFF;
+  color: #666666;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.kpad-cancel::after {
+  border: none;
+}
+
+.kpad-confirm {
+  width: 200rpx;
+  height: 80rpx;
+  border-radius: 16rpx;
+  font-size: 30rpx;
+  font-weight: 700;
+  border: none;
+  background: #009944;
+  color: #FFFFFF;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.kpad-confirm::after {
+  border: none;
+}
+
+/* ====================================================================
+   记录 Tab 样式（rec- 前缀，独立命名空间）
+   ==================================================================== */
+
+/* ---- 顶部双 Tab ---- */
+.rec-tabs {
+  display: flex;
+  background: #ffffff;
+  padding: 20rpx 40rpx;
+}
+
+.rec-tab {
+  flex: 1;
+  text-align: center;
+  font-size: 30rpx;
+  color: #666;
+  padding: 12rpx 0;
+  position: relative;
+  font-weight: 500;
+}
+
+.rec-tab--on {
+  color: #009944;
+  font-weight: 700;
+}
+
+.rec-tab--on::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 48rpx;
+  height: 6rpx;
+  background: #009944;
+  border-radius: 3rpx;
+}
+
+/* ---- 筛选行 ---- */
+.rec-filter-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: #ffffff;
+  padding: 16rpx 32rpx 20rpx;
+}
+
+.rec-filter-label {
+  font-size: 26rpx;
+  color: #009944;
+  font-weight: 600;
+}
+
+.rec-filter-picker {
+  display: flex;
+  align-items: center;
+}
+
+.rec-filter-picker-text {
+  font-size: 26rpx;
+  color: #aaaaaa;
+  margin-right: 8rpx;
+}
+
+.rec-filter-picker-arrow {
+  font-size: 20rpx;
+  color: #aaaaaa;
+}
+
+/* ---- 主体内容滚动区 ---- */
+.rec-body {
+  flex: 1;
+  padding: 20rpx 24rpx;
+  padding-bottom: 140rpx;
+}
+
+/* ---- 记录卡片 ---- */
+.rec-card {
+  position: relative;
+  background: #ffffff;
+  border-radius: 12rpx;
+  padding: 28rpx 24rpx 20rpx;
+  margin-bottom: 20rpx;
+  box-shadow: 0 2rpx 16rpx rgba(0, 0, 0, 0.08);
+}
+
+/* 删除按钮 */
+.rec-card-del {
+  position: absolute;
+  top: 16rpx;
+  right: 16rpx;
+  width: 48rpx;
+  height: 48rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2;
+}
+
+.rec-card-del-icon {
+  font-size: 32rpx;
+  color: #aaaaaa;
+}
+
+/* 房间号 + 状态 */
+.rec-card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-bottom: 16rpx;
+  margin-bottom: 12rpx;
+  border-bottom: 1rpx solid #f0f0f0;
+}
+
+.rec-card-head-left {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+}
+
+.rec-room-code {
+  font-size: 26rpx;
+  font-weight: 600;
+  color: #333333;
+}
+
+.rec-status-badge {
+  font-size: 22rpx;
+  padding: 4rpx 16rpx;
+  border-radius: 20rpx;
+}
+
+.rec-status--active {
+  background: #E8F5E9;
+  color: #2E7D32;
+}
+
+.rec-status--settled {
+  background: #F5F5F5;
+  color: #999999;
+}
+
+.rec-enter-arrow {
+  font-size: 28rpx;
+  color: #1989fa;
+  font-weight: 600;
+}
+
+/* 进行中卡片可点击 */
+.rec-card--tappable:active {
+  background: #f5f8ff;
+}
+
+/* 玩家行 */
+.rec-players {
+  display: flex;
+  justify-content: space-around;
+  align-items: flex-start;
+  padding: 8rpx 0 16rpx;
+}
+
+/* 单个玩家 */
+.rec-player {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 140rpx;
+}
+
+/* 盈利头像（圆形红框） */
+.rec-player-avatar {
+  width: 72rpx;
+  height: 72rpx;
+  border-radius: 50%;
+  border: 3rpx solid #E53E3E;
+  background: #f0f0f0;
+}
+
+/* 亏损/零分标签（方形） */
+.rec-player-tag {
+  width: 72rpx;
+  height: 72rpx;
+  border-radius: 12rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.rec-player-tag-text {
+  font-size: 32rpx;
+  font-weight: 700;
+  color: #ffffff;
+}
+
+/* 四个玩家标签颜色 */
+.rec-player-tag--0 { background: #68D391; }
+.rec-player-tag--1 { background: #4FD1C5; }
+.rec-player-tag--2 { background: #F6AD55; }
+.rec-player-tag--3 { background: #FC8181; }
+
+/* 分数 */
+.rec-player-score {
+  margin-top: 8rpx;
+  font-size: 32rpx;
+  font-weight: 800;
+}
+
+.rec-player-score--plus  { color: #E53E3E; }
+.rec-player-score--minus { color: #38A169; }
+.rec-player-score--zero  { color: #aaaaaa; }
+
+/* 卡片底部（居中时间戳） */
+.rec-card-foot {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding-top: 12rpx;
+  border-top: 1rpx solid #f0f0f0;
+}
+
+.rec-card-time {
+  font-size: 22rpx;
+  color: #aaaaaa;
+}
+
+/* ---- 空状态 ---- */
+.rec-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 500rpx;
+}
+
+.rec-empty-icon {
+  font-size: 80rpx;
+  margin-bottom: 20rpx;
+  opacity: 0.5;
+}
+
+.rec-empty-text {
+  font-size: 28rpx;
+  color: #aaaaaa;
+}
+
+/* ---- 删除确认弹窗 ---- */
+.rec-modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.rec-modal-mask {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.45);
+}
+
+.rec-modal-box {
+  position: relative;
+  width: 560rpx;
+  background: #ffffff;
+  border-radius: 12rpx;
+  padding: 40rpx 32rpx 24rpx;
+}
+
+.rec-modal-title {
+  font-size: 34rpx;
+  font-weight: 700;
+  color: #333;
+  text-align: center;
+  margin-bottom: 16rpx;
+}
+
+.rec-modal-body {
+  font-size: 28rpx;
+  color: #666;
+  text-align: center;
+  margin-bottom: 32rpx;
+  line-height: 1.6;
+}
+
+.rec-modal-actions {
+  display: flex;
+  justify-content: space-between;
+}
+
+.rec-modal-btn {
+  flex: 1;
+  text-align: center;
+  padding: 20rpx 0;
+  font-size: 30rpx;
+  border-radius: 12rpx;
+  margin: 0 8rpx;
+}
+
+.rec-modal-btn--cancel {
+  background: #f0f0f0;
+  color: #666;
+}
+
+.rec-modal-btn--danger {
+  background: #E53E3E;
+  color: #ffffff;
+}
+
+/* ---- 历史记录弹窗 ---- */
+.history-dialog {
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.history-body {
+  flex: 1;
+  overflow: hidden;
+  min-height: 300rpx;
+}
+
+.history-loading,
+.history-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 300rpx;
+  font-size: 28rpx;
+  color: #aaa;
+}
+
+.history-list {
+  height: 600rpx;
+  max-height: 60vh;
+}
+
+.history-item {
+  padding: 24rpx 16rpx;
+  border-bottom: 1rpx solid #eee;
+}
+
+.history-item:last-child {
+  border-bottom: none;
+}
+
+.history-item-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12rpx;
+}
+
+.history-room-code {
+  font-size: 28rpx;
+  font-weight: 700;
+  color: #333;
+}
+
+.history-status {
+  font-size: 22rpx;
+  color: #fff;
+  background: #009944;
+  padding: 4rpx 16rpx;
+  border-radius: 8rpx;
+}
+
+.history-item-times {
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 12rpx;
+}
+
+.history-time-label {
+  font-size: 24rpx;
+  color: #888;
+  line-height: 1.6;
+}
+
+.history-item-players {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  font-size: 26rpx;
+  line-height: 1.8;
+}
+
+.history-players-label {
+  color: #666;
+  font-size: 24rpx;
+}
+
+.history-player-name {
+  color: #333;
+}
+
+.history-player-score {
+  font-weight: 700;
+  margin-left: 4rpx;
+  font-size: 24rpx;
+}
+
+.history-player-score.red  { color: #E53E3E; }
+.history-player-score.green { color: #38A169; }
+.history-player-score.zero  { color: #aaa; }
+
+.history-player-sep {
+  color: #ddd;
+  margin: 0 4rpx;
+}
+
+.history-close-row {
+  display: flex;
+  justify-content: center;
+  padding-top: 20rpx;
+}
+
+.history-close-row .btn-outline {
+  width: 200rpx;
+}

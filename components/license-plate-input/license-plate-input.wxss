@@ -1,0 +1,379 @@
+/* 分段车牌虚拟键盘 v2 — 8 格位框 + 省份滑动 + 双输入模式 */
+
+/* ===================================================================
+ *  容器
+ * =================================================================== */
+.lp-container {
+  width: 100%;
+  user-select: none;
+}
+
+/* ===================================================================
+ *  车牌展示区 — 8 格位框横排
+ * =================================================================== */
+.lp-display-row {
+  display: flex;
+  gap: 6rpx;
+  justify-content: center;
+  padding: var(--space-sm) 0;
+}
+
+.lp-cell {
+  width: 68rpx;
+  height: 84rpx;
+  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  box-sizing: border-box;
+  transition: all var(--transition-fast);
+  flex-shrink: 0;
+}
+
+/* 空闲格 */
+.lp-cell-empty {
+  border: 2rpx dashed #d0d0d0;
+  background: #fafafa;
+}
+
+/* 已填格 */
+.lp-cell-filled {
+  border: 2rpx solid #c0c0c0;
+  background: var(--color-bg-card);
+}
+
+/* 省份格 */
+.lp-cell-province {
+  background: var(--color-primary-light);
+  border-color: var(--color-primary);
+}
+
+.lp-cell-province.lp-cell-filled {
+  background: var(--color-primary);
+}
+
+.lp-cell-province.lp-cell-filled .lp-cell-char {
+  color: #fff;
+}
+
+/* 新能源位（第 8 格） */
+.lp-cell-energy {
+  border-style: solid;
+}
+
+.lp-cell-energy.lp-cell-empty {
+  border-color: #a5d6a7;
+  background: #f1f8e9;
+}
+
+.lp-cell-energy.lp-cell-filled {
+  border-color: #43a047;
+  background: #e8f5e9;
+}
+
+.lp-cell-energy.lp-cell-filled .lp-cell-char {
+  color: #2e7d32;
+}
+
+/* 光标激活格 */
+.lp-cell-cursor {
+  border-color: var(--color-primary) !important;
+  box-shadow: 0 0 0 4rpx rgba(25, 137, 250, 0.15);
+}
+
+/* 格内字符 */
+.lp-cell-char {
+  font-size: 36rpx;
+  font-weight: bold;
+  font-family: var(--font-family-mono);
+  color: var(--color-text-primary);
+}
+
+/* 新能源位占位文字 */
+.lp-cell-hint {
+  font-size: 18rpx;
+  color: #81c784;
+}
+
+/* 闪烁光标竖线 */
+.lp-cursor-blink {
+  position: absolute;
+  bottom: 8rpx;
+  width: 32rpx;
+  height: 4rpx;
+  background: var(--color-primary);
+  border-radius: 2rpx;
+  animation: lp-blink 0.8s ease-in-out infinite;
+}
+
+@keyframes lp-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.2; }
+}
+
+/* ===================================================================
+ *  车型标记行
+ * =================================================================== */
+.lp-type-row {
+  text-align: center;
+  padding: 4rpx 0;
+}
+
+.lp-type-badge {
+  display: inline-block;
+  font-size: 20rpx;
+  padding: 2rpx 16rpx;
+  border-radius: var(--radius-round);
+  font-weight: bold;
+}
+
+.lp-type-badge.fuel {
+  background: var(--color-primary-light);
+  color: var(--color-primary);
+}
+
+.lp-type-badge.energy {
+  background: #e8f5e9;
+  color: #2e7d32;
+}
+
+/* 点击提示 */
+.lp-tap-hint {
+  text-align: center;
+  padding: var(--space-sm) 0;
+  font-size: var(--font-size-caption);
+  color: var(--color-text-hint);
+}
+
+/* ===================================================================
+ *  键盘区（动画展开）
+ * =================================================================== */
+.lp-keyboard {
+  max-height: 0;
+  overflow: hidden;
+  transition: max-height 0.3s ease, margin 0.3s ease, padding 0.3s ease;
+  margin-top: 0;
+  background: var(--color-bg-page);
+  border-radius: var(--radius-md);
+}
+
+.lp-keyboard.show {
+  max-height: 1400rpx;
+  margin-top: var(--space-sm);
+  padding: var(--space-sm);
+}
+
+/* ===================================================================
+ *  分段标签
+ * =================================================================== */
+.lp-section-label {
+  font-size: var(--font-size-caption);
+  color: var(--color-text-hint);
+  padding: var(--space-xs) 0 var(--space-sm);
+  display: flex;
+  align-items: center;
+}
+
+.lp-label-icon {
+  margin-right: 4rpx;
+}
+
+.lp-current-hint {
+  font-size: 20rpx;
+  color: var(--color-primary);
+  margin-left: var(--space-sm);
+}
+
+/* ===================================================================
+ *  省份滑动选择器
+ * =================================================================== */
+.lp-province-scroller {
+  width: 100%;
+  white-space: nowrap;
+  padding: 4rpx 0 var(--space-sm);
+}
+
+.lp-province-track {
+  display: inline-flex;
+  gap: 6rpx;
+  padding: 0 4rpx;
+}
+
+.lp-prov-key {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 64rpx;
+  height: 64rpx;
+  border-radius: var(--radius-sm);
+  font-size: 28rpx;
+  font-weight: bold;
+  color: var(--color-text-body);
+  background: var(--color-bg-card);
+  box-shadow: 0 2rpx 4rpx rgba(0,0,0,0.06);
+  flex-shrink: 0;
+  transition: all var(--transition-fast);
+}
+
+.lp-prov-key:active {
+  background: var(--color-bg-pressed);
+  transform: scale(0.93);
+}
+
+.lp-prov-key.active {
+  background: var(--color-primary);
+  color: #fff;
+  box-shadow: 0 2rpx 10rpx rgba(25,137,250,0.35);
+}
+
+/* ===================================================================
+ *  虚拟键区
+ * =================================================================== */
+.lp-key-area {
+  background: #e8e9eb;
+  border-radius: var(--radius-md);
+  padding: 6rpx;
+}
+
+.lp-key-row {
+  display: flex;
+  justify-content: center;
+  gap: 5rpx;
+  margin-bottom: 5rpx;
+}
+
+.lp-key-row:last-child {
+  margin-bottom: 0;
+}
+
+.lp-key {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 64rpx;
+  height: 76rpx;
+  border-radius: 8rpx;
+  font-size: 30rpx;
+  font-weight: 500;
+  color: var(--color-text-body);
+  background: #fff;
+  box-shadow: 0 2rpx 3rpx rgba(0,0,0,0.08);
+  transition: all var(--transition-fast);
+  box-sizing: border-box;
+}
+
+.lp-key:active {
+  background: #d0d0d2;
+  transform: scale(0.93);
+  box-shadow: none;
+}
+
+.lp-key.dim {
+  opacity: 0.45;
+}
+
+.lp-digit-key {
+  color: var(--color-text-primary);
+  font-weight: bold;
+}
+
+/* 功能键 */
+.lp-func-key {
+  font-size: 28rpx;
+  background: #d9dadd;
+  color: var(--color-text-secondary);
+}
+
+.lp-backspace {
+  width: 88rpx;
+  font-size: 34rpx;
+}
+
+.lp-key-spacer {
+  width: 64rpx;
+  height: 76rpx;
+}
+
+/* 末行 */
+.lp-last-row {
+  gap: 5rpx;
+}
+
+/* ===================================================================
+ *  底部操作栏
+ * =================================================================== */
+.lp-action-bar {
+  display: flex;
+  gap: var(--space-sm);
+  padding: var(--space-sm) 0;
+}
+
+.lp-action-btn {
+  flex: 1;
+  text-align: center;
+  padding: var(--space-md) 0;
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-body);
+  color: var(--color-text-secondary);
+  background: var(--color-bg-card);
+  box-shadow: 0 2rpx 4rpx rgba(0,0,0,0.05);
+  transition: all var(--transition-fast);
+}
+
+.lp-action-btn:active {
+  background: var(--color-bg-pressed);
+}
+
+.lp-action-btn.primary {
+  color: var(--color-text-inverse);
+  background: #bbb;
+}
+
+.lp-action-btn.primary.ready {
+  background: var(--color-primary);
+  box-shadow: 0 2rpx 8rpx rgba(25,137,250,0.3);
+}
+
+.lp-action-btn.primary.ready:active {
+  background: var(--color-primary-active);
+}
+
+/* ===================================================================
+ *  收起条
+ * =================================================================== */
+.lp-close-bar {
+  text-align: center;
+  padding: var(--space-sm) 0 0;
+  font-size: var(--font-size-caption);
+  color: var(--color-text-hint);
+}
+
+/* ===================================================================
+ *  原生键盘模式
+ * =================================================================== */
+.lp-native-box {
+  padding: var(--space-sm) 0;
+}
+
+.lp-native-input {
+  width: 100%;
+  height: 88rpx;
+  border: 2rpx solid var(--color-primary);
+  border-radius: var(--radius-sm);
+  padding: 0 var(--space-base);
+  font-size: 40rpx;
+  font-weight: bold;
+  font-family: var(--font-family-mono);
+  letter-spacing: 6rpx;
+  text-align: center;
+  color: var(--color-text-primary);
+  box-sizing: border-box;
+}
+
+.lp-native-hint {
+  text-align: center;
+  font-size: var(--font-size-caption);
+  color: var(--color-text-hint);
+  padding-bottom: var(--space-sm);
+}

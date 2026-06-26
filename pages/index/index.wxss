@@ -1,0 +1,333 @@
+/* 首页 — 页面特有样式 */
+
+/* ---- 用户信息 ---- */
+.profile-bar{
+  display:flex;align-items:center;gap:var(--space-md);
+  padding:var(--space-base);background:var(--color-bg-card);
+  border-radius:var(--radius-md);margin-bottom:var(--space-xxl);
+  box-shadow:var(--shadow-card);
+}
+
+.avatar-btn{
+  width:88rpx;height:88rpx;border-radius:44rpx;padding:0;
+  overflow:hidden;background:#eee;border:none;flex-shrink:0;
+}
+
+.avatar-img{width:88rpx;height:88rpx;border-radius:44rpx;}
+
+.avatar-placeholder{
+  display:flex;align-items:center;justify-content:center;
+  width:88rpx;height:88rpx;font-size:40rpx;
+  color:var(--color-primary);font-weight:bold;
+  background:var(--color-primary-light);
+}
+
+.profile-info{flex:1;min-width:0;}
+
+/* 尊贵的用户标签 */
+.profile-title{margin-bottom:var(--space-xs);}
+
+.vip-label{
+  font-size:var(--font-size-caption);color:#cc0000;
+  font-weight:600;letter-spacing:2rpx;
+}
+
+/* 昵称 + SVIP 行 */
+.profile-name-row{display:flex;align-items:center;gap:var(--space-sm);}
+
+.nickname-inp{
+  flex:1;width:auto;background:transparent;
+  font-size:var(--font-size-body-lg);color:var(--color-text-body);
+  padding:var(--space-sm) 0;min-width:0;
+}
+
+/* SVIP 红标 + 闪闪光效（保持原动画） */
+.svip-badge{
+  font-size:20rpx;font-weight:bold;color:#fff;
+  background:linear-gradient(135deg, #d40000, #ff2222, #d40000);
+  background-size:200% 200%;
+  padding:6rpx 18rpx;border-radius:20rpx;letter-spacing:2rpx;
+  flex-shrink:0;
+  animation:svip-shimmer 1.8s ease-in-out infinite;
+}
+
+@keyframes svip-shimmer{
+  0%, 100%{box-shadow:0 0 8rpx rgba(212,0,0,0.5);}
+  30%{box-shadow:0 0 20rpx rgba(255,0,0,0.7), 0 0 36rpx rgba(255,60,60,0.35);}
+  60%{box-shadow:0 0 28rpx rgba(255,20,20,0.85), 0 0 48rpx rgba(255,80,80,0.45);}
+}
+
+/* ---- 四入口卡片 2x2 网格 ---- */
+.entry-grid{
+  display:flex;flex-wrap:wrap;gap:var(--space-base);
+}
+
+.entry-card{
+  width:calc(50% - 8rpx);box-sizing:border-box;
+  background:var(--color-bg-card);padding:var(--space-xxl) var(--space-lg);
+  border-radius:var(--radius-lg);box-shadow:0 4rpx 16rpx rgba(0,0,0,0.06);
+  text-align:center;transition:box-shadow var(--transition-normal);
+}
+
+.entry-card:active{box-shadow:0 8rpx 32rpx rgba(0,0,0,0.12);}
+
+.entry-icon{font-size:96rpx;margin-bottom:var(--space-md);}
+.entry-name{
+  font-size:var(--font-size-heading);font-weight:bold;
+  color:var(--color-text-primary);margin-bottom:var(--space-sm);
+}
+.entry-desc{
+  font-size:var(--font-size-caption);color:var(--color-text-hint);
+  line-height:1.5;
+}
+
+/* ---- 计分分类子页 ---- */
+.sub-header{
+  display:flex;align-items:center;padding:var(--space-md) 0;
+  margin-bottom:var(--space-base);
+}
+
+.back-btn{
+  font-size:var(--font-size-body-lg);color:var(--color-primary);
+  padding:var(--space-sm) 0;
+}
+
+.sub-title{
+  flex:1;text-align:center;font-size:var(--font-size-heading);
+  font-weight:bold;color:var(--color-text-primary);
+  margin-right:80rpx;
+}
+
+.join-bar{text-align:center;margin-bottom:var(--space-xl);}
+
+.join-btn{
+  display:inline-block;background:var(--color-primary);
+  color:var(--color-text-inverse);padding:var(--space-md) 56rpx;
+  border-radius:var(--radius-sm);font-size:var(--font-size-body-lg);
+}
+
+/* ---- 游戏卡片网格 ---- */
+.game-grid{display:flex;flex-wrap:wrap;gap:var(--space-md);}
+
+.game-card{
+  width:calc(50% - 8rpx);background:var(--color-bg-card);
+  padding:var(--space-base) var(--space-md);border-radius:var(--radius-md);
+  box-sizing:border-box;text-align:center;
+  box-shadow:var(--shadow-card);transition:box-shadow var(--transition-normal);
+}
+
+.game-card:active{box-shadow:var(--shadow-card-raised);}
+
+.game-icon{font-size:64rpx;margin-bottom:var(--space-sm);}
+.game-name{
+  font-size:var(--font-size-subtitle);font-weight:bold;
+  color:var(--color-text-primary);margin-bottom:var(--space-xs);
+}
+.game-desc{
+  font-size:var(--font-size-caption);color:var(--color-text-hint);
+  margin-bottom:var(--space-xs);line-height:1.4;
+}
+.game-players{font-size:20rpx;color:#bbb;}
+
+/* ---- 加入房间弹窗 ---- */
+.dialog{
+  background:var(--color-bg-card);
+  padding:36rpx 28rpx;
+  border-radius:var(--radius-lg);
+  width:600rpx;
+  max-width:92vw;
+}
+
+.d-title{
+  text-align:center;
+  font-size:38rpx;
+  font-weight:700;
+  color:var(--color-text-primary);
+  margin-bottom:28rpx;
+  display:block;
+}
+
+.d-inp{
+  background:var(--color-bg-input);
+  color:var(--color-text-body);
+  padding:22rpx 20rpx;
+  border-radius:var(--radius-sm);
+  width:100%;
+  box-sizing:border-box;
+  text-align:center;
+  font-size:48rpx;
+  font-weight:bold;
+  letter-spacing:12rpx;
+  margin-bottom:28rpx;
+  height:96rpx;
+}
+
+.d-btns{
+  display:flex;
+  gap:20rpx;
+  justify-content:center;
+}
+
+.d-btns button{
+  flex:1;
+  height:96rpx;
+  border-radius:var(--radius-sm);
+  font-size:34rpx;
+  font-weight:700;
+  background:var(--color-primary);
+  color:var(--color-text-inverse);
+  border:none;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+}
+
+.d-btns button::after{
+  border:none;
+}
+
+.d-btns .btn-outline{
+  background:var(--color-bg-input);
+  border:3rpx solid var(--color-text-hint);
+  color:var(--color-text-secondary);
+}
+
+/* ================================================================
+   留言板 + 建议反馈
+   ================================================================ */
+
+/* 遮罩捕获层：覆盖全屏，只接收点击关闭，无背景色（由 .overlay 提供） */
+.overlay-backdrop{
+  position:absolute;top:0;left:0;right:0;bottom:0;z-index:1;
+}
+
+/* ---- 留言板面板 ---- */
+.msg-board{
+  position:absolute;bottom:0;left:0;right:0;top:120rpx;z-index:2;
+  background:var(--color-bg-page);border-radius:24rpx 24rpx 0 0;
+  display:flex;flex-direction:column;overflow:hidden;
+}
+
+.msg-header{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:var(--space-lg) var(--space-base);
+  border-bottom:2rpx solid var(--color-border);
+}
+
+.msg-header-left{display:flex;align-items:center;gap:var(--space-sm);}
+
+.msg-header-title{
+  font-size:var(--font-size-subtitle);font-weight:bold;
+  color:var(--color-text-primary);
+}
+
+.msg-header-count{
+  font-size:var(--font-size-caption);color:var(--color-text-hint);
+  background:#f0f0f0;padding:4rpx 16rpx;border-radius:20rpx;
+}
+
+.msg-header-right{display:flex;align-items:center;gap:var(--space-sm);}
+
+.msg-refresh{
+  font-size:36rpx;color:var(--color-primary,#1677ff);
+  padding:var(--space-sm);
+}
+
+.msg-close{
+  font-size:var(--font-size-heading);color:var(--color-text-hint);
+  padding:var(--space-sm) var(--space-md);
+}
+
+/* ---- 提示条 ---- */
+.msg-hint{
+  margin:var(--space-sm) var(--space-base);
+  padding:var(--space-sm) var(--space-md);
+  background:#f0faf3;border-radius:var(--radius-sm);
+}
+
+.msg-hint>text{
+  font-size:var(--font-size-caption);color:var(--color-primary);
+}
+
+/* ---- 留言列表 ---- */
+.msg-list{
+  flex:1;padding:var(--space-sm) var(--space-base);min-height:0;
+}
+
+.msg-empty{display:flex;flex-direction:column;align-items:center;padding-top:160rpx;}
+
+.msg-empty-icon{font-size:80rpx;margin-bottom:var(--space-md);}
+
+.msg-empty-text{
+  font-size:var(--font-size-body);color:var(--color-text-hint);
+}
+
+/* ---- 单条留言 ---- */
+.msg-item{
+  display:flex;align-items:flex-start;gap:var(--space-sm);
+  background:var(--color-bg-card);padding:var(--space-md);
+  border-radius:var(--radius-md);margin-bottom:var(--space-sm);
+  position:relative;
+}
+
+.msg-avatar-wrap{flex-shrink:0;}
+
+.msg-avatar{
+  width:72rpx;height:72rpx;border-radius:36rpx;overflow:hidden;
+}
+
+.msg-avatar-def{
+  display:flex;align-items:center;justify-content:center;
+  background:var(--color-primary-light);color:var(--color-primary);
+  font-size:32rpx;font-weight:bold;
+}
+
+.msg-body{flex:1;min-width:0;}
+
+.msg-top{
+  display:flex;align-items:center;justify-content:space-between;
+  margin-bottom:var(--space-xs);
+}
+
+.msg-nick{
+  font-size:var(--font-size-caption);color:var(--color-text-hint);
+}
+
+.msg-time{
+  font-size:20rpx;color:#ccc;
+}
+
+.msg-content{
+  font-size:var(--font-size-body);color:var(--color-text-body);
+  line-height:1.6;word-break:break-all;
+}
+
+.msg-del{
+  padding:var(--space-xs);font-size:28rpx;opacity:0.5;
+}
+
+/* ---- 底部输入区 ---- */
+.msg-input-bar{
+  display:flex;align-items:center;gap:var(--space-sm);
+  padding:var(--space-sm) var(--space-base);
+  background:var(--color-bg-card);
+  border-top:2rpx solid var(--color-border);
+  /* 安全区适配 */
+  padding-bottom:calc(var(--space-sm) + env(safe-area-inset-bottom));
+}
+
+.msg-input{
+  flex:1;box-sizing:border-box;
+  height:72rpx;padding:0 var(--space-md);
+  font-size:var(--font-size-body);color:var(--color-text-body);
+  background:var(--color-bg-input);border-radius:36rpx;
+}
+
+.msg-send-btn{
+  flex-shrink:0;width:120rpx;height:72rpx;line-height:72rpx;
+  text-align:center;font-size:var(--font-size-body);font-weight:bold;
+  color:#fff;background:#ccc;border-radius:36rpx;
+  transition:background var(--transition-normal);
+}
+
+.msg-send-btn.active{background:var(--color-primary);}

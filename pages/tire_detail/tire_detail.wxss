@@ -1,0 +1,179 @@
+/* 轮胎详情 — 页面特有样式 */
+
+/* 信息卡片 */
+.info-card{padding:var(--space-xxl) var(--space-xl);margin-bottom:var(--space-lg);}
+
+.ic-header{
+  display:flex;justify-content:space-between;align-items:center;
+  margin-bottom:var(--space-xs);
+}
+
+.ic-size{
+  font-size:var(--font-size-heading);font-weight:bold;
+  color:var(--color-text-primary);overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap;max-width:68vw;
+}
+
+.ic-brand{
+  font-size:var(--font-size-body);color:var(--color-primary);
+}
+
+.ic-ply{
+  font-size:var(--font-size-caption);color:var(--color-text-hint);
+  margin-bottom:var(--space-md);
+}
+
+.ic-stats{display:flex;gap:var(--space-xl);}
+
+.ic-stat{text-align:center;}
+
+.ic-val{
+  display:block;font-size:var(--font-size-title);
+  font-weight:bold;color:var(--color-primary);
+}
+
+.ic-lbl{
+  font-size:var(--font-size-caption);color:var(--color-text-hint);
+  margin-top:var(--space-xs);
+}
+
+/* 流水条目 — flex 布局支持左侧复选框 */
+.flow-item{
+  display:flex;align-items:flex-start;
+  background:var(--color-bg-card);padding:var(--space-md) var(--space-base);
+  border-radius:var(--radius-sm);margin-bottom:var(--space-sm);
+  box-shadow:var(--shadow-card);
+  transition:background var(--transition-fast);
+}
+
+.fi-header{
+  display:flex;justify-content:space-between;margin-bottom:var(--space-xs);
+}
+
+.fi-date{font-size:var(--font-size-caption);color:var(--color-text-hint);}
+
+.fi-qty{
+  font-size:var(--font-size-body);font-weight:bold;
+  color:var(--color-success);
+}
+
+.fi-qty.out{color:var(--color-warning);}
+
+.fi-body{font-size:var(--font-size-caption);color:var(--color-text-body);}
+
+.fi-note{
+  font-size:var(--font-size-caption);color:var(--color-text-hint);
+  margin-top:var(--space-xs);
+}
+
+/* 进货实拍照片 */
+.fi-images{
+  display:flex;flex-wrap:wrap;gap:var(--space-sm);
+  margin-top:var(--space-md);
+}
+
+.fi-img{
+  width:160rpx;height:160rpx;
+  border-radius:var(--radius-sm);
+  border:1px solid var(--color-border);
+}
+
+/* 价格列表 */
+.price-item{
+  display:flex;justify-content:space-between;
+  padding:var(--space-md) var(--space-base);
+  background:var(--color-bg-card);
+  border-radius:var(--radius-sm);margin-bottom:var(--space-xs);
+  box-shadow:var(--shadow-card);
+}
+
+.pi-date{font-size:var(--font-size-caption);color:var(--color-text-hint);}
+
+.pi-price{
+  font-size:var(--font-size-body-lg);font-weight:bold;
+  color:var(--color-primary);
+}
+
+.pi-qty{font-size:var(--font-size-caption);color:var(--color-text-hint);}
+
+.price-note{
+  text-align:center;font-size:var(--font-size-caption);
+  color:var(--color-text-hint);padding:var(--space-base) 0;
+}
+
+/* 管理模式切换按钮 */
+.manage-bar{
+  display:flex;justify-content:flex-end;
+  margin-bottom:var(--space-sm);
+}
+
+.manage-toggle{
+  font-size:var(--font-size-body);color:var(--color-primary);
+  padding:var(--space-sm) var(--space-lg);
+  border-radius:var(--radius-sm);
+  background:var(--color-primary-light);
+}
+
+/* ====== 管理模式：复选框 + 内容布局 ====== */
+.flow-item-selected{
+  background:var(--color-primary-light);
+}
+
+.fi-checkbox{
+  flex-shrink:0;width:64rpx;
+  display:flex;align-items:center;justify-content:center;
+  padding-top:var(--space-sm);
+}
+
+.fi-content{
+  flex:1;min-width:0;
+}
+
+/* 复选框圆形 */
+.checkbox{
+  width:40rpx;height:40rpx;
+  border-radius:50%;
+  border:3rpx solid var(--color-text-hint);
+  display:flex;align-items:center;justify-content:center;
+  transition:all var(--transition-fast);
+}
+
+.checkbox-checked{
+  border-color:var(--color-primary);
+  background:var(--color-primary);
+}
+
+.checkbox-icon{
+  font-size:24rpx;color:#fff;font-weight:bold;
+  line-height:1;
+}
+
+/* ====== 底部批量操作栏 ====== */
+.batch-toolbar{
+  position:fixed;bottom:0;left:0;right:0;
+  display:flex;align-items:center;justify-content:space-between;
+  background:var(--color-bg-card);
+  padding:var(--space-md) var(--space-xl);
+  box-shadow:0 -4rpx 16rpx rgba(0,0,0,0.08);
+  z-index:10;
+}
+
+.bt-select-all{
+  display:flex;align-items:center;gap:var(--space-sm);
+}
+
+.bt-select-label{
+  font-size:var(--font-size-body);color:var(--color-text-secondary);
+}
+
+.bt-delete-btn{
+  background:var(--color-danger);color:#fff;
+  font-size:var(--font-size-body);
+  padding:var(--space-sm) var(--space-xl);
+  border-radius:var(--radius-sm);
+  border:none;
+}
+
+.bt-delete-btn[disabled]{
+  opacity:0.4;
+}

@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//c/Users/duritou/.claude/**)",
+      "Read(//c/Program Files \\(x86\\)/Tencent/΢��web�����߹���/**)",
+      "Read(//c/Program Files/**)",
+      "Bash(cmd.exe /c '\"C:\\\\Program Files \\(x86\\)\\\\Tencent\\\\微信web开发者工具\\\\cli.bat\" open --project \"c:\\\\vscode_code_data\\\\weixinxiaochengxu\"')",
+      "PowerShell(npm install --ignore-scripts --legacy-peer-deps 2>&1)",
+      "PowerShell(docker --version)",
+      "PowerShell(docker info --format '{{.OSType}} {{.ServerVersion}}' 2>&1)",
+      "Bash(xxd)",
+      "PowerShell(cmd /c \"rd /s /q c:\\\\vscode_code_data\\\\weixinxiaochengxu\\\\hotel\" 2>&1)",
+      "Bash(mkdir -p \"c:/vscode_code_data/weixinxiaochengxu_archive/docs\")",
+      "Bash(mkdir -p \"c:/vscode_code_data/weixinxiaochengxu_archive/scripts\")",
+      "Bash(mkdir -p \"c:/vscode_code_data/weixinxiaochengxu_archive/keys\")",
+      "Bash(mkdir -p \"c:/vscode_code_data/weixinxiaochengxu_archive/npm\")"
+    ],
+    "additionalDirectories": [
+      "C:\\Users\\duritou\\.claude"
+    ]
+  }
+}

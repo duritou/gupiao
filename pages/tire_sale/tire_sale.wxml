@@ -1,0 +1,207 @@
+<view class="container safe-bottom">
+  <view class="page-title">出库登记</view>
+
+  <!-- 扫码出库按钮 -->
+  <view class="scan-bar">
+    <button class="scan-btn" bindtap="scanCode">
+      <text class="scan-icon">📷</text> 扫码出库
+    </button>
+    <text wx:if="{{scanNote}}" class="scan-hint">{{scanNote}}</text>
+  </view>
+
+  <view class="card form-card">
+    <!-- 日期 -->
+    <view class="field">
+      <text class="form-label">出库日期</text>
+      <picker mode="date" value="{{formDate}}" bindchange="onDateChange">
+        <view class="picker">{{formDate || '请选择日期'}}<text class="picker-arrow">›</text></view>
+      </picker>
+    </view>
+
+    <!-- Step 1: 品牌选择（仅显示有库存的品牌） -->
+    <view class="field" id="field-brand">
+      <text class="form-label">选择品牌 *</text>
+      <picker mode="selector" range="{{brandNames}}" value="{{brandIdx}}" bindchange="onBrandChange" disabled="{{brandsLoading}}">
+        <view class="picker">{{brandsLoading ? '加载中...' : (brandNames[brandIdx] || '请选择品牌')}}<text class="picker-arrow">›</text></view>
+      </picker>
+    </view>
+
+    <!-- Step 2: 库存列表 -->
+    <view wx:if="{{brandIdx > 0}}" id="field-stock">
+      <view class="section-title">{{brandNames[brandIdx]}} — 库存列表</view>
+
+      <!-- 库存内搜索（库存 > 3 条时显示） -->
+      <view wx:if="{{stockList.length > 3}}" class="stock-search-bar">
+        <input
+          class="input-group search-inp"
+          placeholder="搜索规格 / 花纹缩小范围"
+          value="{{stockKeyword}}"
+          bindinput="onStockSearch"
+        />
+        <text wx:if="{{stockKeyword}}" class="search-count">{{filteredStockList.length}}/{{stockList.length}}</text>
+      </view>
+
+      <view wx:if="{{stockLoading}}" class="empty-state">
+        <text class="empty-state-text">加载中…</text>
+      </view>
+
+      <view wx:elif="{{stockList.length === 0 && !stockLoading}}" class="empty-state">
+        <text class="empty-state-text">该品牌暂无库存</text>
+      </view>
+
+      <view wx:elif="{{filteredStockList.length === 0 && !stockLoading}}" class="empty-state">
+        <text class="empty-state-text">无匹配规格</text>
+      </view>
+
+      <view wx:else class="stock-list-scroll {{filteredStockList.length > 5 ? '' : 'no-limit'}} {{stockListExpanded ? 'expanded' : ''}}">
+        <view
+          wx:for="{{filteredStockList}}"
+          wx:key="tireId"
+          class="stock-item {{selectedItem && selectedItem.tireId === item.tireId ? 'active' : ''}}"
+          bindtap="onSelectItem"
+          data-id="{{item.tireId}}"
+        >
+          <!-- 左栏：规格 + 标签 -->
+          <view class="si-left">
+            <text class="si-spec">{{item.size}} {{item.pattern}}</text>
+            <view class="si-meta">
+              <text wx:if="{{item.ply}}" class="si-tag">{{item.ply}}PR</text>
+              <text wx:if="{{item.loadIndex}}" class="si-tag">{{item.loadIndex}}</text>
+              <text class="si-tag brand">{{item.brand}}</text>
+            </view>
+          </view>
+          <!-- 右栏：库存 / 进价 / 出库 — 竖向堆叠 -->
+          <view class="si-right">
+            <text class="si-stock">库存 {{item.totalStock}} 条</text>
+            <text class="si-price">进价 ¥{{item.lastPrice}}</text>
+            <text class="si-action">出库 ›</text>
+          </view>
+        </view>
+      </view>
+      <!-- 库存列表折叠按钮（超过 5 条时显示） -->
+      <view wx:if="{{filteredStockList.length > 5}}" class="stock-fold-toggle" bindtap="onToggleStockExpand">
+        <text>{{stockListExpanded ? '收起列表 ▲' : '展开全部 ' + filteredStockList.length + ' 条 ▼'}}</text>
+      </view>
+    </view>
+
+    <!-- 未选品牌提示 -->
+    <view wx:if="{{brandIdx === 0}}" class="empty-state">
+      <text class="empty-state-text">请先选择品牌查看库存</text>
+    </view>
+
+    <!-- Step 3: 出库表单（选中条目后展开） -->
+    <view wx:if="{{showSaleForm && selectedItem}}" class="sale-form">
+      <view class="sf-divider"></view>
+      <view class="section-title">出库详情</view>
+
+      <!-- 轮胎信息只读展示 — 2列网格 -->
+      <view class="tire-info-card">
+        <view class="ti-header">
+          <text class="ti-title">{{selectedItem.size}} {{selectedItem.pattern}}</text>
+          <text class="ti-subtitle">{{selectedItem.brand}}<text wx:if="{{selectedItem.ply}}"> · {{selectedItem.ply}}PR</text></text>
+        </view>
+        <view class="ti-grid">
+          <view class="ti-cell">
+            <text class="ti-label">可用库存</text>
+            <text class="ti-value stock">{{selectedItem.totalStock}} 条</text>
+          </view>
+          <view class="ti-cell" wx:if="{{selectedItem.loadIndex}}">
+            <text class="ti-label">负荷指数</text>
+            <text class="ti-value">{{selectedItem.loadIndex}}</text>
+          </view>
+        </view>
+      </view>
+
+      <!-- 数量 -->
+      <view class="field" id="field-qty">
+        <text class="form-label">出库数量 *</text>
+        <input
+          class="input-group"
+          type="number"
+          max="{{selectedItem.totalStock}}"
+          placeholder="请输入数量（最大 {{selectedItem.totalStock}}）"
+          value="{{formQty}}"
+          bindinput="onQtyInput"
+          bindblur="onQtyBlur"
+        />
+      </view>
+
+      <!-- 进价参考 + 出库单价 + 总金额（三列对照） -->
+      <view class="price-row">
+        <view class="price-cell">
+          <text class="form-label">上次进价</text>
+          <view class="ref-price">¥{{selectedItem.lastPrice}}</view>
+        </view>
+        <view class="price-cell price-input">
+          <text class="form-label">出库单价</text>
+          <input class="input-group" type="digit" placeholder="¥" value="{{formUnitPrice}}" bindinput="onPriceInput" />
+        </view>
+        <view class="price-cell">
+          <text class="form-label">总金额</text>
+          <view class="total-display">¥{{formTotal}}</view>
+        </view>
+      </view>
+
+      <!-- 车牌号（分段虚拟键盘 + 拍照 OCR） -->
+      <view class="field" id="field-plate">
+        <view class="form-label-row">
+          <text class="form-label">车牌号 *</text>
+          <text class="plate-ocr-btn {{plateOcrStatus}}" bindtap="onPlateOCR">
+            <view wx:if="{{plateOcrStatus === 'loading'}}" class="ocr-spinner"></view>
+            <block wx:elif="{{plateOcrStatus === 'success'}}">✅ {{plateOcrResult}}</block>
+            <block wx:elif="{{plateOcrStatus === 'error'}}">❌ 识别失败 重试</block>
+            <block wx:else>📷 拍照识别</block>
+          </text>
+        </view>
+        <license-plate-input
+          value="{{formPlate}}"
+          placeholder="点击输入车牌号"
+          bind:input="onPlateInput"
+          bind:complete="onPlateComplete"
+          bind:clear="onPlateClear"
+        />
+      </view>
+
+      <!-- 客户 -->
+      <view class="field">
+        <text class="form-label">客户名称</text>
+        <input class="input-group" placeholder="选填" value="{{formCustomer}}" bindinput="onCustomerInput" />
+      </view>
+
+      <!-- 出库类型 -->
+      <view class="field">
+        <text class="form-label">出库类型</text>
+        <view class="type-toggle">
+          <view class="type-btn {{formOutType === 'sales' ? 'active' : ''}}" bindtap="onOutTypeChange" data-type="sales">销售出库</view>
+          <view class="type-btn {{formOutType === 'self' ? 'active' : ''}}" bindtap="onOutTypeChange" data-type="self">自用</view>
+        </view>
+      </view>
+
+      <!-- 备注 -->
+      <view class="field">
+        <text class="form-label">备注</text>
+        <input class="input-group" placeholder="选填" value="{{formNote}}" bindinput="onNoteInput" />
+      </view>
+
+      <!-- 操作按钮 -->
+      <view class="sf-buttons">
+        <button class="btn btn-ghost" bindtap="onCancelSale">取消</button>
+        <button class="btn btn-primary" bindtap="submit" disabled="{{submitting}}">确认出库</button>
+      </view>
+    </view>
+  </view>
+</view>
+
+<!-- ====== 手动粘贴URL弹窗（扫码失败兜底） ====== -->
+<view wx:if="{{showManualUrlModal}}" class="overlay" bindtap="onManualUrlCancel">
+  <view class="dialog" catchtap="">
+    <text class="dialog-title">📋 手动输入溯源URL</text>
+    <text class="url-modal-hint">扫码失败时可手动粘贴朝阳轮胎防伪溯源页面地址</text>
+    <input class="dialog-inp url-inp" placeholder="粘贴 news.zcckj.com 网页地址" value="{{manualUrl}}" bindinput="onManualUrlInput" focus="{{true}}" />
+    <text wx:if="{{manualUrlError}}" class="url-error">{{manualUrlError}}</text>
+    <view class="dialog-footer">
+      <button class="btn btn-primary" bindtap="onManualUrlConfirm">确认解析</button>
+      <button class="btn btn-outline" bindtap="onManualUrlCancel">取消</button>
+    </view>
+  </view>
+</view>

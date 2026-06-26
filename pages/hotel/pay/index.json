@@ -1,0 +1,9 @@
+{
+    "navigationBarTitleText":  "支付订单",
+    "usingComponents":  {
+                            "van-divider":  "../../../vant-weapp/dist/divider/index",
+                            "van-dialog":  "../../../vant-weapp/dist/dialog/index"
+                        },
+    "navigationBarBackgroundColor":  "#ffffff",
+    "navigationBarTextStyle":  "black"
+}

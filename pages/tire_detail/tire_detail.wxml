@@ -1,0 +1,112 @@
+<view class="container safe-bottom">
+  <view wx:if="{{loading}}" class="empty-state">
+    <text class="empty-state-text">加载中...</text>
+  </view>
+
+  <view wx:else>
+    <!-- 基本信息卡片 -->
+    <view class="card info-card">
+      <view class="ic-header">
+        <text class="ic-size">{{tire.size}} {{tire.pattern}}</text>
+        <text class="ic-brand">{{tire.brand || '朝阳轮胎'}}</text>
+      </view>
+      <view wx:if="{{tire.ply}}" class="ic-ply">层级: {{tire.ply}}</view>
+      <view class="ic-stats">
+        <view class="ic-stat">
+          <text class="ic-val">{{stock}}</text>
+          <text class="ic-lbl">当前库存</text>
+        </view>
+        <view class="ic-stat">
+          <text class="ic-val">¥{{lastPrice}}</text>
+          <text class="ic-lbl">最近进价</text>
+        </view>
+      </view>
+    </view>
+
+    <!-- 管理模式切换按钮 -->
+    <view wx:if="{{activeTab !== 'price'}}" class="manage-bar">
+      <text class="manage-toggle" bindtap="toggleManageMode">{{manageMode ? '取消' : '管理'}}</text>
+    </view>
+
+    <!-- 子Tab（使用全局分段控制器） -->
+    <view class="tab-bar">
+      <view class="tab-bar-item {{activeTab === 'purchase' ? 'active' : ''}}" bindtap="switchTab" data-tab="purchase">进货记录</view>
+      <view class="tab-bar-item {{activeTab === 'sale' ? 'active' : ''}}" bindtap="switchTab" data-tab="sale">出库记录</view>
+      <view class="tab-bar-item {{activeTab === 'price' ? 'active' : ''}}" bindtap="switchTab" data-tab="price">价格趋势</view>
+    </view>
+
+    <!-- 进货记录 -->
+    <view wx:if="{{activeTab === 'purchase'}}">
+      <view wx:if="{{purchase.length === 0}}" class="empty-state">
+        <text class="empty-state-text">暂无进货记录</text>
+      </view>
+      <view wx:for="{{purchase}}" wx:key="_id" class="flow-item {{manageMode && selectedIds[item._id] ? 'flow-item-selected' : ''}}">
+        <view wx:if="{{manageMode}}" class="fi-checkbox" catchtap="toggleSelect" data-id="{{item._id}}">
+          <view class="checkbox {{selectedIds[item._id] ? 'checkbox-checked' : ''}}">
+            <text wx:if="{{selectedIds[item._id]}}" class="checkbox-icon">✓</text>
+          </view>
+        </view>
+        <view class="fi-content">
+          <view class="fi-header">
+            <text class="fi-date">{{item.date}}</text>
+            <text class="fi-qty">+{{item.qty}}条</text>
+          </view>
+          <view class="fi-body">单价: ¥{{item.unitPrice}} | 总价: ¥{{item.total}}</view>
+          <view wx:if="{{item.note}}" class="fi-note">{{item.note}}</view>
+          <!-- 进货实拍照片 -->
+          <view wx:if="{{item.imageUrls && item.imageUrls.length > 0}}" class="fi-images">
+            <image wx:for="{{item.imageUrls}}" wx:key="index" wx:for-item="url" src="{{url}}" mode="aspectFill" class="fi-img" bindtap="previewImage" data-urls="{{item.imageUrls}}" data-current="{{url}}" />
+          </view>
+        </view>
+      </view>
+    </view>
+
+    <!-- 出库记录 -->
+    <view wx:if="{{activeTab === 'sale'}}">
+      <view wx:if="{{sales.length === 0}}" class="empty-state">
+        <text class="empty-state-text">暂无出库记录</text>
+      </view>
+      <view wx:for="{{sales}}" wx:key="_id" class="flow-item {{manageMode && selectedIds[item._id] ? 'flow-item-selected' : ''}}">
+        <view wx:if="{{manageMode}}" class="fi-checkbox" catchtap="toggleSelect" data-id="{{item._id}}">
+          <view class="checkbox {{selectedIds[item._id] ? 'checkbox-checked' : ''}}">
+            <text wx:if="{{selectedIds[item._id]}}" class="checkbox-icon">✓</text>
+          </view>
+        </view>
+        <view class="fi-content">
+          <view class="fi-header">
+            <text class="fi-date">{{item.date}}</text>
+            <text class="fi-qty out">-{{item.qty}}条</text>
+          </view>
+          <view class="fi-body">客户: {{item.customer}} | 总价: ¥{{item.total}}</view>
+          <view wx:if="{{item.note}}" class="fi-note">{{item.note}}</view>
+        </view>
+      </view>
+    </view>
+
+    <!-- 价格趋势 -->
+    <view wx:if="{{activeTab === 'price'}}">
+      <view wx:if="{{priceHistory.length === 0}}" class="empty-state">
+        <text class="empty-state-text">暂无价格数据</text>
+      </view>
+      <view wx:else class="price-list">
+        <view wx:for="{{priceHistory}}" wx:key="index" class="price-item">
+          <text class="pi-date">{{item.date}}</text>
+          <text class="pi-price">¥{{item.unitPrice}}</text>
+          <text class="pi-qty">{{item.qty}}条</text>
+        </view>
+        <view class="price-note">📈 以上为历史进价记录，按日期升序排列</view>
+      </view>
+    </view>
+
+    <!-- 底部批量操作栏 -->
+    <view wx:if="{{manageMode}}" class="batch-toolbar safe-bottom">
+      <view class="bt-select-all" bindtap="selectAll">
+        <view class="checkbox {{selectedCount === (activeTab === 'purchase' ? purchase.length : sales.length) && (activeTab === 'purchase' ? purchase.length : sales.length) > 0 ? 'checkbox-checked' : ''}}">
+          <text wx:if="{{selectedCount === (activeTab === 'purchase' ? purchase.length : sales.length) && (activeTab === 'purchase' ? purchase.length : sales.length) > 0}}" class="checkbox-icon">✓</text>
+        </view>
+        <text class="bt-select-label">全选</text>
+      </view>
+      <button class="bt-delete-btn" bindtap="batchDelete" disabled="{{selectedCount === 0 || _deleting}}">删除({{selectedCount}})</button>
+    </view>
+  </view>
+</view>

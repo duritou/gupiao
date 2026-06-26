@@ -1,0 +1,9 @@
+{
+  "name": "manageBrand",
+  "version": "1.0.0",
+  "description": "品牌增删改查",
+  "main": "index.js",
+  "dependencies": {
+    "wx-server-sdk": "~2.6.3"
+  }
+}

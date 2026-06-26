@@ -1,0 +1,293 @@
+/* 出库登记 — 页面特有样式 */
+
+.form-card{padding:var(--space-base);}
+
+.field{margin-bottom:var(--space-base);}
+
+/* 车牌号标签行：标签 + 拍照 OCR 按钮 */
+.form-label-row{
+  display:flex;justify-content:space-between;align-items:center;
+  margin-bottom:var(--space-sm);
+}
+
+/* 拍照 OCR 按钮 — 四态：idle / loading / success / error */
+.plate-ocr-btn{
+  display:inline-flex;align-items:center;gap:var(--space-xs);
+  font-size:var(--font-size-caption);font-weight:600;
+  padding:var(--space-sm) var(--space-md);
+  border-radius:var(--radius-round);
+  white-space:nowrap;
+  transition:all var(--transition-normal);
+  /* idle 默认态 */
+  background:var(--color-primary-light);
+  color:var(--color-primary);
+  border:2rpx solid var(--color-primary);
+}
+
+.plate-ocr-btn.loading{
+  background:var(--color-bg-pressed);
+  color:var(--color-text-hint);
+  border-color:var(--color-bg-pressed);
+  pointer-events:none;
+}
+
+.plate-ocr-btn.success{
+  background:var(--color-success);
+  color:#fff;
+  border-color:var(--color-success);
+}
+
+.plate-ocr-btn.error{
+  background:var(--color-danger-light);
+  color:var(--color-danger);
+  border-color:var(--color-danger);
+}
+
+/* loading 旋转动画 */
+.ocr-spinner{
+  width:24rpx;height:24rpx;
+  border:3rpx solid var(--color-bg-pressed);
+  border-top-color:var(--color-text-hint);
+  border-radius:50%;
+  animation:ocr-spin 0.8s linear infinite;
+}
+
+@keyframes ocr-spin{
+  to{transform:rotate(360deg);}
+}
+
+/* Section */
+.section-title{
+  font-size:var(--font-size-body);color:var(--color-primary);
+  font-weight:bold;margin:var(--space-md) 0 var(--space-sm);
+}
+
+/* 扫码出库 */
+.scan-bar{text-align:center;margin-bottom:var(--space-lg);}
+
+.scan-btn{
+  display:inline-block;background:#07c160;color:var(--color-text-inverse);
+  padding:var(--space-md) 64rpx;border-radius:var(--radius-md);
+  font-size:var(--font-size-body-lg);font-weight:bold;
+}
+
+.scan-icon{margin-right:6rpx;}
+
+.scan-hint{
+  display:block;color:#07c160;
+  font-size:var(--font-size-caption);margin-top:var(--space-xs);
+}
+
+/* 库存内搜索 */
+.stock-search-bar{
+  display:flex;align-items:center;gap:var(--space-sm);
+  margin-bottom:var(--space-sm);
+}
+
+.stock-search-bar .search-inp{flex:1;}
+
+.search-count{
+  font-size:var(--font-size-caption);
+  color:var(--color-text-hint);white-space:nowrap;
+}
+
+/* 库存列表 */
+.stock-list{margin-bottom:var(--space-md);}
+
+.stock-item{
+  display:flex;justify-content:space-between;align-items:flex-start;
+  padding:var(--space-base);margin-bottom:var(--space-sm);
+  border:2rpx solid var(--color-bg-pressed);
+  border-radius:var(--radius-md);
+  background:var(--color-bg-card);
+  transition:all var(--transition-fast);
+}
+
+.stock-item:active{background:var(--color-bg-pressed);}
+
+.stock-item.active{
+  border-color:var(--color-primary);
+  background:var(--color-primary-light);
+}
+
+/* 左栏：规格 + 标签 */
+.si-left{
+  flex:1;min-width:0;
+  display:flex;flex-direction:column;
+}
+
+.si-spec{
+  font-size:var(--font-size-subtitle);font-weight:bold;
+  color:var(--color-text-primary);
+  margin-bottom:var(--space-xs);
+}
+
+.si-meta{display:flex;align-items:center;gap:var(--space-xs);flex-wrap:wrap;}
+
+.si-tag{
+  font-size:var(--font-size-caption);padding:var(--space-xs) var(--space-sm);
+  border-radius:var(--radius-sm);background:var(--color-bg-pressed);
+  color:var(--color-text-secondary);
+}
+
+.si-tag.brand{
+  background:var(--color-primary);color:var(--color-text-inverse);
+}
+
+/* 右栏：库存 / 进价 / 出库 — 竖向堆叠，右对齐 */
+.si-right{
+  display:flex;flex-direction:column;align-items:flex-end;
+  flex-shrink:0;margin-left:var(--space-md);
+  gap:var(--space-xs);
+}
+
+.si-stock{
+  font-size:var(--font-size-body);color:var(--color-warning);
+  font-weight:bold;
+}
+
+.si-price{
+  font-size:var(--font-size-caption);color:var(--color-success);
+}
+
+.si-action{
+  font-size:var(--font-size-caption);color:var(--color-primary);
+  font-weight:bold;
+  padding:var(--space-xs) var(--space-md);
+  border:2rpx solid var(--color-primary);
+  border-radius:var(--radius-round);
+}
+
+/* 出库表单 */
+.sale-form{margin-top:var(--space-xs);}
+
+.sf-divider{
+  height:1rpx;background:var(--color-bg-pressed);
+  margin:var(--space-md) 0;
+}
+
+/* 轮胎信息只读卡 — 2列网格 + 上次进价参考 */
+.tire-info-card{
+  background:var(--color-bg-card);border-radius:var(--radius-md);
+  padding:var(--space-base);margin-bottom:var(--space-base);
+  box-shadow:var(--shadow-card);
+}
+
+.ti-header{display:flex;flex-direction:column;margin-bottom:var(--space-md);}
+
+.ti-title{
+  font-size:var(--font-size-subtitle);font-weight:bold;
+  color:var(--color-text-primary);line-height:1.3;
+}
+
+.ti-subtitle{
+  font-size:var(--font-size-caption);color:var(--color-primary);
+  margin-top:var(--space-xs);
+}
+
+.ti-grid{display:flex;flex-wrap:wrap;gap:var(--space-sm) 0;}
+
+.ti-cell{
+  width:50%;display:flex;flex-direction:column;
+  padding:var(--space-sm) 0;box-sizing:border-box;
+}
+
+.ti-cell .ti-label{
+  font-size:var(--font-size-caption);color:var(--color-text-hint);
+  margin-bottom:var(--space-xs);
+}
+
+.ti-cell .ti-value{
+  font-size:var(--font-size-body);color:var(--color-text-body);font-weight:600;
+}
+
+.ti-cell .ti-value.stock{color:var(--color-warning);}
+
+.ti-cell .ti-value.price{
+  color:var(--color-text-primary);font-family:var(--font-family-mono);
+}
+
+/* 库存列表折叠容器 */
+.stock-list-scroll{max-height:640rpx;overflow:hidden;position:relative;}
+
+.stock-list-scroll::after{
+  content:'';position:absolute;bottom:0;left:0;right:0;height:48rpx;
+  background:linear-gradient(transparent, var(--color-bg-card));
+  pointer-events:none;
+}
+
+.stock-list-scroll.expanded{max-height:none;}
+
+.stock-list-scroll.expanded::after{display:none;}
+
+.stock-list-scroll.no-limit{max-height:none;}
+
+.stock-list-scroll.no-limit::after{display:none;}
+
+.stock-fold-toggle{
+  text-align:center;padding:var(--space-md) 0;
+  font-size:var(--font-size-caption);color:var(--color-text-link);
+}
+
+/* 进价 + 单价 + 总金额三列对照 */
+.price-row{display:flex;gap:var(--space-sm);align-items:flex-end;margin-bottom:var(--space-base);}
+
+.price-cell{flex:1;min-width:0;}
+
+.price-cell.price-input{flex:1.2;}
+
+.ref-price{
+  display:flex;align-items:center;
+  min-height:var(--min-touch);padding:var(--space-md) var(--space-md);
+  font-size:var(--font-size-body-lg);font-weight:bold;
+  font-family:var(--font-family-mono);color:var(--color-text-hint);
+  background:var(--color-bg-input);border-radius:var(--radius-sm);
+  box-sizing:border-box;
+}
+
+.total-display{
+  display:flex;align-items:center;
+  min-height:var(--min-touch);padding:var(--space-md) var(--space-md);
+  font-size:var(--font-size-body-lg);font-weight:bold;
+  font-family:var(--font-family-mono);color:var(--color-primary);
+  background:var(--color-primary-light);border-radius:var(--radius-sm);
+  box-sizing:border-box;white-space:nowrap;
+}
+
+/* 出库类型切换（药丸风格） */
+.type-toggle{display:flex;gap:var(--space-md);}
+
+.type-btn{
+  flex:1;text-align:center;padding:var(--space-md);
+  border-radius:var(--radius-sm);font-size:var(--font-size-body);
+  background:var(--color-bg-input);color:var(--color-text-hint);
+  transition:all var(--transition-normal);
+}
+
+.type-btn.active{
+  background:var(--color-primary);color:var(--color-text-inverse);
+}
+
+/* 表单操作按钮 */
+.sf-buttons{display:flex;gap:var(--space-md);margin-top:var(--space-lg);}
+
+/* 手动输入弹窗 */
+.dialog-inp{
+  width:100%;background:var(--color-bg-input);
+  padding:var(--space-md) var(--space-base);border-radius:var(--radius-sm);
+  font-size:var(--font-size-body);color:var(--color-text-body);
+  box-sizing:border-box;margin-bottom:var(--space-md);
+  min-height:var(--min-touch);line-height:1.5;
+}
+
+.url-modal-hint{
+  display:block;font-size:var(--font-size-caption);
+  color:var(--color-text-secondary);text-align:center;
+  margin-bottom:var(--space-md);line-height:1.5;
+}
+
+.url-error{
+  display:block;font-size:var(--font-size-caption);
+  color:var(--color-danger);margin-bottom:var(--space-sm);
+  text-align:center;
+}
