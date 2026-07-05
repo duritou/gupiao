@@ -7,6 +7,7 @@ from src.explain.evidence_quality import (
     grader, archive_case, get_case, get_case_library_stats, get_research_coverage,
 )
 from src.explain.portfolio_intelligence import portfolio_intelligence
+from src.explain.committee import committee
 from src.shared.mock_data import STOCK_NAMES, generate_stock_pool, mock_signal_result
 
 router = APIRouter(tags=["decision"], prefix="/decision")
@@ -243,6 +244,28 @@ async def allocate_capital(cash_reserve: float = Query(20.0), risk: str = Query(
         candidates, cash_reserve_pct=cash_reserve, user_risk=risk,
     )
     return allocation.to_dict()
+
+
+# ================================================================
+# v10.0 Investment Committee
+# ================================================================
+
+@router.get("/committee/{code}")
+async def committee_evaluation(
+    code: str,
+    base_score: float = Query(70.0),
+    position_pct: float = Query(15.0, description="Current position % if held"),
+):
+    """Investment Committee — 5 AI analysts debate and vote."""
+    name = STOCK_NAMES.get(code, code)
+
+    decision = committee.evaluate(
+        stock_code=code, stock_name=name,
+        base_score=base_score,
+        portfolio_context={"position_pct": position_pct, "concentration_risk": 55, "volatility": 45},
+        user_history={"win_rate": 0.72, "trades": 5},
+    )
+    return decision.to_dict()
 
 
 @router.get("/compare")
