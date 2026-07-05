@@ -82,5 +82,47 @@ input:focus,select:focus{outline:none;border-color:#58a6ff}
 @keyframes dots{0%,20%{content:''}40%{content:'.'}60%{content:'..'}80%,100%{content:'...'}}
 .empty-state{text-align:center;padding:48px;color:#8b949e}
 .empty-state .icon{font-size:48px;margin-bottom:16px}
+/* Three-Column Layout (Research Page) */
+.research-layout{display:flex;height:calc(100vh - 90px);gap:0}
+.research-main{flex:1;display:flex;flex-direction:column;overflow:hidden;min-width:0}
+.research-ai-panel{width:320px;background:#111827;border-left:1px solid #1F2937;overflow-y:auto;padding:16px;flex-shrink:0}
+.research-ai-panel .ai-section{margin-bottom:16px}
+.chart-container{flex:1;min-height:400px;position:relative;background:#0B1220;border:1px solid #1F2937;border-radius:6px;overflow:hidden}
+.indicator-row{display:flex;gap:8px;padding:8px 0}
+.mini-charts{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;padding:12px 0}
+.mini-chart-card{background:#111827;border:1px solid #1F2937;border-radius:6px;padding:10px}
+.mini-chart-card .mini-title{font-size:10px;color:#9CA3AF;text-transform:uppercase;margin-bottom:4px}
+.mini-chart-card .mini-value{font-size:16px;font-weight:700}
+.mini-chart-card .mini-chart{height:40px;margin-top:4px}
+.stock-info-bar{display:flex;align-items:center;gap:16px;padding:12px 16px;background:#111827;border:1px solid #1F2937;border-radius:6px;margin-bottom:12px;flex-wrap:wrap}
+.stock-info-bar .si-name{font-size:18px;font-weight:700;color:#F3F4F6}
+.stock-info-bar .si-code{font-size:13px;color:#9CA3AF;font-family:JetBrains Mono,monospace}
+.stock-info-bar .si-price{font-size:22px;font-weight:700;font-family:JetBrains Mono,monospace}
+.stock-info-bar .si-change{font-size:14px;font-family:JetBrains Mono,monospace}
+.stock-info-bar .si-item{font-size:11px;color:#9CA3AF}
+.stock-info-bar .si-item span{color:#F3F4F6;font-family:JetBrains Mono,monospace}
+/* AI Panel Components */
+.ai-score-hero{text-align:center;padding:20px 0;border-bottom:1px solid #1F2937;margin-bottom:16px}
+.ai-score-hero .score-num{font-size:56px;font-weight:800;line-height:1}
+.ai-score-hero .score-stars{font-size:20px;color:#F59E0B;margin:8px 0}
+.ai-score-hero .score-rec{display:inline-block;padding:6px 20px;border-radius:9999px;font-size:14px;font-weight:600;margin-top:8px}
+.ai-score-hero .score-conf{font-size:11px;color:#9CA3AF;margin-top:6px}
+.ev-card{background:#0B1220;border:1px solid #1F2937;border-radius:6px;padding:10px 12px;margin-bottom:8px;border-left:3px solid #22C55E}
+.ev-card.warn{border-left-color:#F59E0B}
+.ev-card .ev-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:3px}
+.ev-card .ev-title{font-size:13px;font-weight:600}
+.ev-card .ev-cred{font-size:11px;font-family:JetBrains Mono,monospace}
+.ev-card .ev-desc{font-size:11px;color:#9CA3AF;margin-top:2px}
+.ev-card .ev-meta{font-size:10px;color:#6B7280;margin-top:4px}
+.ev-card .ev-bar{height:3px;background:#1F2937;border-radius:2px;margin-top:4px}
+.ev-card .ev-bar-fill{height:3px;border-radius:2px}
+/* Radar Placeholder */
+.radar-placeholder{width:160px;height:160px;margin:0 auto 16px;position:relative;display:flex;align-items:center;justify-content:center}
+.radar-placeholder svg{width:100%;height:100%}
+/* Period Selector */
+.period-selector{display:flex;gap:2px;padding:4px 0}
+.period-btn{padding:4px 10px;border:1px solid #1F2937;border-radius:4px;background:#0B1220;color:#9CA3AF;cursor:pointer;font-size:11px;font-family:JetBrains Mono,monospace}
+.period-btn:hover{color:#F3F4F6;border-color:#374151}
+.period-btn.active{color:#7C3AED;border-color:#7C3AED;background:#1A1030}
 </style>`;
 //# sourceMappingURL=constants.js.map
