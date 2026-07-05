@@ -253,3 +253,73 @@ def get_case_library_stats() -> dict:
         "oldest_case": _case_history[0].case_id if _case_history else "",
         "newest_case": _case_history[-1].case_id if _case_history else "",
     }
+
+
+def get_research_coverage() -> dict:
+    """AI Research Coverage — how much of the market has AI studied?"""
+    # Stock coverage
+    stocks_covered = set()
+    for c in _case_history:
+        stocks_covered.add(c.stock_code)
+
+    # By sector
+    by_sector: dict[str, dict] = {}
+    for c in _case_history:
+        sector = _guess_sector(c.stock_name) if hasattr(c, 'stock_name') else "综合"
+        if sector not in by_sector:
+            by_sector[sector] = {"total": 0, "correct": 0, "verified": 0}
+        by_sector[sector]["total"] += 1
+        if c.outcome_known:
+            by_sector[sector]["verified"] += 1
+            if c.was_correct:
+                by_sector[sector]["correct"] += 1
+
+    verified_cases = [c for c in _case_history if c.outcome_known]
+    total_verified = len(verified_cases)
+    total_correct = len([c for c in verified_cases if c.was_correct])
+
+    # Replay tracking
+    replayable = [c for c in _case_history if c.is_replayable]
+
+    return {
+        "total_cases": len(_case_history),
+        "stocks_covered": len(stocks_covered),
+        "total_stocks_market": 5432,  # Approximate total A-shares
+        "coverage_pct": round(len(stocks_covered) / 5432 * 100, 1),
+        "verified_cases": total_verified,
+        "correct_cases": total_correct,
+        "accuracy": round(total_correct / total_verified, 2) if total_verified else 0,
+        "replayable_cases": len(replayable),
+        "by_sector": {
+            s: {
+                "total": d["total"],
+                "verified": d["verified"],
+                "correct": d["correct"],
+                "accuracy": round(d["correct"] / d["verified"], 2) if d["verified"] else 0,
+            }
+            for s, d in sorted(by_sector.items(), key=lambda x: -x[1]["total"])
+        },
+        "by_grade": get_case_library_stats().get("by_grade", {}),
+        "latest_case": _case_history[-1].case_id if _case_history else "",
+        "oldest_case": _case_history[0].case_id if _case_history else "",
+        "summary": _coverage_summary(len(_case_history), len(stocks_covered), total_verified, total_correct),
+    }
+
+
+def _coverage_summary(total: int, stocks: int, verified: int, correct: int) -> str:
+    if total == 0:
+        return "Research Case Library is empty. Start analyzing to build coverage."
+    acc = f"准确率{correct/verified:.0%}" if verified > 0 else "待验证"
+    return (
+        f"AI已完成{total}个研究案例，覆盖{stocks}只股票。"
+        f"已验证{verified}个案例，{acc}。"
+    )
+
+
+def _guess_sector(name: str) -> str:
+    for kw, s in [("微", "半导体"), ("芯", "半导体"), ("光", "科技"), ("软", "科技"),
+                   ("酒", "消费"), ("药", "医药"), ("车", "汽车"),
+                   ("能源", "新能源"), ("银行", "金融")]:
+        if kw in name:
+            return s
+    return "综合"
