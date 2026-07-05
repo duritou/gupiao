@@ -16,6 +16,7 @@ export class TerminalNavProvider implements vscode.TreeDataProvider<vscode.TreeI
     getChildren(): vscode.TreeItem[] {
         return [
             navItem('Dashboard · 首页总览', 'quantai.dashboard', 'dashboard'),
+            navItem('Portfolio · 持仓中心', 'quantai.portfolio', 'account'),
             navItem('Watchlist · 自选股', 'quantai.watchlist', 'list-tree'),
             navItem('Market Map · 行业热力图', 'quantai.marketmap', 'graph'),
             navItem('Compare · 股票对比', 'quantai.compare', 'symbol-numeric'),

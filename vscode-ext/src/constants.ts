@@ -4,6 +4,7 @@ export const BASE_URL = 'http://127.0.0.1:8888/api/v1';
 
 export const NAV_ITEMS: { id: string; label: string }[] = [
     { id: 'dashboard', label: 'Dashboard' },
+    { id: 'portfolio', label: 'Portfolio' },
     { id: 'watchlist', label: 'Watchlist' },
     { id: 'marketmap', label: 'Market Map' },
     { id: 'compare', label: 'Compare' },
@@ -14,9 +15,9 @@ export const NAV_ITEMS: { id: string; label: string }[] = [
 ];
 
 export const PAGE_TITLES: Record<string, string> = {
-    dashboard: 'Dashboard', watchlist: 'Watchlist', marketmap: 'Market Map',
-    compare: 'Compare', timeline: 'Timeline', alerts: 'Alert Center',
-    backtest: 'Backtest', dailybrief: 'Daily Brief',
+    dashboard: 'Dashboard', portfolio: 'Portfolio', watchlist: 'Watchlist',
+    marketmap: 'Market Map', compare: 'Compare', timeline: 'Timeline',
+    alerts: 'Alert Center', backtest: 'Backtest', dailybrief: 'Daily Brief',
 };
 
 export const TERMINAL_CSS = `

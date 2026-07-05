@@ -16,6 +16,10 @@
   "contributes": {
     "commands": [
       {
+        "command": "quantai.portfolio",
+        "title": "AI Research: 持仓中心"
+      },
+      {
         "command": "quantai.dashboard",
         "title": "AI Research: Dashboard"
       },

@@ -19,9 +19,12 @@ from src.api.routes import (
     explain_routes,
 )
 
+# Portfolio routes — direct import
+from src.api.routes import portfolio_routes as portfolio_mod
+
 app = FastAPI(
     title="AI Research Terminal",
-    version="0.12.0",
+    version="0.13.0",
     description="AI 股票研究终端 — REST API",
 )
 
@@ -46,3 +49,4 @@ app.include_router(alerts_routes.router, prefix="/api/v1")
 app.include_router(dailybrief_routes.router, prefix="/api/v1")
 app.include_router(detail_routes.router, prefix="/api/v1")
 app.include_router(explain_routes.router, prefix="/api/v1")
+app.include_router(portfolio_mod.router, prefix="/api/v1")

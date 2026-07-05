@@ -13,6 +13,7 @@ import { buildBacktestPage } from './pages/backtest';
 import { buildDailyBriefPage } from './pages/dailybrief';
 import { buildComparePage } from './pages/compare';
 import { buildTimelinePage } from './pages/timeline';
+import { buildPortfolioPage } from './pages/portfolio';
 
 let serverProcess: cp.ChildProcess | null = null;
 let statusBar: vscode.StatusBarItem;
@@ -43,6 +44,7 @@ export function activate(context: vscode.ExtensionContext) {
         vscode.commands.registerCommand('quantai.dailybrief', () => showTerminal('dailybrief')),
         vscode.commands.registerCommand('quantai.compare', () => showTerminal('compare')),
         vscode.commands.registerCommand('quantai.timeline', () => showTerminal('timeline')),
+        vscode.commands.registerCommand('quantai.portfolio', () => showTerminal('portfolio')),
         vscode.commands.registerCommand('quantai.startServer', startServer),
         vscode.commands.registerCommand('quantai.stopServer', stopServer),
         vscode.commands.registerCommand('quantai.addWatch', addToWatchlist),
@@ -128,6 +130,10 @@ async function fetchPageData(page: string, extraData?: any): Promise<any> {
                 const brief = await httpGet('/dailybrief/latest').catch(() => null);
                 return { brief };
             }
+            case 'portfolio': {
+                const portfolio = await httpGet('/portfolio/overview').catch(() => null);
+                return { portfolio };
+            }
             case 'compare': return {};
             case 'timeline': {
                 const code = extraData?.code || '600519.SH';
@@ -147,6 +153,7 @@ function buildPage(page: string, data: any): string {
         case 'alerts': return buildAlertsPage(data);
         case 'backtest': return buildBacktestPage(data);
         case 'dailybrief': return buildDailyBriefPage(data);
+        case 'portfolio': return buildPortfolioPage(data);
         case 'compare': return buildComparePage(data);
         case 'timeline': return buildTimelinePage(data);
         default: return pageShell('dashboard', 'AI Research Terminal', '<div class="empty-state"><div class="icon">🤖</div><h2>AI Research Terminal</h2><p>选择一个页面开始</p></div>');

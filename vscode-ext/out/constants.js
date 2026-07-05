@@ -5,6 +5,7 @@ exports.TERMINAL_CSS = exports.PAGE_TITLES = exports.NAV_ITEMS = exports.BASE_UR
 exports.BASE_URL = 'http://127.0.0.1:8888/api/v1';
 exports.NAV_ITEMS = [
     { id: 'dashboard', label: 'Dashboard' },
+    { id: 'portfolio', label: 'Portfolio' },
     { id: 'watchlist', label: 'Watchlist' },
     { id: 'marketmap', label: 'Market Map' },
     { id: 'compare', label: 'Compare' },
@@ -14,9 +15,9 @@ exports.NAV_ITEMS = [
     { id: 'dailybrief', label: 'Daily Brief' },
 ];
 exports.PAGE_TITLES = {
-    dashboard: 'Dashboard', watchlist: 'Watchlist', marketmap: 'Market Map',
-    compare: 'Compare', timeline: 'Timeline', alerts: 'Alert Center',
-    backtest: 'Backtest', dailybrief: 'Daily Brief',
+    dashboard: 'Dashboard', portfolio: 'Portfolio', watchlist: 'Watchlist',
+    marketmap: 'Market Map', compare: 'Compare', timeline: 'Timeline',
+    alerts: 'Alert Center', backtest: 'Backtest', dailybrief: 'Daily Brief',
 };
 exports.TERMINAL_CSS = `
 <style>
