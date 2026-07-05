@@ -16,6 +16,7 @@ export class TerminalNavProvider implements vscode.TreeDataProvider<vscode.TreeI
     getChildren(): vscode.TreeItem[] {
         return [
             navItem('Dashboard · 首页总览', 'quantai.dashboard', 'dashboard'),
+            navItem('Decision Center · 决策中心', 'quantai.decisions', 'target'),
             navItem('Portfolio · 持仓中心', 'quantai.portfolio', 'account'),
             navItem('Watchlist · 自选股', 'quantai.watchlist', 'list-tree'),
             navItem('Decision Journal · 决策日志', 'quantai.journal', 'notebook'),

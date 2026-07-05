@@ -22,6 +22,7 @@ from src.api.routes import (
     ai_os_routes,
     replay_routes,
     knowledge_graph_routes,
+    decision_routes,
 )
 
 # Portfolio routes — direct import
@@ -60,5 +61,6 @@ app.include_router(user_routes.router, prefix="/api/v1")
 app.include_router(ai_os_routes.router, prefix="/api/v1")
 app.include_router(replay_routes.router, prefix="/api/v1")
 app.include_router(knowledge_graph_routes.router, prefix="/api/v1")
+app.include_router(decision_routes.router, prefix="/api/v1")
 app.include_router(portfolio_mod.router, prefix="/api/v1")
 app.include_router(morning_mod.router, prefix="/api/v1")
