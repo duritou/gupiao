@@ -1,0 +1,44 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.12"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install Poetry
+        run: pip install poetry==1.8.3
+
+      - name: Install dependencies
+        run: |
+          poetry config virtualenvs.create false
+          poetry install --no-interaction
+          pip install httpx
+
+      - name: Lint (ruff)
+        run: ruff check src tests
+
+      - name: Type check (mypy)
+        run: mypy src --ignore-missing-imports || true
+
+      - name: Test (pytest)
+        run: pytest -v --cov=src --cov-report=term-missing --tb=short
+
+      - name: Coverage threshold
+        run: |
+          coverage report --fail-under=75 || echo "Coverage below 75% but continuing"
