@@ -58,6 +58,7 @@ class TerminalNavProvider {
             navItem('Decision Journal · 决策日志', 'quantai.journal', 'notebook'),
             navItem('AI Resume · 信任档案', 'quantai.resume', 'verified'),
             navItem('AI Profile · 投资画像', 'quantai.profile', 'person'),
+            navItem('AI OS · 系统运行', 'quantai.aios', 'pulse'),
             navItem('', '', ''),
             navItem('Alert Center · 预警', 'quantai.alerts', 'bell'),
             navItem('Market Map · 行业热力图', 'quantai.marketmap', 'graph'),
