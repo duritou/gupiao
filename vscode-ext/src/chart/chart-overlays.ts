@@ -12,7 +12,7 @@ export const OVERLAYS_JS = `
 // ============================================================
 class BuySignalOverlay extends Overlay {
     constructor(signals) {
-        super('buysignals', 'AI Buy Signals');
+        super('buysignals', 'AI Buy Signals', PRIORITY.BUY_SELL);
         this.signals = signals || [];  // [{date, price, score, evidence:[]}]
     }
 
@@ -81,7 +81,7 @@ class BuySignalOverlay extends Overlay {
 // ============================================================
 class SellSignalOverlay extends Overlay {
     constructor(signals) {
-        super('sellsignals', 'AI Sell Signals');
+        super('sellsignals', 'AI Sell Signals', PRIORITY.BUY_SELL);
         this.signals = signals || [];
     }
 
@@ -139,7 +139,7 @@ class SellSignalOverlay extends Overlay {
 // ============================================================
 class SupportLineOverlay extends Overlay {
     constructor(lines) {
-        super('supportlines', 'Support Lines');
+        super('supportlines', 'Support Lines', PRIORITY.SUPPORT);
         this.lines = lines || [];  // [{price, label, confidence, reason}]
     }
 
@@ -194,7 +194,7 @@ class SupportLineOverlay extends Overlay {
 // ============================================================
 class AIRecommendationOverlay extends Overlay {
     constructor(recommendations) {
-        super('airec', 'AI Recommendations');
+        super('airec', 'AI Recommendations', PRIORITY.AI_REC);
         this.recommendations = recommendations || [];  // [{date, score, direction, reason}]
     }
 
@@ -248,7 +248,7 @@ class AIRecommendationOverlay extends Overlay {
 // ============================================================
 class BacktestTradeOverlay extends Overlay {
     constructor(trades) {
-        super('backtest', 'Backtest Trades');
+        super('backtest', 'Backtest Trades', PRIORITY.BACKTEST);
         this.trades = trades || [];  // [{entryDate, entryPrice, exitDate, exitPrice, profitPct, holdingDays}]
     }
 

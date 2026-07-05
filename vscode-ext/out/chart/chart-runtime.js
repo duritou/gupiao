@@ -135,11 +135,27 @@ class IndicatorRegistry {
 // ============================================================
 // 4. Overlay — rendered ON TOP of the main chart
 // ============================================================
+// Priority layers
+const PRIORITY = {
+    BACKGROUND: 20,
+    PATTERN: 30,
+    NEWS: 40,
+    BACKTEST: 50,
+    SUPPORT: 60,
+    BUY_SELL: 70,
+    AI_REC: 80,
+    TOOLTIP: 90,
+    CROSSHAIR: 100,
+};
+
 class Overlay {
-    constructor(id, label) {
+    constructor(id, label, priority = 50) {
         this.id = id;
         this.label = label;
         this.visible = true;
+        this.priority = priority;
+        this.opacity = 1.0;
+        this.interactive = true;
     }
     /** Render overlay on main chart area */
     render(ctx, chart, data, startIdx, endIdx, xScale, yScale, chartX, chartY, chartW, chartH) {}
@@ -164,15 +180,20 @@ class OverlayManager {
     }
     getAll() { return [...this._overlays]; }
     getVisible() { return this._overlays.filter(o => o.visible); }
-    /** Render all visible overlays */
+    /** Render all visible overlays, sorted by priority (lowest = behind) */
     render(ctx, chart, data, startIdx, endIdx, xScale, yScale, chartX, chartY, chartW, chartH) {
-        for (const o of this.getVisible()) {
+        const sorted = this.getVisible().sort((a, b) => a.priority - b.priority);
+        for (const o of sorted) {
+            ctx.globalAlpha = o.opacity;
             o.render(ctx, chart, data, startIdx, endIdx, xScale, yScale, chartX, chartY, chartW, chartH);
+            ctx.globalAlpha = 1.0;
         }
     }
-    /** Hit test all overlays, return first hit */
+    /** Hit test all overlays (highest priority first), skip non-interactive */
     hitTest(mx, my, chart, data, startIdx, endIdx, xScale, yScale) {
-        for (const o of this.getVisible()) {
+        const sorted = this.getVisible().sort((a, b) => b.priority - a.priority);
+        for (const o of sorted) {
+            if (!o.interactive) continue;
             const hit = o.hitTest(mx, my, chart, data, startIdx, endIdx, xScale, yScale);
             if (hit) return hit;
         }
@@ -181,7 +202,121 @@ class OverlayManager {
 }
 
 // ============================================================
-// 5. ChartPanel — one indicator's visual output
+// 5. Evidence — any system can emit, Chart renders via Overlay
+// ============================================================
+class Evidence {
+    constructor(opts = {}) {
+        this.id = opts.id || ('ev_' + Math.random().toString(36).slice(2, 8));
+        this.type = opts.type || 'event';        // 'buy_signal','sell_signal','support','resistance','news','earnings','backtest','ai_rec'
+        this.date = opts.date || '';             // ISO date matching bar data
+        this.price = opts.price || 0;
+        this.score = opts.score || 0;            // 0-100 relevance
+        this.confidence = opts.confidence || 0;  // 0-1
+        this.title = opts.title || '';
+        this.description = opts.description || '';
+        this.source = opts.source || [];         // ['signal:macd', 'knowledge:semiconductor', 'ai:analyst']
+        this.detail = opts.detail || {};         // Extra structured data
+    }
+
+    /** Convert to overlay based on type */
+    toOverlay() {
+        switch (this.type) {
+            case 'buy_signal':
+                return new BuySignalOverlay([{
+                    date: this.date, price: this.price, score: this.score,
+                    evidence: this._buildEvidence(),
+                }]);
+            case 'sell_signal':
+                return new SellSignalOverlay([{
+                    date: this.date, price: this.price, score: this.score,
+                }]);
+            case 'support':
+                return new SupportLineOverlay([{
+                    price: this.price, label: this.title || 'S',
+                    confidence: this.confidence, reason: this.description,
+                }]);
+            case 'resistance':
+                return new SupportLineOverlay([{
+                    price: this.price, label: this.title || 'R',
+                    confidence: this.confidence, reason: this.description,
+                }]);
+            case 'ai_rec':
+                return new AIRecommendationOverlay([{
+                    date: this.date, score: this.score,
+                    direction: this.score >= 60 ? 'buy' : 'sell',
+                    reason: this.description,
+                }]);
+            case 'backtest':
+                return new BacktestTradeOverlay([{
+                    entryDate: this.detail.entryDate, entryPrice: this.detail.entryPrice,
+                    exitDate: this.detail.exitDate, exitPrice: this.detail.exitPrice,
+                    profitPct: this.detail.profitPct, holdingDays: this.detail.holdingDays,
+                }]);
+            default:
+                return null;
+        }
+    }
+
+    _buildEvidence() {
+        return this.source.map(s => {
+            const [src, name] = s.split(':');
+            return { icon: src === 'signal' ? 'check' : 'star', title: name,
+                     credibility: this.confidence, source: s };
+        });
+    }
+}
+
+/** EvidenceBus: any system (AI, backtest, scanner) emits Evidence here */
+class EvidenceBus {
+    constructor() {
+        this._evidence = [];
+        this._listeners = [];
+    }
+
+    /** Emit new evidence */
+    emit(evidence) {
+        this._evidence.push(evidence);
+        this._notify('add', evidence);
+    }
+
+    /** Emit batch */
+    emitBatch(evidenceList) {
+        for (const e of evidenceList) this._evidence.push(e);
+        this._notify('batch', evidenceList);
+    }
+
+    /** Get all evidence in date range */
+    getRange(startDate, endDate) {
+        return this._evidence.filter(e => e.date >= startDate && e.date <= endDate);
+    }
+
+    /** Get evidence for a specific date */
+    getByDate(date) {
+        return this._evidence.filter(e => e.date === date);
+    }
+
+    /** Get all evidence sorted by date */
+    getAll() { return [...this._evidence].sort((a, b) => a.date.localeCompare(b.date)); }
+
+    /** Get evidence count by type */
+    getTypeCounts() {
+        const counts = {};
+        for (const e of this._evidence) { counts[e.type] = (counts[e.type] || 0) + 1; }
+        return counts;
+    }
+
+    /** Subscribe to evidence events */
+    on(event, callback) { this._listeners.push({event, callback}); }
+    _notify(event, data) {
+        for (const l of this._listeners) { if (l.event === event) l.callback(data); }
+    }
+
+    clear() { this._evidence = []; }
+    get length() { return this._evidence.length; }
+}
+
+// ============================================================
+// 6. ChartPanel
 // ============================================================
 class ChartPanel {
     constructor(id, ratio) {
@@ -484,6 +619,7 @@ class ChartRuntime {
         this.feed = options.dataFeed || new StaticFeed([]);
         this.indicators = new IndicatorRegistry();
         this.overlays = new OverlayManager();
+        this.evidence = options.evidenceBus || new EvidenceBus();
         this._legendEl = null;
     }
 
@@ -597,16 +733,46 @@ class ChartRuntime {
         this._recomputePanels();
         this.engine.render(this.overlays);
     }
+
+    /** Emit evidence and auto-render as overlay */
+    emitEvidence(ev) {
+        this.evidence.emit(ev);
+        const overlay = ev.toOverlay();
+        if (overlay) { this.overlays.add(overlay); this.engine.render(this.overlays); }
+    }
+
+    /** Emit batch evidence → overlays */
+    emitEvidenceBatch(evidenceList) {
+        this.evidence.emitBatch(evidenceList);
+        for (const ev of evidenceList) {
+            const overlay = ev.toOverlay();
+            if (overlay) this.overlays.add(overlay);
+        }
+        this.engine.render(this.overlays);
+    }
+
+    /** Sync: rebuild overlays from all evidence */
+    syncOverlaysFromEvidence() {
+        this.overlays.clear();
+        for (const ev of this.evidence.getAll()) {
+            const overlay = ev.toOverlay();
+            if (overlay) this.overlays.add(overlay);
+        }
+        this.engine.render(this.overlays);
+    }
 }
 
 // Export
 window.C = C;
+window.PRIORITY = PRIORITY;
 window.DataFeed = DataFeed;
 window.StaticFeed = StaticFeed;
 window.Indicator = Indicator;
 window.IndicatorRegistry = IndicatorRegistry;
 window.Overlay = Overlay;
 window.OverlayManager = OverlayManager;
+window.Evidence = Evidence;
+window.EvidenceBus = EvidenceBus;
 window.ChartPanel = ChartPanel;
 window.ChartEngine = ChartEngine;
 window.ChartRuntime = ChartRuntime;

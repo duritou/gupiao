@@ -3,6 +3,7 @@
 import { CHART_RUNTIME_JS } from '../chart/chart-runtime';
 import { INDICATORS_JS } from '../chart/chart-indicators';
 import { OVERLAYS_JS } from '../chart/chart-overlays';
+import { TIMELINE_JS } from '../chart/chart-timeline';
 
 export function buildResearchPage(code: string, detail: any): string {
     const d = detail || {};
@@ -119,6 +120,9 @@ body{font-family:'Segoe UI',system-ui,-apple-system,sans-serif;background:#0B122
 <!-- K-Line Chart -->
 <div class="chart-container" id="kline-chart-container"></div>
 
+<!-- Research Timeline -->
+<div id="research-timeline" style="height:44px;flex-shrink:0;margin-top:4px"></div>
+
 </div>
 
 <!-- RIGHT: AI Panel -->
@@ -130,6 +134,11 @@ body{font-family:'Segoe UI',system-ui,-apple-system,sans-serif;background:#0B122
 <div class="score-num ${sc}">${(d.ai_score || 50).toFixed(0)}</div>
 <div class="score-rec" style="background:${recColor}22;color:${recColor};border:1px solid ${recColor}44">${d.recommendation || '观望'}</div>
 <div class="score-conf">置信度 ${((d.confidence || 0) * 100).toFixed(0)}% · ${d.buy_signals || 0}看多/${d.sell_signals || 0}看空</div>
+</div>
+
+<!-- Timeline Context (populated when clicking timeline markers) -->
+<div id="timeline-context" class="ai-section" style="display:none;background:#1A1030;border:1px solid #4C1D95;border-radius:6px;padding:10px 12px;margin-bottom:12px">
+<div style="font-size:10px;color:#A78BFA;margin-bottom:4px">📅 点击时间线事件查看详情</div>
 </div>
 
 <!-- Evidence Chain -->
@@ -203,8 +212,9 @@ ${news.slice(0, 3).map((n: any) => `
 ${CHART_RUNTIME_JS}
 ${INDICATORS_JS}
 ${OVERLAYS_JS}
+${TIMELINE_JS}
 
-// Initialize Chart Runtime
+// Initialize Chart Runtime + Timeline
 (async function() {
     const container = document.getElementById('kline-chart-container');
     if (!container) return;
@@ -229,39 +239,86 @@ ${OVERLAYS_JS}
 
         window._runtime = runtime;
 
-        // Demo: add AI buy signal overlay
+        // Initialize Timeline
+        const timeline = new ResearchTimeline('research-timeline', runtime);
+        window._timeline = timeline;
+
+        // Timeline click → update right panel context
+        timeline.onClick = function(ev) {
+            // Show evidence context in AI panel
+            const ctxEl = document.getElementById('timeline-context');
+            if (ctxEl) {
+                const color = TIMELINE_COLORS[ev.type] || '#9CA3AF';
+                let html = '<div style="font-size:12px;font-weight:600;color:' + color + ';margin-bottom:4px">' + ev.date + '</div>';
+                html += '<div style="font-size:13px;font-weight:700">' + (ev.title || ev.type) + '</div>';
+                if (ev.description) html += '<div style="font-size:11px;color:#9CA3AF;margin-top:4px">' + ev.description + '</div>';
+                if (ev.score > 0) html += '<div style="font-size:11px;margin-top:4px">Score <span style="color:' + color + '">' + ev.score.toFixed(0) + '</span></div>';
+                if (ev.confidence > 0) html += '<div style="font-size:11px;color:#9CA3AF">Confidence ' + (ev.confidence * 100).toFixed(0) + '%</div>';
+                if (ev.source && ev.source.length) {
+                    html += '<div style="margin-top:6px;border-top:1px solid #1F2937;padding-top:4px;font-size:10px;color:#58a6ff">' + ev.source.join(' · ') + '</div>';
+                }
+                ctxEl.innerHTML = html;
+                ctxEl.style.display = 'block';
+            }
+            // Also update indicator values in AI panel for this date
+            if (runtime.engine.data.length > 0) {
+                const idx = runtime.engine.data.findIndex(d => d.date >= ev.date);
+                if (idx >= 0) {
+                    runtime.engine._updateTooltip(idx);
+                }
+            }
+        };
+
+        // Demo: emit evidence through EvidenceBus
         window.addAIDemo = function() {
-            const price = klineData.length > 20 ? klineData[Math.floor(klineData.length * 0.6)].low : klineData[0].low;
-            runtime.addOverlay(new BuySignalOverlay([{
-                date: klineData[Math.floor(klineData.length * 0.6)].date,
-                price: price,
-                score: 92,
-                evidence: [
-                    {icon:'check', title:'MACD金叉', credibility:0.95},
-                    {icon:'check', title:'MA多头排列', credibility:0.88},
-                    {icon:'star', title:'半导体景气上行', credibility:0.82},
-                ]
-            }]));
-            runtime.addOverlay(new BuySignalOverlay([{
-                date: klineData[Math.floor(klineData.length * 0.8)].date,
-                price: klineData[Math.floor(klineData.length * 0.8)].low,
-                score: 87,
-                evidence: [
-                    {icon:'check', title:'RSI超卖反弹', credibility:0.85},
-                    {icon:'check', title:'放量突破', credibility:0.80},
-                ]
-            }]));
-            runtime.addOverlay(new SupportLineOverlay([{
-                price: klineData[Math.floor(klineData.length * 0.3)].low,
-                label: 'S1',
-                confidence: 0.88,
-                reason: '过去三次触及反弹'
-            }]));
-            runtime.addOverlay(new AIRecommendationOverlay([{
-                date: klineData[Math.floor(klineData.length * 0.75)].date,
-                score: 91, direction: 'buy',
-                reason: '多指标共振 + 行业景气'
-            }]));
+            const d = klineData;
+            // Buy signal evidence
+            runtime.emitEvidence(new Evidence({
+                type: 'buy_signal', date: d[Math.floor(d.length * 0.55)].date,
+                price: d[Math.floor(d.length * 0.55)].low, score: 92, confidence: 0.89,
+                title: 'MACD金叉 + MA多头', description: '多指标共振看多',
+                source: ['signal:macd', 'signal:ma', 'knowledge:semiconductor'],
+            }));
+            runtime.emitEvidence(new Evidence({
+                type: 'buy_signal', date: d[Math.floor(d.length * 0.72)].date,
+                price: d[Math.floor(d.length * 0.72)].low, score: 87, confidence: 0.85,
+                title: 'RSI超卖反弹', description: 'RSI跌至30后反弹',
+                source: ['signal:rsi', 'signal:volume'],
+            }));
+            // Support line evidence
+            runtime.emitEvidence(new Evidence({
+                type: 'support', date: d[Math.floor(d.length * 0.30)].date,
+                price: d[Math.floor(d.length * 0.30)].low, confidence: 0.88,
+                title: 'S1', description: '过去三次触及反弹',
+                source: ['ai:analyst', 'backtest:regression'],
+            }));
+            // AI Recommendation
+            runtime.emitEvidence(new Evidence({
+                type: 'ai_rec', date: d[Math.floor(d.length * 0.68)].date,
+                score: 91, confidence: 0.87,
+                title: 'AI强烈关注', description: '多指标共振 + 行业景气上行',
+                source: ['ai:analyst', 'knowledge:semiconductor', 'signal:macd'],
+            }));
+            // Backtest trade
+            runtime.emitEvidence(new Evidence({
+                type: 'backtest', date: d[Math.floor(d.length * 0.45)].date,
+                confidence: 0.80, title: '回测交易 +18.3%',
+                detail: {
+                    entryDate: d[Math.floor(d.length * 0.45)].date,
+                    entryPrice: d[Math.floor(d.length * 0.45)].close,
+                    exitDate: d[Math.floor(d.length * 0.62)].date,
+                    exitPrice: d[Math.floor(d.length * 0.62)].close,
+                    profitPct: 18.3, holdingDays: 35,
+                },
+            }));
+            // News event
+            runtime.emitEvidence(new Evidence({
+                type: 'news', date: d[Math.floor(d.length * 0.52)].date,
+                confidence: 0.70, title: 'Q3业绩超预期',
+                description: '营收增长35%，利润增长42%',
+                source: ['news:earnings'],
+            }));
+            timeline.render();
         };
 
         // Period switcher
@@ -269,8 +326,7 @@ ${OVERLAYS_JS}
             btn.addEventListener('click', function() {
                 document.querySelectorAll('.period-btn').forEach(b => b.classList.remove('active'));
                 this.classList.add('active');
-                const days = parseInt(this.dataset.days);
-                runtime.setPeriod(days);
+                runtime.setPeriod(parseInt(this.dataset.days));
             });
         });
     }, 100);
