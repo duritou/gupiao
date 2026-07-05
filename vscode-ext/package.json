@@ -1,0 +1,82 @@
+{
+  "name": "quantai-research-terminal",
+  "displayName": "AI Research Terminal",
+  "description": "AI 股票研究终端 — Scanner / Signals / Research / Backtest",
+  "version": "1.0.0",
+  "publisher": "quantai",
+  "icon": "icon.png",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "quantai.scan",
+        "title": "AI Research: 全市场扫描"
+      },
+      {
+        "command": "quantai.analyze",
+        "title": "AI Research: 分析股票"
+      },
+      {
+        "command": "quantai.research",
+        "title": "AI Research: 运行研究管线"
+      },
+      {
+        "command": "quantai.backtest",
+        "title": "AI Research: 运行回测"
+      },
+      {
+        "command": "quantai.knowledge",
+        "title": "AI Research: 搜索知识库"
+      },
+      {
+        "command": "quantai.status",
+        "title": "AI Research: 系统状态"
+      },
+      {
+        "command": "quantai.startServer",
+        "title": "AI Research: 启动后端服务"
+      },
+      {
+        "command": "quantai.stopServer",
+        "title": "AI Research: 停止后端服务"
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "quantai-sidebar",
+          "title": "AI Research Terminal",
+          "icon": "$(graph-line)"
+        }
+      ]
+    },
+    "views": {
+      "quantai-sidebar": [
+        {
+          "id": "quantai-actions",
+          "name": "快捷操作"
+        },
+        {
+          "id": "quantai-status",
+          "name": "系统状态"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.0",
+    "@types/vscode": "^1.85.0",
+    "typescript": "^5.3.0"
+  }
+}
