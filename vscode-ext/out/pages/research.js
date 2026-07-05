@@ -1,8 +1,10 @@
 "use strict";
-/** Research Page v3.0 — Three-column layout with TradingView-style K-line + AI Panel. */
+/** Research Page v3.1 — Chart Runtime: DataFeed + Indicator Registry + Overlay System. */
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.buildResearchPage = buildResearchPage;
-const kline_chart_1 = require("../chart/kline-chart");
+const chart_runtime_1 = require("../chart/chart-runtime");
+const chart_indicators_1 = require("../chart/chart-indicators");
+const chart_overlays_1 = require("../chart/chart-overlays");
 function buildResearchPage(code, detail) {
     const d = detail || {};
     const evidence = d.evidence || [];
@@ -105,10 +107,12 @@ body{font-family:'Segoe UI',system-ui,-apple-system,sans-serif;background:#0B122
 <button class="period-btn" data-days="120">半年</button>
 <button class="period-btn" data-days="250">1年</button>
 <span style="flex:1"></span>
-<button class="period-btn" onclick="window.klineChart&&klineChart.togglePanel('macd')" style="color:#3B82F6">MACD</button>
-<button class="period-btn" onclick="window.klineChart&&klineChart.togglePanel('rsi')" style="color:#A78BFA">RSI</button>
-<button class="period-btn" onclick="window.klineChart&&klineChart.togglePanel('kdj')" style="color:#F59E0B">KDJ</button>
-<button class="period-btn" onclick="window.klineChart&&klineChart.togglePanel('volume')" style="color:#9CA3AF">VOL</button>
+<button class="period-btn" id="btn-macd" onclick="window._runtime&&_runtime.toggle('macd')" style="color:#3B82F6">MACD</button>
+<button class="period-btn" id="btn-rsi" onclick="window._runtime&&_runtime.toggle('rsi')" style="color:#A78BFA">RSI</button>
+<button class="period-btn" id="btn-kdj" onclick="window._runtime&&_runtime.toggle('kdj')" style="color:#F59E0B">KDJ</button>
+<button class="period-btn" id="btn-vol" onclick="window._runtime&&_runtime.toggle('volume')" style="color:#9CA3AF">VOL</button>
+<span style="flex:1"></span>
+<button class="period-btn" style="color:#7C3AED" onclick="addAIDemo()">+ AI</button>
 </div>
 
 <!-- K-Line Chart -->
@@ -201,25 +205,69 @@ ${news.slice(0, 3).map((n) => `
 
 <!-- K-Line Chart Script -->
 <script>
-${kline_chart_1.KLINE_CHART_JS}
+${chart_runtime_1.CHART_RUNTIME_JS}
+${chart_indicators_1.INDICATORS_JS}
+${chart_overlays_1.OVERLAYS_JS}
 
-// Initialize chart
-(function() {
+// Initialize Chart Runtime
+(async function() {
     const container = document.getElementById('kline-chart-container');
     if (!container) return;
 
     const klineData = ${JSON.stringify(klineData)};
 
-    setTimeout(() => {
-        const chart = new KLineChart('kline-chart-container', klineData);
-        window.klineChart = chart;
+    setTimeout(async () => {
+        // Create runtime
+        const runtime = new ChartRuntime('kline-chart-container', {
+            dataFeed: new StaticFeed(klineData),
+        });
 
-        // Resize observer
-        if (window.ResizeObserver) {
-            new ResizeObserver(() => {
-                if (window.klineChart) { window.klineChart.resize(); window.klineChart.render(); }
-            }).observe(container);
-        }
+        // Register all default indicators
+        runtime.registerIndicator(new MainIndicator());
+        runtime.registerIndicator(new VolumeIndicator());
+        runtime.registerIndicator(new MACDIndicator());
+        runtime.registerIndicator(new RSIIndicator());
+        runtime.registerIndicator(new KDJIndicator());
+
+        // Init (computes panels, sets data, renders)
+        await runtime.init();
+
+        window._runtime = runtime;
+
+        // Demo: add AI buy signal overlay
+        window.addAIDemo = function() {
+            const price = klineData.length > 20 ? klineData[Math.floor(klineData.length * 0.6)].low : klineData[0].low;
+            runtime.addOverlay(new BuySignalOverlay([{
+                date: klineData[Math.floor(klineData.length * 0.6)].date,
+                price: price,
+                score: 92,
+                evidence: [
+                    {icon:'check', title:'MACD金叉', credibility:0.95},
+                    {icon:'check', title:'MA多头排列', credibility:0.88},
+                    {icon:'star', title:'半导体景气上行', credibility:0.82},
+                ]
+            }]));
+            runtime.addOverlay(new BuySignalOverlay([{
+                date: klineData[Math.floor(klineData.length * 0.8)].date,
+                price: klineData[Math.floor(klineData.length * 0.8)].low,
+                score: 87,
+                evidence: [
+                    {icon:'check', title:'RSI超卖反弹', credibility:0.85},
+                    {icon:'check', title:'放量突破', credibility:0.80},
+                ]
+            }]));
+            runtime.addOverlay(new SupportLineOverlay([{
+                price: klineData[Math.floor(klineData.length * 0.3)].low,
+                label: 'S1',
+                confidence: 0.88,
+                reason: '过去三次触及反弹'
+            }]));
+            runtime.addOverlay(new AIRecommendationOverlay([{
+                date: klineData[Math.floor(klineData.length * 0.75)].date,
+                score: 91, direction: 'buy',
+                reason: '多指标共振 + 行业景气'
+            }]));
+        };
 
         // Period switcher
         document.querySelectorAll('.period-btn[data-days]').forEach(btn => {
@@ -227,7 +275,7 @@ ${kline_chart_1.KLINE_CHART_JS}
                 document.querySelectorAll('.period-btn').forEach(b => b.classList.remove('active'));
                 this.classList.add('active');
                 const days = parseInt(this.dataset.days);
-                if (window.klineChart) window.klineChart.setPeriod(days);
+                runtime.setPeriod(days);
             });
         });
     }, 100);
