@@ -1,8 +1,9 @@
 """Market routes — v7.4: real data with provenance."""
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Query
 
 from src.infrastructure.market_data.source_manager import source_manager
+from src.infrastructure.market_data.registry import get_source_summary, get_sources_by_layer
 
 router = APIRouter(tags=["market"], prefix="/market")
 
@@ -106,6 +107,29 @@ async def data_quality():
 async def data_feeds():
     """List all registered data feeds with their sources and fields."""
     return {"feeds": source_manager.get_feeds()}
+
+
+@router.get("/registry")
+async def data_registry(layer: str = Query("", description="Filter: market/exchange/disclosure/news/macro/industry/company")):
+    """Complete data source registry — all 30+ sources across 7 layers."""
+    if layer:
+        sources = get_sources_by_layer(layer)
+        return {
+            "layer": layer,
+            "sources": [
+                {
+                    "id": s.id, "name": s.name, "name_en": s.name_en,
+                    "url": s.url, "tier": s.tier.value, "category": s.category,
+                    "provides": s.provides, "update_frequency": s.update_frequency,
+                    "base_trust": s.base_trust, "is_free": s.is_free,
+                    "requires_auth": s.requires_auth,
+                    "integration_status": s.integration_status,
+                    "notes": s.notes,
+                }
+                for s in sources
+            ],
+        }
+    return get_source_summary()
 
 
 @router.get("/system-health")
