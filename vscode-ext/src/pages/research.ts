@@ -98,18 +98,18 @@ body{font-family:'Segoe UI',system-ui,-apple-system,sans-serif;background:#0B122
 <span class="si-item">换手 <span>${(Math.random() * 5 + 1).toFixed(1)}%</span></span>
 </div>
 
-<!-- Period + Indicator Toggles -->
+<!-- Period + Panel Toggles -->
 <div class="indicator-row">
-<button class="period-btn active">日K</button>
-<button class="period-btn">周K</button>
-<button class="period-btn">月K</button>
-<button class="period-btn">半年</button>
-<button class="period-btn">1年</button>
+<button class="period-btn active" data-days="80">日K</button>
+<button class="period-btn" data-days="50">周K</button>
+<button class="period-btn" data-days="24">月K</button>
+<button class="period-btn" data-days="120">半年</button>
+<button class="period-btn" data-days="250">1年</button>
 <span style="flex:1"></span>
-<span style="font-size:11px;color:#F59E0B;font-family:monospace">MA5</span>
-<span style="font-size:11px;color:#3B82F6;font-family:monospace">MA10</span>
-<span style="font-size:11px;color:#A78BFA;font-family:monospace">MA20</span>
-<span style="font-size:11px;color:#F97316;font-family:monospace">MA60</span>
+<button class="period-btn" onclick="window.klineChart&&klineChart.togglePanel('macd')" style="color:#3B82F6">MACD</button>
+<button class="period-btn" onclick="window.klineChart&&klineChart.togglePanel('rsi')" style="color:#A78BFA">RSI</button>
+<button class="period-btn" onclick="window.klineChart&&klineChart.togglePanel('kdj')" style="color:#F59E0B">KDJ</button>
+<button class="period-btn" onclick="window.klineChart&&klineChart.togglePanel('volume')" style="color:#9CA3AF">VOL</button>
 </div>
 
 <!-- K-Line Chart -->
@@ -205,26 +205,24 @@ ${KLINE_CHART_JS}
 
     const klineData = ${JSON.stringify(klineData)};
 
-    // Wait for container to have dimensions
     setTimeout(() => {
         const chart = new KLineChart('kline-chart-container', klineData);
         window.klineChart = chart;
 
-        // Observe container resize
+        // Resize observer
         if (window.ResizeObserver) {
             new ResizeObserver(() => {
-                if (window.klineChart) {
-                    window.klineChart.resize();
-                    window.klineChart.render();
-                }
+                if (window.klineChart) { window.klineChart.resize(); window.klineChart.render(); }
             }).observe(container);
         }
 
         // Period switcher
-        document.querySelectorAll('.period-btn').forEach(btn => {
+        document.querySelectorAll('.period-btn[data-days]').forEach(btn => {
             btn.addEventListener('click', function() {
                 document.querySelectorAll('.period-btn').forEach(b => b.classList.remove('active'));
                 this.classList.add('active');
+                const days = parseInt(this.dataset.days);
+                if (window.klineChart) window.klineChart.setPeriod(days);
             });
         });
     }, 100);
