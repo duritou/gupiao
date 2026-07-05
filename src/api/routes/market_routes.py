@@ -92,6 +92,12 @@ async def data_quality():
     }
 
 
+@router.get("/feeds")
+async def data_feeds():
+    """List all registered data feeds with their sources and fields."""
+    return {"feeds": source_manager.get_feeds()}
+
+
 @router.get("/system-health")
 async def system_health():
     """Complete system health check."""

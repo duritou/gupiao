@@ -24,6 +24,12 @@ from datetime import datetime, timedelta
 from enum import Enum
 from typing import Any, Callable
 
+from src.infrastructure.market_data.fusion import (
+    fusion as data_fusion,
+    STANDARD_FEEDS,
+    SourceReading,
+)
+
 
 # ================================================================
 # Data Provenance — the truth label on every data point
@@ -607,6 +613,44 @@ class SourceManager:
                 is_live=False, trust_score=0.0,
                 error_message=f"AkShare 涨跌统计获取失败: {str(e)[:100]}",
             )
+
+
+    # ================================================================
+    # Data Feed Management
+    # ================================================================
+
+    def get_feeds(self) -> list[dict]:
+        """Return all registered data feed definitions."""
+        return [
+            {
+                "name": f.name, "category": f.category,
+                "frequency": f.frequency,
+                "primary_source": f.primary_source,
+                "backup_sources": f.backup_sources,
+                "fields": f.fields,
+                "cache_ttl_seconds": f.cache_ttl_seconds,
+            }
+            for f in STANDARD_FEEDS.values()
+        ]
+
+    async def fuse_price(self, symbol: str, akshare_price: float | None) -> dict:
+        """Fuse price from multiple sources with disagreement detection.
+
+        Currently uses AkShare as primary. When Tushare/BaoStock are
+        configured, they will be included for cross-verification.
+        """
+        readings = [
+            SourceReading(
+                source_name="akshare", field_name="price",
+                value=akshare_price if akshare_price is not None else 0,
+                is_available=akshare_price is not None,
+            )
+        ]
+
+        # If other providers are configured, add their readings
+        # (placeholder for Tushare/BaoStock integration)
+        result = data_fusion.fuse("price", symbol, readings)
+        return result.to_dict()
 
 
 # Singleton
