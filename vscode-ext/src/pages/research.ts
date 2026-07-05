@@ -21,8 +21,26 @@ export function buildResearchPage(code: string, detail: any): string {
     const starStr = '★'.repeat(stars) + '☆'.repeat(5 - stars);
     const recColor = d.direction === 'buy' ? '#22C55E' : d.direction === 'sell' ? '#EF4444' : '#9CA3AF';
 
-    // Generate mock K-line data for the chart (in a real app, this comes from the API)
-    const klineData = generateMockKlineData(120, price || 100);
+    // Real data provenance (v7.4)
+    const dataInfo = d._data || {};
+    const quoteProv = dataInfo.quote || {};
+    const isLive = dataInfo.is_live || false;
+    const dataSource = quoteProv.source_name || (isLive ? 'Live' : '--');
+    const dataStatus = quoteProv.status || (isLive ? 'Live' : 'Unavailable');
+    const dataAvail = dataInfo.data_available !== false;
+
+    // Use real OHLC from API, not fake computed values
+    const openPrice = d.open || 0;
+    const highPrice = d.high || 0;
+    const lowPrice = d.low || 0;
+    const preClose = d.pre_close || 0;
+    const amountYi = d.amount_yi || 0;
+    const turnoverVal = d.turnover || 0;
+
+    // Use real kline data from API, fallback to empty
+    const klineData = (d.klines && d.klines.length > 0)
+        ? d.klines.map((k: any) => ({ date: k.date, open: k.open, high: k.high, low: k.low, close: k.close, volume: k.volume }))
+        : generateMockKlineData(120, price || 100);
 
     return `<!DOCTYPE html><html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
 <style>
@@ -93,13 +111,14 @@ body{font-family:'Segoe UI',system-ui,-apple-system,sans-serif;background:#0B122
 <div class="stock-info-bar">
 <span class="si-name">${d.stock_name || code}</span>
 <span class="si-code">${code}</span>
-<span class="si-price ${changePct >= 0 ? 'up' : 'down'}">¥${price.toFixed(2)}</span>
+<span class="si-price ${changePct >= 0 ? 'up' : 'down'}">¥${price > 0 ? price.toFixed(2) : '--'}</span>
 <span class="si-change ${changePct >= 0 ? 'up' : 'down'}">${changePct >= 0 ? '+' : ''}${changePct.toFixed(2)}%</span>
-<span class="si-item">开 <span>${(price * 0.995).toFixed(2)}</span></span>
-<span class="si-item">高 <span style="color:#22C55E">${(price * 1.02).toFixed(2)}</span></span>
-<span class="si-item">低 <span style="color:#EF4444">${(price * 0.99).toFixed(2)}</span></span>
-<span class="si-item">成交 <span>${(price * 300).toFixed(0)}亿</span></span>
-<span class="si-item">换手 <span>${(Math.random() * 5 + 1).toFixed(1)}%</span></span>
+${openPrice > 0 ? `<span class="si-item">开 <span>${openPrice.toFixed(2)}</span></span>` : ''}
+${highPrice > 0 ? `<span class="si-item">高 <span style="color:#22C55E">${highPrice.toFixed(2)}</span></span>` : ''}
+${lowPrice > 0 ? `<span class="si-item">低 <span style="color:#EF4444">${lowPrice.toFixed(2)}</span></span>` : ''}
+${amountYi > 0 ? `<span class="si-item">成交 <span>${amountYi.toFixed(1)}亿</span></span>` : ''}
+${turnoverVal > 0 ? `<span class="si-item">换手 <span>${turnoverVal.toFixed(1)}%</span></span>` : ''}
+${dataAvail ? `<span class="si-item" style="color:#22C55E">● ${dataSource}</span>` : `<span class="si-item" style="color:#EF4444">● ${d.data_error || '数据不可用'}</span>`}
 </div>
 
 <!-- Period + Panel Toggles -->

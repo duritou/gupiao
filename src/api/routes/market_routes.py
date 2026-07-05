@@ -1,125 +1,126 @@
-"""Market overview routes — Dashboard data (live with mock fallback)."""
+"""Market routes — v7.4: real data with provenance."""
 
 from fastapi import APIRouter
 
-from src.shared.mock_data import get_market_overview, get_sectors
-from src.infrastructure.market_data.live_service import live_service
+from src.infrastructure.market_data.source_manager import source_manager
 
 router = APIRouter(tags=["market"], prefix="/market")
 
 
 @router.get("/overview")
 async def market_overview():
-    """Get full market overview. Uses live data if available, mock otherwise."""
-    mock = get_market_overview()
+    """Market overview with explicit data provenance."""
+    # Indices
+    indices, idx_prov = await source_manager.get_index_quotes()
+    idx_map = {}
+    if indices:
+        idx_map = {i["name"]: i for i in indices}
 
-    # Try live indices
-    live_indices = await live_service.get_index_quotes()
-    if live_indices:
-        idx_map = {i["name"]: i for i in live_indices}
-        for key, name in [("shanghai", "上证指数"), ("shenzhen", "深证成值"),
-                          ("chinext", "创业板指"), ("star50", "科创50")]:
-            if name in idx_map:
-                mock["indices"][key] = idx_map[name]
+    # Breadth
+    breadth, breadth_prov = await source_manager.get_market_breadth()
 
-    # Try live breadth
-    live_breadth = await live_service.get_market_breadth()
-    if live_breadth:
-        mock["market_breadth"].update(live_breadth)
-
-    # Add live source indicator
-    mock["data_source"] = "live" if live_indices else "mock"
-
-    return mock
+    result = {
+        "indices": {
+            "shanghai": idx_map.get("上证指数", {"name": "上证指数", "value": 0, "change_pct": 0}),
+            "shenzhen": idx_map.get("深证成指", {"name": "深证成指", "value": 0, "change_pct": 0}),
+            "chinext": idx_map.get("创业板指", {"name": "创业板指", "value": 0, "change_pct": 0}),
+            "star50": idx_map.get("科创50", {"name": "科创50", "value": 0, "change_pct": 0}),
+        },
+        "market_breadth": breadth or {"up": 0, "down": 0, "flat": 0, "limit_up": 0, "limit_down": 0, "total_volume": 0},
+        "hot_sectors": [],
+        "risk_summary": [],
+        "northbound": {"net_flow": 0, "direction": "neutral"},
+        "total_volume": breadth.get("total_volume", 0) if breadth else 0,
+        "_data": {
+            "indices": idx_prov.to_dict(),
+            "breadth": breadth_prov.to_dict(),
+            "is_live": idx_prov.is_live or breadth_prov.is_live,
+            "available": indices is not None or breadth is not None,
+        },
+    }
+    return result
 
 
 @router.get("/sectors")
 async def market_sectors():
-    """Get sector performance. Uses live data if available."""
-    live_sectors = await live_service.get_sectors()
-    if live_sectors:
-        return {"sectors": live_sectors, "data_source": "live"}
-
-    return {"sectors": get_sectors(), "data_source": "mock"}
+    """Sector performance."""
+    # Try live sectors
+    try:
+        import akshare as ak
+        import asyncio
+        df = await asyncio.to_thread(ak.stock_board_concept_name_em)
+        if df is not None and not df.empty:
+            result = []
+            for _, row in df.head(30).iterrows():
+                score = max(10, min(99, 50 + float(row.get("涨跌幅", 0)) * 10))
+                stars = 5 if score >= 80 else 4 if score >= 65 else 3 if score >= 45 else 2 if score >= 25 else 1
+                result.append({
+                    "name": str(row.get("板块名称", "")),
+                    "score": score, "change_pct": float(row.get("涨跌幅", 0)),
+                    "stars": stars, "status": "强势" if score >= 70 else "震荡" if score >= 40 else "弱势",
+                })
+            result.sort(key=lambda s: s["score"], reverse=True)
+            return {"sectors": result[:12], "data_source": "akshare", "is_live": True}
+    except Exception:
+        pass
+    return {"sectors": [], "data_source": "none", "is_live": False}
 
 
 @router.get("/live-status")
 async def live_status():
-    """Check if live data is available."""
-    indices = await live_service.get_index_quotes()
+    """Check data source availability."""
+    health = source_manager.check_health()
     return {
-        "live_available": len(indices) > 0,
-        "indices_count": len(indices),
-        "provider": "akshare",
+        "live_available": health["live_data_available"],
+        "cache_entries": health["cache_entries"],
+        "sources": health["sources"],
+        "recommendation": health["recommendation"],
     }
 
 
 @router.get("/data-quality")
 async def data_quality():
-    """Data quality report — validates real data against expected ranges."""
-    from src.shared.mock_data import STOCK_NAMES
-
-    # Test with a sample of well-known stocks
-    test_codes = ["000001.SZ", "000725.SZ", "600519.SH", "300750.SZ", "688981.SH"]
-    results = []
-
-    for code in test_codes:
-        quote = await live_service.get_realtime_quote(code)
-        if quote:
-            quality = quote.get("_quality_score", 1.0)
-            warnings = quote.get("_quality_warnings", [])
-            results.append({
-                "code": code,
-                "name": quote.get("stock_name", ""),
-                "price": quote.get("price", 0),
-                "change_pct": quote.get("change_pct", 0),
-                "amount_yi": quote.get("amount_yi", 0),
-                "quality_score": quality,
-                "warnings": warnings,
-                "status": "ok" if quality >= 0.8 else "degraded" if quality >= 0.5 else "error",
-            })
-
-    # Overall health
-    avg_quality = sum(r["quality_score"] for r in results) / len(results) if results else 0
-    provider = "akshare" if results else "mock"
+    """Data quality report."""
+    health = source_manager.check_health()
+    freshness = source_manager.get_data_freshness()
 
     return {
-        "provider": provider,
-        "overall_quality": round(avg_quality, 2),
-        "status": "healthy" if avg_quality >= 0.8 else "degraded" if avg_quality >= 0.5 else "unhealthy",
-        "samples": results,
-        "suggestions": _generate_quality_suggestions(results),
+        "sources": health["sources"],
+        "freshness": freshness,
+        "live_available": health["live_data_available"],
+        "recommendation": health["recommendation"],
     }
-
-
-def _generate_quality_suggestions(results: list[dict]) -> list[str]:
-    """Generate actionable suggestions from quality results."""
-    suggestions = []
-    for r in results:
-        if r["quality_score"] < 0.5:
-            suggestions.append(
-                f"[{r['code']} {r['name']}] 数据质量异常(分数{r['quality_score']:.1f})，"
-                f"价格{r['price']}元。建议对照同花顺验证。"
-            )
-    if not suggestions:
-        suggestions.append("所有抽样数据通过质量检查 ✓")
-    return suggestions
 
 
 @router.get("/system-health")
 async def system_health():
-    """Complete system health check — Data Trust + all subsystems."""
+    """Complete system health check."""
     from src.infrastructure.market_data.trust import trust_engine
+
+    # Update trust engine with source manager status
+    for s in source_manager.get_all_sources_status():
+        provider = trust_engine.get_or_create_provider(s["name"])
+        if s["available"]:
+            provider.record_success(s.get("latency_ms", 0))
+        elif s["consecutive_failures"] > 0:
+            provider.record_failure()
 
     health = trust_engine.check_system_health()
     result = health.to_dict()
 
-    # Add live status check
-    from src.infrastructure.market_data.live_service import live_service
-    indices = await live_service.get_index_quotes()
+    # Override Market Data status from source_manager (more accurate)
+    sm_health = source_manager.check_health()
     result["live_data"] = {
-        "available": len(indices) > 0,
-        "indices_count": len(indices),
+        "available": sm_health["live_data_available"],
+        "cache_entries": sm_health["cache_entries"],
+        "recommendation": sm_health["recommendation"],
     }
+
+    # Update market data subsystem status
+    if result["subsystems"]:
+        for s in result["subsystems"]:
+            if s["name"] == "Market Data":
+                s["status"] = "healthy" if sm_health["live_data_available"] else "down"
+                s["details"]["sources"] = sm_health["sources"]
 
     return result
