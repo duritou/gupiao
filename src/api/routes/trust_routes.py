@@ -71,6 +71,18 @@ async def get_track_record(days: int = Query(30, ge=7, le=365)):
     return record.to_dict()
 
 
+@router.get("/ai-alpha")
+async def get_ai_alpha(days: int = Query(90, ge=30, le=365)):
+    """AI Alpha — value attribution.
+
+    Answers: did following AI actually make money?
+    Compares follow-AI returns vs self-directed returns.
+    """
+    engine = _load_snapshots()
+    alpha = engine.compute_ai_alpha(days=days)
+    return alpha.to_dict()
+
+
 @router.get("/strategies")
 async def get_strategy_breakdown():
     """Accuracy breakdown by strategy/signal type.

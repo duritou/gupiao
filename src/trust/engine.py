@@ -15,6 +15,7 @@ from datetime import datetime, timedelta
 from typing import Any
 
 from src.domain.models.trust import (
+    AIAlpha,
     AIResume,
     JournalEntry,
     JournalSummary,
@@ -110,6 +111,75 @@ class TrustEngine:
             user_followed_accuracy=followed_accuracy,
             user_ignored_accuracy=ignored_accuracy,
             missed_opportunity_total=missed,
+        )
+
+    # ================================================================
+    # AI Alpha — Value Attribution
+    # ================================================================
+
+    def compute_ai_alpha(self, days: int = 90) -> AIAlpha:
+        """Compute AI's value contribution: did following AI make money?
+
+        This is THE most important trust metric. It answers:
+        "If I had followed every AI suggestion vs ignored them all —
+         what's the difference in my returns?"
+        """
+        cutoff = (datetime.now() - timedelta(days=days)).isoformat()
+        recent = [s for s in self._snapshots if s.created_at >= cutoff]
+        verified = [s for s in recent if s.final_verdict in ("correct", "wrong")]
+
+        if not verified:
+            return AIAlpha(period_days=days, period_label=f"最近{days}天")
+
+        # Split by user action
+        followed = [s for s in verified if s.user_action in ("bought", "sold", "held", "partial")]
+        ignored = [s for s in verified if s.user_action == "ignored"]
+        opposite = [s for s in verified if s.user_action == "opposite"]
+
+        # Returns when user followed AI
+        followed_returns = [s.final_profit_pct for s in followed if s.final_profit_pct != 0]
+        follow_return = sum(followed_returns) if followed_returns else 0
+        follow_avg = sum(followed_returns) / len(followed_returns) if followed_returns else 0
+
+        # Returns when user ignored AI (these are hypothetical — if they had acted)
+        ignored_returns = [s.final_profit_pct for s in ignored if s.final_profit_pct != 0]
+        self_return = sum(ignored_returns) if ignored_returns else 0
+
+        # AI Alpha = follow AI return - self decision return
+        # This measures the VALUE of listening to AI
+        ai_alpha = follow_return - self_return
+
+        # Follow outcomes
+        followed_correct = [s for s in followed if s.final_verdict == "correct"]
+        followed_wrong = [s for s in followed if s.final_verdict == "wrong"]
+
+        # Missed opportunities: AI was right, user didn't follow
+        missed = [s for s in ignored if s.final_verdict == "correct"]
+
+        # Avoided losses: AI said sell, user followed, avoided a drop
+        avoided = [s for s in followed
+                   if s.final_verdict == "correct" and s.direction == "sell"]
+
+        # Cumulative value (approximate — assumes 10% position per suggestion)
+        cumulative = ai_alpha * 10000  # Rough approximation
+
+        return AIAlpha(
+            follow_ai_return_pct=follow_return,
+            self_decision_return_pct=self_return,
+            ai_alpha_pct=ai_alpha,
+            total_suggestions=len(recent),
+            executed_count=len(followed),
+            execution_rate=len(followed) / len(recent) if recent else 0,
+            followed_correct_count=len(followed_correct),
+            followed_wrong_count=len(followed_wrong),
+            followed_avg_return=follow_avg,
+            missed_opportunity_count=len(missed),
+            missed_profit_total_pct=sum(s.final_profit_pct for s in missed),
+            avoided_loss_count=len(avoided),
+            avoided_loss_total_pct=sum(abs(s.final_profit_pct) for s in avoided),
+            cumulative_value_created=cumulative,
+            period_days=days,
+            period_label=f"最近{days}天",
         )
 
     def compute_strategy_breakdown(self) -> list[StrategyBreakdown]:

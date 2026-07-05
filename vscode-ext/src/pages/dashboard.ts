@@ -28,6 +28,7 @@ export function buildDashboardPage(data: any): string {
     const urgentAlerts = todayFocus.urgent || [];
     const importantAlerts = todayFocus.important || [];
     const trackRecord = data.trackRecord || {};
+    const aiAlpha = data.aiAlpha || {};
 
     const pfPlColor = (pf.total_pl || 0) >= 0 ? 'up' : 'down';
 
@@ -113,17 +114,67 @@ ${watchScores.slice(0, 4).map((s: any) => {
 }).join('')}
 </div></div></div>` : ''}
 
-<!-- ═══════════ AI Track Record Mini-Card ═══════════ -->
-${trackRecord.total_recommendations > 0 ? `
+<!-- ═══════════ AI Alpha — Value Attribution (v5.0 final) ═══════════ -->
+${aiAlpha.total_suggestions > 0 ? `
+<div style="padding:0 24px;margin-top:8px;margin-bottom:8px"><div class="card" style="border:1px solid #7C3AED;background:linear-gradient(135deg,#0f0a1a 0%,#161b22 100%)">
+<div class="card-header">
+<h3 style="color:#A78BFA">🤖 AI 价值验证 · ${aiAlpha.period_label || '最近90天'}</h3>
+<span class="text-sm text-muted" style="cursor:pointer" onclick="navigate('resume')">完整档案 →</span>
+</div>
+
+<!-- Hero Metric: AI Alpha -->
+<div style="text-align:center;padding:16px 0">
+<div style="font-size:12px;color:#8b949e;margin-bottom:4px;text-transform:uppercase;letter-spacing:1px">AI Alpha · 超额收益</div>
+<div style="font-size:48px;font-weight:800;color:${aiAlpha.ai_alpha_pct >= 0 ? '#22C55E' : '#EF4444'};line-height:1">
+${aiAlpha.ai_alpha_pct >= 0 ? '+' : ''}${aiAlpha.ai_alpha_pct.toFixed(1)}%
+</div>
+<div style="font-size:12px;color:#8b949e;margin-top:4px">跟随AI vs 自主决策的收益差</div>
+</div>
+
+<!-- 3-column breakdown -->
+<div class="grid3" style="padding:0">
+<div style="text-align:center;padding:12px;background:#0B1220;border-radius:8px;border:1px solid #1F2937">
+<div style="font-size:11px;color:#8b949e;margin-bottom:4px">跟随 AI</div>
+<div style="font-size:24px;font-weight:700;color:#22C55E">${aiAlpha.follow_ai_return_pct >= 0 ? '+' : ''}${aiAlpha.follow_ai_return_pct.toFixed(1)}%</div>
+<div style="font-size:10px;color:#6B7280">${aiAlpha.followed_correct_count}胜/${aiAlpha.followed_wrong_count}负</div>
+</div>
+<div style="text-align:center;padding:12px;background:#0B1220;border-radius:8px;border:1px solid #1F2937">
+<div style="font-size:11px;color:#8b949e;margin-bottom:4px">自主决策</div>
+<div style="font-size:24px;font-weight:700;color:${aiAlpha.self_decision_return_pct >= 0 ? '#22C55E' : '#EF4444'}">${aiAlpha.self_decision_return_pct >= 0 ? '+' : ''}${aiAlpha.self_decision_return_pct.toFixed(1)}%</div>
+<div style="font-size:10px;color:#6B7280">未跟随AI的收益</div>
+</div>
+<div style="text-align:center;padding:12px;background:#0B1220;border-radius:8px;border:1px solid #7C3AED">
+<div style="font-size:11px;color:#A78BFA;margin-bottom:4px">执行率</div>
+<div style="font-size:24px;font-weight:700;color:#A78BFA">${(aiAlpha.execution_rate * 100).toFixed(0)}%</div>
+<div style="font-size:10px;color:#6B7280">${aiAlpha.executed_count}/${aiAlpha.total_suggestions}条建议被执行</div>
+</div>
+</div>
+
+<!-- Detail row: missed + avoided -->
+<div class="grid2" style="padding:0;margin-top:8px">
+<div style="padding:8px 12px;font-size:11px;text-align:center">
+<span style="color:#F59E0B">💔 错过机会 </span>
+<span style="color:#F59E0B;font-weight:600">${aiAlpha.missed_opportunity_count}次</span>
+<span style="color:#8b949e"> · 损失 </span>
+<span style="color:#F59E0B;font-weight:600">+${aiAlpha.missed_profit_total_pct.toFixed(1)}%</span>
+</div>
+<div style="padding:8px 12px;font-size:11px;text-align:center">
+<span style="color:#22C55E">🛡 避免亏损 </span>
+<span style="color:#22C55E;font-weight:600">${aiAlpha.avoided_loss_count}次</span>
+<span style="color:#8b949e"> · 保住 </span>
+<span style="color:#22C55E;font-weight:600">${aiAlpha.avoided_loss_total_pct.toFixed(1)}%</span>
+</div>
+</div>
+</div></div>` : (trackRecord.total_recommendations > 0 ? `
 <div style="padding:0 24px;margin-top:8px;margin-bottom:8px"><div class="card" style="border-left:3px solid #7C3AED">
 <div class="card-header"><h3>🤖 AI Track Record</h3><span class="text-sm text-muted" style="cursor:pointer" onclick="navigate('resume')">AI完整档案 →</span></div>
 <div class="grid4">
-<div style="text-align:center"><div style="font-size:20px;font-weight:700;color:#22C55E">${(trackRecord.accuracy * 100).toFixed(0)}%</div><div class="text-sm text-muted">${trackRecord.period_label}准确率</div></div>
-<div style="text-align:center"><div style="font-size:20px;font-weight:700;color:#22C55E">${trackRecord.correct_count}/${trackRecord.total_recommendations}</div><div class="text-sm text-muted">正确/总推荐</div></div>
+<div style="text-align:center"><div style="font-size:20px;font-weight:700;color:#22C55E">${(trackRecord.accuracy * 100).toFixed(0)}%</div><div class="text-sm text-muted">准确率</div></div>
+<div style="text-align:center"><div style="font-size:20px;font-weight:700;color:#22C55E">${trackRecord.correct_count}/${trackRecord.total_recommendations}</div><div class="text-sm text-muted">正确/总数</div></div>
 <div style="text-align:center"><div style="font-size:20px;font-weight:700;color:#22C55E">${trackRecord.current_streak}次</div><div class="text-sm text-muted">连续命中</div></div>
 <div style="text-align:center"><div style="font-size:20px;font-weight:700;color:${trackRecord.avg_return_pct >= 0 ? '#22C55E' : '#EF4444'}">${trackRecord.avg_return_pct >= 0 ? '+' : ''}${trackRecord.avg_return_pct.toFixed(1)}%</div><div class="text-sm text-muted">平均收益</div></div>
 </div>
-</div></div>` : ''}
+</div></div>` : '')}
 
 <div style="padding:16px 24px;text-align:center" class="text-muted text-sm">
 🔄 Auto-refresh: 60s · 最后更新: <span id="lastUpdate">${new Date().toLocaleTimeString('zh-CN')}</span>

@@ -107,17 +107,18 @@ async function fetchPageData(page: string, extraData?: any): Promise<any> {
     try {
         switch (page) {
             case 'dashboard': {
-                const [market, scanner, watchScores, brief, alerts, trackRecord] = await Promise.all([
+                const [market, scanner, watchScores, brief, alerts, trackRecord, aiAlpha] = await Promise.all([
                     httpGet('/market/overview').catch(() => null),
                     httpPost('/scanner/run?pool_size=30&top_n=8').catch(() => null),
                     httpPost('/signals/batch', { codes: watchlist }).catch(() => null),
                     httpGet('/morning-brief/today').catch(() => null),
                     httpGet('/alerts/today').catch(() => null),
                     httpGet('/trust/track-record?days=30').catch(() => null),
+                    httpGet('/trust/ai-alpha?days=90').catch(() => null),
                 ]);
                 // Push VS Code notification for P0/P1 alerts
                 checkUrgentAlerts(alerts);
-                return { market, scanner, watchScores, brief, alerts, trackRecord };
+                return { market, scanner, watchScores, brief, alerts, trackRecord, aiAlpha };
             }
             case 'journal': {
                 const [journal, summary] = await Promise.all([

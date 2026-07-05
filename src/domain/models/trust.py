@@ -240,6 +240,65 @@ class TrackRecord:
 
 
 @dataclass
+class AIAlpha:
+    """Value Attribution — the single most important trust metric.
+
+    Answers: "Did the AI actually make ME money?"
+    Not accuracy. Not win rate. Realized value.
+    """
+
+    # Returns: follow AI vs self-directed
+    follow_ai_return_pct: float = 0.0      # Total return when user followed
+    self_decision_return_pct: float = 0.0  # Total return when user acted alone
+    ai_alpha_pct: float = 0.0              # follow - self = AI's value add
+
+    # Execution
+    total_suggestions: int = 0
+    executed_count: int = 0
+    execution_rate: float = 0.0
+
+    # Follow outcomes
+    followed_correct_count: int = 0
+    followed_wrong_count: int = 0
+    followed_avg_return: float = 0.0
+
+    # Missed opportunities (AI said buy/sell, user didn't act)
+    missed_opportunity_count: int = 0
+    missed_profit_total_pct: float = 0.0
+
+    # Avoided losses (AI said sell, user followed, avoided a drop)
+    avoided_loss_count: int = 0
+    avoided_loss_total_pct: float = 0.0
+
+    # Cumulative value (if available with position sizing)
+    cumulative_value_created: float = 0.0  # e.g. ¥138,500
+
+    # Period
+    period_days: int = 90
+    period_label: str = "最近90天"
+
+    def to_dict(self) -> dict:
+        return {
+            "follow_ai_return_pct": round(self.follow_ai_return_pct, 2),
+            "self_decision_return_pct": round(self.self_decision_return_pct, 2),
+            "ai_alpha_pct": round(self.ai_alpha_pct, 2),
+            "total_suggestions": self.total_suggestions,
+            "executed_count": self.executed_count,
+            "execution_rate": round(self.execution_rate, 2),
+            "followed_correct_count": self.followed_correct_count,
+            "followed_wrong_count": self.followed_wrong_count,
+            "followed_avg_return": round(self.followed_avg_return, 2),
+            "missed_opportunity_count": self.missed_opportunity_count,
+            "missed_profit_total_pct": round(self.missed_profit_total_pct, 2),
+            "avoided_loss_count": self.avoided_loss_count,
+            "avoided_loss_total_pct": round(self.avoided_loss_total_pct, 2),
+            "cumulative_value_created": round(self.cumulative_value_created, 2),
+            "period_days": self.period_days,
+            "period_label": self.period_label,
+        }
+
+
+@dataclass
 class StrategyBreakdown:
     """Accuracy breakdown by strategy/signal type."""
 
