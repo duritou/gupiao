@@ -8,6 +8,7 @@ from src.explain.evidence_quality import (
 )
 from src.explain.portfolio_intelligence import portfolio_intelligence
 from src.explain.committee import committee
+from src.explain.calibration import calibration_engine
 from src.shared.mock_data import STOCK_NAMES, generate_stock_pool, mock_signal_result
 
 router = APIRouter(tags=["decision"], prefix="/decision")
@@ -249,6 +250,29 @@ async def allocate_capital(cash_reserve: float = Query(20.0), risk: str = Query(
 # ================================================================
 # v10.0 Investment Committee
 # ================================================================
+
+# ================================================================
+# Calibration + Annual Report
+# ================================================================
+
+@router.get("/calibration")
+async def calibration():
+    """Confidence calibration — how well does AI confidence match reality?"""
+    from src.explain.evidence_quality import _case_history
+    _seed_cases_if_empty()
+    report = calibration_engine.compute_calibration(_case_history)
+    return report.to_dict()
+
+
+@router.get("/annual-report")
+async def annual_report(year: int = Query(2026)):
+    """AI Annual Report — like a fund's annual performance report."""
+    from src.explain.evidence_quality import _case_history
+    _seed_cases_if_empty()
+    cal = calibration_engine.compute_calibration(_case_history)
+    report = calibration_engine.generate_annual_report(_case_history, year, cal)
+    return report.to_dict()
+
 
 @router.get("/committee/{code}")
 async def committee_evaluation(
