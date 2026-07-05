@@ -119,12 +119,13 @@ async function fetchPageData(page, extraData) {
     try {
         switch (page) {
             case 'dashboard': {
-                const [market, scanner, watchScores] = await Promise.all([
+                const [market, scanner, watchScores, brief] = await Promise.all([
                     (0, client_1.httpGet)('/market/overview').catch(() => null),
                     (0, client_1.httpPost)('/scanner/run?pool_size=30&top_n=8').catch(() => null),
                     (0, client_1.httpPost)('/signals/batch', { codes: watchlist }).catch(() => null),
+                    (0, client_1.httpGet)('/morning-brief/today').catch(() => null),
                 ]);
-                return { market, scanner, watchScores };
+                return { market, scanner, watchScores, brief };
             }
             case 'watchlist': {
                 const watchScores = await (0, client_1.httpPost)('/signals/batch', { codes: watchlist }).catch(() => null);

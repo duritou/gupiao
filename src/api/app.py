@@ -21,6 +21,7 @@ from src.api.routes import (
 
 # Portfolio routes — direct import
 from src.api.routes import portfolio_routes as portfolio_mod
+from src.api.routes import morning_brief_routes as morning_mod
 
 app = FastAPI(
     title="AI Research Terminal",
@@ -50,3 +51,4 @@ app.include_router(dailybrief_routes.router, prefix="/api/v1")
 app.include_router(detail_routes.router, prefix="/api/v1")
 app.include_router(explain_routes.router, prefix="/api/v1")
 app.include_router(portfolio_mod.router, prefix="/api/v1")
+app.include_router(morning_mod.router, prefix="/api/v1")
