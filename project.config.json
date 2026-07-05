@@ -3,8 +3,7 @@
   "libVersion": "3.16.1",
   "packOptions": {
     "ignore": [
-      { "type": "folder", "value": "hotel" },
-      { "type": "folder", "value": "photo" },
+{ "type": "folder", "value": "photo" },
       { "type": "folder", "value": "scripts" },
       { "type": "folder", "value": "~" },
       { "type": "folder", "value": "images" },

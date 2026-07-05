@@ -14,33 +14,6 @@
     "pages/statistics/statistics",
     "pages/logs/logs"
   ],
-  "subpackages": [
-    {
-      "root": "pages/hotel",
-      "pages": [
-        "index/index",
-        "room/index",
-        "roomDetails/index",
-        "news/index",
-        "newsDetails/index",
-        "about/index",
-        "my/index",
-        "order/index",
-        "orderDetails/index",
-        "buy/index",
-        "pay/index",
-        "food/index",
-        "foodBuy/index",
-        "success/index",
-        "foodDetails/index",
-        "foodOrder/index",
-        "foodOrderDetails/index",
-        "foodEval/index",
-        "foodMyEval/index",
-        "admin/index"
-      ]
-    }
-  ],
   "window": {
     "navigationBarTitleText": "多合一计分器",
     "navigationBarBackgroundColor": "#1989fa",

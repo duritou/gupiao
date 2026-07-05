@@ -1,8 +1,0 @@
-{
-    "usingComponents":  {
-                            "tabbar": "../components/tabbar/index"
-                        },
-    "navigationBarTitleText": "酒店预订",
-    "navigationBarBackgroundColor": "#1989fa",
-    "navigationBarTextStyle": "white"
-}

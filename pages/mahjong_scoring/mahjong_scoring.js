@@ -691,8 +691,7 @@ Page({
     var scoringPlayers = this.data.players.map(function (p, i) {
       return { id: i, name: p.nickName || p.name || ('玩家' + (i + 1)) };
     });
-    // 非房主只能转账，不能计分（点炮/自摸）
-    var defaultMode = this.data.isCreator ? 'dianpao' : 'transfer';
+    var defaultMode = 'dianpao';
     this.setData({
       showScoring: true,
       scoringMode: defaultMode,
@@ -709,11 +708,6 @@ Page({
 
   onSwitchMode: function (e) {
     var mode = e.currentTarget.dataset.mode;
-    // 非房主只能转账
-    if (!this.data.isCreator && mode !== 'transfer') {
-      wx.showToast({ title: '仅房主可操作计分', icon: 'none' });
-      return;
-    }
     this.setData({
       scoringMode: mode,
       scoringLoserIdx: mode === 'zimo' || mode === 'transfer' ? -1 : this.data.scoringLoserIdx,

@@ -51,12 +51,6 @@ exports.main = async (event) => {
       return { ok: false, message: '你不在该房间中' }
     }
 
-    // 权限校验：仅房主可操作
-    if (room.creatorOpenId !== openId) {
-      console.log('[takeFromPool] 非房主尝试操作:', { operatorOpenId: openId, creatorOpenId: room.creatorOpenId })
-      return { ok: false, message: '仅房主可操作取分' }
-    }
-
     // 验证目标玩家在房间中
     const targetRes = await db.collection('room_players')
       .where({ roomId: roomCode, openId: targetPlayerOpenId })

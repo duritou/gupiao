@@ -28,7 +28,7 @@
     <view class="room-bar">
       <text class="room-label">房间号</text>
       <text class="room-code-num">{{roomCode}}</text>
-      <button wx:if="{{isCreator}}" class="btn-sm btn-base" bindtap="addBaseScoreSelf">加底分</button>
+      <button class="btn-sm btn-base" bindtap="addBaseScoreSelf">加底分</button>
       <button class="btn-sm btn-outline" bindtap="refreshRoom">↻ 刷新</button>
       <button class="btn-sm btn-outline" bindtap="leaveRoom">退出</button>
       <button class="btn-sm btn-outline" bindtap="showSettle">结算</button>
@@ -36,11 +36,12 @@
 
     <!-- 成员头像横排 -->
     <view class="member-row">
+      <text class="member-hint">点击头像转分</text>
       <scroll-view scroll-x enhanced show-scrollbar="{{false}}" class="member-scroll">
         <view class="member-cards">
           <view wx:for="{{players}}" wx:key="openId" class="member-card {{item.openId === myOpenId ? 'me' : ''}}">
-            <image wx:if="{{item.avatarUrl}}" class="m-avatar-lg" src="{{item.avatarUrl}}" mode="aspectFill" bindtap="showPlayerBaseScore" data-nickname="{{item.nickName}}" data-base="{{item.baseScore}}" data-net="{{item.netScore}}" />
-            <view wx:else class="m-avatar-lg m-avatar-placeholder-lg" bindtap="showPlayerBaseScore" data-nickname="{{item.nickName}}" data-base="{{item.baseScore}}" data-net="{{item.netScore}}">{{item.nickName[0] || '👤'}}</view>
+            <image wx:if="{{item.avatarUrl}}" class="m-avatar-lg" src="{{item.avatarUrl}}" mode="aspectFill" bindtap="onPlayerAvatarTap" data-openid="{{item.openId}}" data-nickname="{{item.nickName}}" data-avatar="{{item.avatarUrl}}" />
+            <view wx:else class="m-avatar-lg m-avatar-placeholder-lg" bindtap="onPlayerAvatarTap" data-openid="{{item.openId}}" data-nickname="{{item.nickName}}" data-avatar="">{{item.nickName[0] || '👤'}}</view>
             <text class="m-name">{{item.nickName}}</text>
             <text class="m-score">{{item.netScore}}</text>
           </view>
@@ -61,35 +62,24 @@
       <view class="pool-score {{poolScore > 0 ? 'positive' : poolScore < 0 ? 'negative' : 'zero'}}">
         {{poolScore >= 0 ? '+' : ''}}{{poolScore}}
       </view>
-      <view wx:if="{{fractionMode}}" class="pool-frac-info">
-        {{fractionMode === 'half' ? '½' : '⅓'}}模式 · 每人{{fractionAmount}}分 · {{fractionTakenCount}}/{{fractionTotalSlots}}人已取 · 余{{poolRemainder}}分
+      <!-- 最近取分玩家头像 -->
+      <view wx:if="{{lastTakePlayer}}" class="pool-last-take">
+        <image wx:if="{{lastTakePlayer.avatarUrl}}" class="pool-last-avatar" src="{{lastTakePlayer.avatarUrl}}" mode="aspectFill" />
+        <view wx:else class="pool-last-avatar pool-last-placeholder">{{lastTakePlayer.nickName[0] || '👤'}}</view>
+        <text class="pool-last-label">{{lastTakePlayer.nickName}} 已取分</text>
       </view>
       <view wx:if="{{!verify}}" class="pool-verify">⚠ 数据校验不通过</view>
 
-      <view wx:if="{{isCreator}}" class="pool-actions">
-        <view class="pool-select-row">
-          <text class="pool-action-label">取分→</text>
-          <view class="pool-target-inline" wx:if="{{poolTargetOpenId}}" bindtap="cyclePoolTarget">
-            <image wx:if="{{poolTargetAvatar}}" class="pool-target-avatar" src="{{poolTargetAvatar}}" mode="aspectFill" />
-            <view wx:else class="pool-target-avatar pool-target-placeholder">{{poolTargetName[0] || '👤'}}</view>
-          </view>
-          <view class="pool-target-inline" wx:else bindtap="cyclePoolTarget">
-            <view class="pool-target-avatar pool-target-placeholder">{{players[0].nickName[0] || '👤'}}</view>
-          </view>
-        </view>
+      <view class="pool-actions">
         <view class="pool-frac-btns">
           <button class="btn-pool-take" bindtap="takeAll">取全部</button>
-          <button class="btn-pool-take btn-pool-half {{fractionMode && fractionMode !== 'half' ? 'disabled' : ''}}"
-                  bindtap="takeHalf"
-                  disabled="{{fractionMode && fractionMode !== 'half'}}">
-            取½
-          </button>
-          <button class="btn-pool-take btn-pool-third {{fractionMode && fractionMode !== 'third' ? 'disabled' : ''}}"
-                  bindtap="takeThird"
-                  disabled="{{fractionMode && fractionMode !== 'third'}}">
-            取⅓
-          </button>
+          <button class="btn-pool-take btn-pool-half {{fractionMode === 'third' ? 'disabled' : ''}}" bindtap="takeHalf">取½</button>
+          <button class="btn-pool-take btn-pool-third {{fractionMode === 'half' ? 'disabled' : ''}}" bindtap="takeThird">取⅓</button>
           <button class="btn-pool-take btn-pool-custom" bindtap="showCustomTake">自定义</button>
+        </view>
+        <!-- 平分锁定提示 -->
+        <view wx:if="{{fractionMode}}" class="pool-lock-hint">
+          已锁定平分：每人{{fractionAmount}}分（{{fractionTakenBy.length}}/{{fractionMode === 'half' ? 2 : 3}}人已取）
         </view>
       </view>
     </view>
@@ -99,12 +89,12 @@
     <view class="my-score-bar">
       <image wx:if="{{myAvatarUrl}}" class="my-bar-avatar" src="{{myAvatarUrl}}" mode="aspectFill" bindtap="showCustomUpScore" />
       <view wx:else class="my-bar-avatar my-bar-avatar-placeholder" bindtap="showCustomUpScore">{{myNickName[0] || '👤'}}</view>
-      <button wx:if="{{isCreator}}" class="btn-qscore" bindtap="quickScoreSelf" data-val="1">+1</button>
-      <button wx:if="{{isCreator}}" class="btn-qscore" bindtap="quickScoreSelf" data-val="2">+2</button>
-      <button wx:if="{{isCreator}}" class="btn-qscore" bindtap="quickScoreSelf" data-val="3">+3</button>
-      <button wx:if="{{isCreator}}" class="btn-qscore" bindtap="quickScoreSelf" data-val="4">+4</button>
-      <button wx:if="{{isCreator}}" class="btn-qscore" bindtap="quickScoreSelf" data-val="5">+5</button>
-      <button wx:if="{{isCreator}}" class="btn-qscore" bindtap="quickScoreSelf" data-val="10">+10</button>
+      <button class="btn-qscore" bindtap="quickScoreSelf" data-val="1">+1</button>
+      <button class="btn-qscore" bindtap="quickScoreSelf" data-val="2">+2</button>
+      <button class="btn-qscore" bindtap="quickScoreSelf" data-val="3">+3</button>
+      <button class="btn-qscore" bindtap="quickScoreSelf" data-val="4">+4</button>
+      <button class="btn-qscore" bindtap="quickScoreSelf" data-val="5">+5</button>
+      <button class="btn-qscore" bindtap="quickScoreSelf" data-val="10">+10</button>
     </view>
 
     </view>
@@ -146,7 +136,7 @@
 
   <!-- ====== 加入房间弹窗 ====== -->
   <view wx:if="{{showJoinInput}}" class="overlay" bindtap="cancelJoin">
-    <view class="dialog" catchtap="_preventBubble" style="border:3px solid red">
+    <view class="dialog" catchtap="_preventBubble">
       <text class="d-title">输入房间号</text>
       <input class="d-inp" type="digit" placeholder="6位数字" bindinput="setJoinRoomCode" bindconfirm="joinRoom" value="{{joinRoomCode}}" maxlength="6" />
       <view class="d-btns">
@@ -171,7 +161,7 @@
   <!-- ====== 自定义取分弹窗 ====== -->
   <view wx:if="{{showCustomTakeDialog}}" class="overlay" bindtap="cancelCustomTake">
     <view class="dialog" catchtap="_preventBubble">
-      <text class="d-title">自定义取分 → {{customTakeTargetName}}</text>
+      <text class="d-title">自定义取分</text>
       <view class="pool-remainder-hint" wx:if="{{poolScore > 0}}">公共池可用：{{poolScore}} 分</view>
       <input class="d-inp d-inp-score" type="number" placeholder="输入取分值" bindinput="setCustomTakeAmount" value="{{customTakeAmount}}" bindconfirm="confirmCustomTake" focus="{{true}}" />
       <view class="d-btns">
@@ -180,6 +170,48 @@
       </view>
     </view>
   </view>
+
+  <!-- ====== 转账弹窗（点击头像 → 自定义数字键盘） ====== -->
+  <view wx:if="{{showTransfer}}" class="overlay" catchtap="cancelTransfer">
+    <view class="dialog dialog-transfer" catchtap="_preventBubble">
+      <view class="d-title">💸 转分给 {{transferTargetName}}</view>
+      <view class="d-desc">从公共池取出分数转给该玩家，您的分数不变。</view>
+      <!-- 金额展示区 -->
+      <view class="kpad-display">
+        <text class="kpad-display-symbol">+</text>
+        <text class="kpad-display-val {{transferAmount ? '' : 'kpad-display-placeholder'}}">{{transferAmount || '0'}}</text>
+      </view>
+      <!-- 数字键盘 -->
+      <view class="kpad-grid">
+        <view class="kpad-row">
+          <view class="kpad-key" data-key="1" bindtap="onTransferKpadTap">1</view>
+          <view class="kpad-key" data-key="2" bindtap="onTransferKpadTap">2</view>
+          <view class="kpad-key" data-key="3" bindtap="onTransferKpadTap">3</view>
+        </view>
+        <view class="kpad-row">
+          <view class="kpad-key" data-key="4" bindtap="onTransferKpadTap">4</view>
+          <view class="kpad-key" data-key="5" bindtap="onTransferKpadTap">5</view>
+          <view class="kpad-key" data-key="6" bindtap="onTransferKpadTap">6</view>
+        </view>
+        <view class="kpad-row">
+          <view class="kpad-key" data-key="7" bindtap="onTransferKpadTap">7</view>
+          <view class="kpad-key" data-key="8" bindtap="onTransferKpadTap">8</view>
+          <view class="kpad-key" data-key="9" bindtap="onTransferKpadTap">9</view>
+        </view>
+        <view class="kpad-row">
+          <view class="kpad-key kpad-key-double" data-key="00" bindtap="onTransferKpadTap">00</view>
+          <view class="kpad-key" data-key="0" bindtap="onTransferKpadTap">0</view>
+          <view class="kpad-key kpad-key-del" bindtap="onTransferKpadDelete">⌫</view>
+        </view>
+      </view>
+      <!-- 操作按钮行 -->
+      <view class="kpad-actions">
+        <button class="kpad-cancel" bindtap="cancelTransfer">取消</button>
+        <button class="kpad-confirm" bindtap="confirmTransfer">确定转账</button>
+      </view>
+    </view>
+  </view>
+
   <!-- ====== 结算弹窗 ====== -->
   <view wx:if="{{showSettleDialog}}" class="overlay" bindtap="cancelSettle">
     <view class="dialog" catchtap="_preventBubble">

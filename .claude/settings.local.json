@@ -13,7 +13,11 @@
       "Bash(mkdir -p \"c:/vscode_code_data/weixinxiaochengxu_archive/docs\")",
       "Bash(mkdir -p \"c:/vscode_code_data/weixinxiaochengxu_archive/scripts\")",
       "Bash(mkdir -p \"c:/vscode_code_data/weixinxiaochengxu_archive/keys\")",
-      "Bash(mkdir -p \"c:/vscode_code_data/weixinxiaochengxu_archive/npm\")"
+      "Bash(mkdir -p \"c:/vscode_code_data/weixinxiaochengxu_archive/npm\")",
+      "PowerShell($content = Get-Content -Raw app.json -Encoding utf8; try { $null = ConvertFrom-Json $content; Write-Host \"✅ app.json 合法\" } catch { Write-Host \"❌ app.json 非法: $\\($_.Exception.Message\\)\" })",
+      "Bash(git status *)",
+      "Bash(git ls-tree *)",
+      "Bash(git add *)"
     ],
     "additionalDirectories": [
       "C:\\Users\\duritou\\.claude"

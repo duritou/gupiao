@@ -37,7 +37,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 20rpx 28rpx;
+  padding: 12rpx 28rpx;
   background: #FFFFFF;
   border-bottom: 1rpx solid #F0F0F0;
 }
@@ -96,8 +96,8 @@
 }
 
 .avatar-btn {
-  width: 140rpx;
-  height: 140rpx;
+  width: 80rpx;
+  height: 80rpx;
   border-radius: 50%;
   overflow: hidden;
   padding: 0;
@@ -110,20 +110,20 @@
 .avatar-btn::after { border: none; }
 
 .my-avatar {
-  width: 140rpx;
-  height: 140rpx;
+  width: 80rpx;
+  height: 80rpx;
   border-radius: 50%;
 }
 
 .my-avatar-placeholder {
-  width: 140rpx;
-  height: 140rpx;
+  width: 80rpx;
+  height: 80rpx;
   border-radius: 50%;
   background: #F5F5F5;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 56rpx;
+  font-size: 36rpx;
   color: #AAAAAA;
 }
 
@@ -191,7 +191,7 @@
 
 /* ==================== 玩家头像行（在线模式） ==================== */
 .member-row {
-  padding: 20rpx 0;
+  padding: 10rpx 0;
   border-bottom: 1rpx solid #F0F0F0;
 }
 
@@ -201,7 +201,7 @@
 
 .member-cards {
   display: flex;
-  gap: 16rpx;
+  gap: 10rpx;
   padding: 0 28rpx;
 }
 
@@ -218,8 +218,8 @@
 }
 
 .m-avatar {
-  width: 96rpx;
-  height: 96rpx;
+  width: 80rpx;
+  height: 80rpx;
   border-radius: 50%;
   border: 3rpx solid #F0F0F0;
 }
@@ -229,20 +229,20 @@
 }
 
 .m-avatar-placeholder {
-  width: 96rpx;
-  height: 96rpx;
+  width: 80rpx;
+  height: 80rpx;
   border-radius: 50%;
   background: #F5F5F5;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 40rpx;
+  font-size: 36rpx;
   color: #AAAAAA;
   border: 3rpx solid #F0F0F0;
 }
 
 .m-name {
-  font-size: 22rpx;
+  font-size: 28rpx;
   color: #333333;
   max-width: 120rpx;
   overflow: hidden;
@@ -266,8 +266,10 @@
 }
 
 .m-add-btn {
-  width: 96rpx;
-  height: 96rpx;
+  width: 80rpx;
+  height: 80rpx;
+  min-width: 80rpx;
+  max-width: 80rpx;
   border-radius: 50%;
   border: 3rpx dashed #E0E0E0;
   background: #FAFAFA;
@@ -276,12 +278,16 @@
   display: flex;
   align-items: center;
   justify-content: center;
+  box-sizing: border-box;
+  flex: none;
+  line-height: 1;
+  overflow: hidden;
 }
 
 .m-add-btn::after { border: none; }
 
 .m-add-icon {
-  font-size: 48rpx;
+  font-size: 36rpx;
   color: #AAAAAA;
   line-height: 1;
 }
@@ -296,8 +302,8 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 16rpx;
-  padding: 16rpx 28rpx;
+  gap: 10rpx;
+  padding: 10rpx 28rpx;
   border-bottom: 1rpx solid #F0F0F0;
 }
 
@@ -343,7 +349,7 @@
 /* ==================== 对局记录滚动区 ==================== */
 .records-scroll {
   flex: 1;
-  padding: 0 28rpx;
+  padding: 0 20rpx;
 }
 
 .empty-module {
@@ -374,8 +380,8 @@
 .cloud-round-card {
   background: #FFFFFF;
   border-radius: 12rpx;
-  padding: 20rpx 24rpx;
-  margin-bottom: 12rpx;
+  padding: 14rpx 20rpx;
+  margin-bottom: 8rpx;
   box-shadow: 0 2rpx 8rpx rgba(0, 0, 0, 0.04);
 }
 
@@ -546,7 +552,7 @@
   left: 0;
   width: 100%;
   height: 100%;
-  background: rgba(0, 0, 0, 0.55);
+  background: rgba(0, 0, 0, 0.5);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -892,44 +898,47 @@
 }
 
 .home-avatar-btn {
-  width: 160rpx;
-  height: 160rpx;
+  width: 80rpx;
+  height: 80rpx;
   border-radius: 50%;
   overflow: hidden;
   padding: 0;
-  margin: 0 0 24rpx 0;
+  margin: 0 0 16rpx 0;
   border: none;
   background: transparent;
 }
 .home-avatar-btn::after { border: none; }
 
 .home-avatar {
-  width: 160rpx;
-  height: 160rpx;
+  width: 80rpx;
+  height: 80rpx;
   border-radius: 50%;
 }
 
 .home-avatar-placeholder {
-  width: 160rpx;
-  height: 160rpx;
+  width: 80rpx;
+  height: 80rpx;
   border-radius: 50%;
   background: #F5F5F5;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 64rpx;
+  font-size: 36rpx;
   color: #AAAAAA;
 }
 
 .home-nickname {
   width: 400rpx;
-  font-size: 34rpx;
-  font-weight: 600;
+  font-size: 28rpx;
+  font-weight: 500;
   color: #333333;
   text-align: center;
   background: transparent;
   border: none;
   padding: 8rpx 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* ---- 邀请按钮 ---- */
@@ -964,11 +973,13 @@
   display: flex;
   align-items: center;
   gap: 20rpx;
+  flex: 1;
+  min-width: 0;
 }
 
 .mine-avatar-btn {
-  width: 104rpx;
-  height: 104rpx;
+  width: 80rpx;
+  height: 80rpx;
   border-radius: 50%;
   overflow: hidden;
   padding: 0;
@@ -980,27 +991,32 @@
 .mine-avatar-btn::after { border: none; }
 
 .mine-avatar {
-  width: 104rpx;
-  height: 104rpx;
+  width: 80rpx;
+  height: 80rpx;
   border-radius: 50%;
 }
 
 .mine-avatar-placeholder {
-  width: 104rpx;
-  height: 104rpx;
+  width: 80rpx;
+  height: 80rpx;
   border-radius: 50%;
   background: #F5F5F5;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 44rpx;
+  font-size: 36rpx;
   color: #AAAAAA;
 }
 
 .mine-nickname {
-  font-size: 34rpx;
-  font-weight: 600;
+  font-size: 28rpx;
+  font-weight: 500;
   color: #333333;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  min-width: 0;
 }
 
 .mine-header-right {
@@ -1463,7 +1479,7 @@
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(0, 0, 0, 0.45);
+  background: rgba(0, 0, 0, 0.5);
 }
 
 .rec-modal-box {

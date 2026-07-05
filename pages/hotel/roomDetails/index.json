@@ -1,8 +1,0 @@
-{
-    "usingComponents":  {
-                            "van-icon":  "../../../vant-weapp/dist/icon/index"
-                        },
-    "navigationBarTitleText":  "房型详情",
-    "navigationBarBackgroundColor":  "#ffffff",
-    "navigationBarTextStyle":  "black"
-}

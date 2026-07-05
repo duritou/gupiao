@@ -462,6 +462,32 @@ button::after {
 }
 
 /* ===================================================================
+ *  13) 全局统一头像 & 昵称标准（尺寸统一，颜色由各页面按主题覆盖）
+ *  标准头像：80rpx 正圆 | 标准昵称：28rpx 单行省略 */
+.g-avatar-btn {
+  width: 80rpx; height: 80rpx; border-radius: 50%;
+  overflow: hidden; padding: 0; margin: 0;
+  border: none; background: transparent; flex-shrink: 0;
+}
+.g-avatar-btn::after { border: none; }
+
+.g-avatar-img {
+  width: 80rpx; height: 80rpx; border-radius: 50%;
+}
+
+.g-avatar-placeholder {
+  width: 80rpx; height: 80rpx; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 36rpx; background: #F5F5F5; color: #AAAAAA;
+}
+
+.g-nickname {
+  font-size: 28rpx; font-weight: 500; line-height: 1.4;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  flex: 1; min-width: 0;
+}
+
+/* ===================================================================
  *  库存进度条（全局定义，tire_stock 页使用） */
 .stock-progress-bar {
   width: 100%;
@@ -573,30 +599,4 @@ button::after {
   padding: var(--space-base) 120rpx;
   border-radius: var(--radius-md);
   font-size: 34rpx;
-}
-
-/* ===================================================================
- *  酒店模块样式（带 hotel- 前缀，避免与主项目样式冲突）
- *  原 hotel/app.wxss .container → .hotel-container
- * =================================================================== */
-.hotel-container {
-  width: 100%;
-  overflow: hidden;
-  background: #f1f1f2;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  padding-bottom: 130rpx;
-}
-
-.hotel-loading {
-  width: 100%;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding-top: 30rpx;
-  padding-bottom: 30rpx;
-  font-size: 26rpx;
-  color: #999;
 }

@@ -1,6 +1,6 @@
 App({
   onLaunch() {
-    // ========== 云开发初始化（轮胎/扑克/酒店 三模块共用）==========
+    // ========== 云开发初始化（轮胎/扑克 模块共用）==========
     if (!wx.cloud) {
       console.error('请使用 2.2.3 或以上的基础库以使用云能力')
     } else {
@@ -13,21 +13,17 @@ App({
     if (idCache.nickName) this.globalData.nickName = idCache.nickName
     if (idCache.avatarUrl) this.globalData.avatarUrl = idCache.avatarUrl || ''
 
-    // ========== 统一登录（轮胎/扑克/酒店 共用云开发 openId）==========
-    // hotelLoginReady 供酒店模块各页面等待登录完成后再请求数据
-    this.hotelLoginReady = wx.cloud.callFunction({ name: 'getOpenId' }).then(res => {
+    // ========== 统一登录（获取云开发 openId）==========
+    // 异步获取 openId，更新 globalData 并持久化
+    wx.cloud.callFunction({ name: 'getOpenId' }).then(res => {
       if (res.result && res.result.openId) {
         this.globalData.openId = res.result.openId
-        // 持久化 openId，下次启动瞬时可用
         const id = wx.getStorageSync('__my_identity__') || {}
         id.openId = res.result.openId
         wx.setStorageSync('__my_identity__', id)
-        return res.result.openId
       }
-      return ''
     }).catch(err => {
       console.error('getOpenId 调用失败:', err)
-      return ''
     })
 
     // 冷启动：执行版本更新检测
@@ -43,8 +39,7 @@ App({
     openId: '',
     nickName: '',
     avatarUrl: '',
-    hasCheckedUpdate: false,      // 单次生命周期内是否已检测过更新
-    hotelUserInfo: null           // 酒店模块用户信息
+    hasCheckedUpdate: false      // 单次生命周期内是否已检测过更新
   },
 
   setNickName(name) {

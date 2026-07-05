@@ -12,63 +12,58 @@ page{height:100vh;}
 /* ---- 创建/加入区 ---- */
 .set-box{background:#1e3044;padding:14px;border-radius:10px;}
 .profile-row{display:flex;align-items:center;gap:14px;margin-bottom:4px;}
-.avatar-btn{width:56px;height:56px;border-radius:28px;padding:0;overflow:hidden;background:transparent;border:none;flex-shrink:0;}
+.avatar-btn{width:80rpx;height:80rpx;border-radius:50%;padding:0;overflow:hidden;background:transparent;border:none;flex-shrink:0;}
 .avatar-btn::after{border:none;}
-.my-avatar{width:56px;height:56px;border-radius:28px;background:#2a4560;}
-.my-avatar-placeholder{display:flex;align-items:center;justify-content:center;font-size:24px;color:#ffd700;font-weight:bold;}
-.nickname-inp{flex:1;background:#fff;color:#000;padding:10px 14px;border-radius:8px;font-size:16px;text-align:left;}
+.my-avatar{width:80rpx;height:80rpx;border-radius:50%;background:#2a4560;}
+.my-avatar-placeholder{display:flex;align-items:center;justify-content:center;font-size:36rpx;color:#ffd700;font-weight:bold;}
+.nickname-inp{flex:1;background:#fff;color:#000;padding:10px 14px;border-radius:8px;font-size:28rpx;text-align:left;}
 .room-actions{display:flex;gap:10px;justify-content:center;margin-top:16px;}
 
 /* ---- 按钮 ---- */
-button{padding:8px 14px;font-size:13px;border-radius:6px!important;background:#2980b9;color:#fff;line-height:1.4;}
+button{padding:5px 8px;font-size:11px;border-radius:6px!important;background:#2980b9;color:#fff;line-height:1.4;}
 button::after{border:none;}
 button.btn-outline{background:transparent;border:1px solid #4a6a8a;color:#8ab4d6;}
-.btn-sm{padding:5px 12px;font-size:12px;border-radius:6px;background:#2980b9;color:#fff;line-height:1.3;}
+.btn-sm{padding:8rpx 16rpx;font-size:24rpx;border-radius:8rpx;background:#2980b9;color:#fff;line-height:1.3;}
 .btn-gold{background:#e67e22!important;}
 .btn-danger{background:#c0392b!important;}
 
 /* ---- 房间栏 ---- */
-.room-bar{background:#1e3044;padding:8px 10px;border-radius:6px;margin-bottom:6px;display:flex;flex-wrap:wrap;align-items:center;gap:6px;}
+.room-bar{background:#1e3044;padding:6px 8px;border-radius:6px;margin-bottom:4px;display:flex;flex-wrap:nowrap;align-items:center;gap:4px;white-space:nowrap;}
 .room-label{color:#ffd700;font-weight:bold;font-size:12px;}
 .room-code-num{color:#ffd700;font-size:13px;font-weight:bold;letter-spacing:1px;}
 .room-bar .btn-base{background:#27ae60!important;}
 .btn-sm.btn-base{background:#27ae60!important;}
 
 /* ---- 公共池（紧凑） ---- */
-.pool-box{flex-shrink:0;background:linear-gradient(135deg,#1a2d3d,#1e3044);padding:10px 12px;border-radius:10px;text-align:center;border:1px solid #2a4560;margin-bottom:8px;}
+.pool-box{flex-shrink:0;background:linear-gradient(135deg,#1a2d3d,#1e3044);padding:8px 10px;border-radius:10px;text-align:center;border:1px solid #2a4560;margin-bottom:6px;}
 .pool-label{font-size:12px;color:#8ab4d6;margin-bottom:2px;}
 .pool-score{font-size:30px;font-weight:bold;line-height:1.1;}
 .pool-score.positive{color:#4cd964;}
 .pool-score.negative{color:#ff3b30;}
 .pool-score.zero{color:#8ab4d6;}
 .pool-verify{font-size:10px;color:#4a6a8a;margin-top:2px;}
-.pool-frac-info{font-size:10px;color:#e67e22;margin-top:3px;background:rgba(230,126,34,0.1);padding:2px 8px;border-radius:4px;display:inline-block;}
-.pool-actions{border-top:1px solid #2a4560;margin-top:8px;padding-top:8px;}
-.pool-select-row{display:flex;align-items:center;justify-content:center;gap:6px;margin-bottom:6px;}
-.pool-action-label{font-size:16px;color:#8ab4d6;font-weight:bold;}
-.pool-target-inline{display:flex;align-items:center;gap:4px;}
-.pool-target-avatar{width:28px;height:28px;border-radius:14px;background:#2a4560;flex-shrink:0;}
-.pool-target-placeholder{display:flex;align-items:center;justify-content:center;font-size:14px;color:#ffd700;font-weight:bold;width:28px;height:28px;border-radius:14px;background:#2a4560;}
+.pool-last-take{display:flex;align-items:center;justify-content:center;gap:6px;margin-top:4px;}
+.pool-last-avatar{width:48rpx;height:48rpx;border-radius:50%;background:#2a4560;flex-shrink:0;}
+.pool-last-placeholder{display:flex;align-items:center;justify-content:center;font-size:24rpx;color:#ffd700;font-weight:bold;width:48rpx;height:48rpx;border-radius:50%;background:#2a4560;}
+.pool-last-label{font-size:12px;color:#8ab4d6;}
+.pool-actions{border-top:1px solid #2a4560;margin-top:6px;padding-top:6px;}
 .pool-frac-btns{display:flex;gap:5px;justify-content:center;flex-wrap:wrap;}
-.btn-pool-take{flex:1;font-size:13px!important;padding:8px 6px!important;border-radius:6px!important;color:#fff;line-height:1.4!important;}
+.btn-pool-take{flex:1;font-size:12px!important;padding:6px 4px!important;border-radius:6px!important;color:#fff;line-height:1.4!important;}
 .btn-pool-take::after{border:none;}
 .btn-pool-take:first-child{background:#e67e22!important;}
-.btn-pool-half{background:#8e44ad!important;}
-.btn-pool-third{background:#2980b9!important;}
 .btn-pool-custom{background:#16a085!important;}
-.btn-pool-take.disabled{opacity:0.35;pointer-events:none;}
 .pool-remainder-hint{text-align:center;color:#4cd964;font-size:13px;margin-bottom:10px;}
 
 /* ---- 玩家列表 ---- */
-.section-title{font-size:13px;color:#8ab4d6;margin:8px 0 4px;font-weight:bold;}
+.section-title{font-size:13px;color:#8ab4d6;margin:6px 0 2px;font-weight:bold;}
 .player-list{margin-bottom:10px;}
 .player-card{display:flex;align-items:center;justify-content:space-between;background:#1e3044;padding:6px 10px;border-radius:6px;margin-bottom:4px;}
 .player-card.me{background:#1a2d3d;border-left:3px solid #4cd964;}
 .player-left{display:flex;align-items:center;gap:6px;}
-.p-avatar{width:28px;height:28px;border-radius:14px;background:#2a4560;}
-.p-avatar-placeholder{display:flex;align-items:center;justify-content:center;font-size:16px;color:#ffd700;font-weight:bold;}
+.p-avatar{width:80rpx;height:80rpx;border-radius:50%;background:#2a4560;}
+.p-avatar-placeholder{display:flex;align-items:center;justify-content:center;font-size:36rpx;color:#ffd700;font-weight:bold;}
 .p-name-row{display:flex;align-items:center;gap:6px;}
-.p-name{font-weight:bold;font-size:14px;}
+.p-name{font-weight:bold;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .p-name-shine{
   font-weight:bold;color:#ffd700;
   text-shadow:0 0 8px rgba(255,215,0,0.6),0 0 16px rgba(255,215,0,0.3);
@@ -100,12 +95,12 @@ button.btn-outline{background:transparent;border:1px solid #4a6a8a;color:#8ab4d6
 .p-score-wrap{display:flex;flex-direction:column;align-items:flex-end;}
 
 /* ---- 本人信息卡：头像 + 快捷上分按钮横排 ---- */
-.my-score-bar{display:flex;align-items:center;gap:6px;background:#1e3044;padding:8px 10px;border-radius:6px;margin-bottom:6px;}
-.my-bar-avatar{width:32px;height:32px;border-radius:16px;background:#2a4560;flex-shrink:0;border:1px dashed #4a6a8a;}
+.my-score-bar{display:flex;align-items:center;gap:4px;background:#1e3044;padding:6px 8px;border-radius:6px;margin-bottom:4px;}
+.my-bar-avatar{width:80rpx;height:80rpx;border-radius:50%;background:#2a4560;flex-shrink:0;border:1px dashed #4a6a8a;}
 .my-bar-avatar:active{opacity:0.7;}
-.my-bar-avatar-placeholder{display:flex;align-items:center;justify-content:center;font-size:16px;color:#ffd700;font-weight:bold;}
+.my-bar-avatar-placeholder{display:flex;align-items:center;justify-content:center;font-size:36rpx;color:#ffd700;font-weight:bold;}
 .avatar-hint{font-size:9px;color:#ff3b30;flex-shrink:0;margin-left:2px;}
-.btn-qscore{padding:5px 0;font-size:13px;font-weight:bold;border-radius:5px!important;background:#2980b9;color:#fff;line-height:1.3;flex:1;min-width:36px;text-align:center;}
+.btn-qscore{padding:4px 0;font-size:12px;font-weight:bold;border-radius:5px!important;background:#2980b9;color:#fff;line-height:1.3;flex:1;min-width:32px;text-align:center;}
 .btn-qscore::after{border:none;}
 .btn-qscore:active{background:#1a5f8a;}
 .p-score{font-weight:bold;font-size:14px;min-width:50px;text-align:right;}
@@ -124,21 +119,21 @@ button.btn-outline{background:transparent;border:1px solid #4a6a8a;color:#8ab4d6
 .record-filter-row{display:flex;gap:6px;align-items:center;}
 .record-filter-item{flex-shrink:0;display:flex;align-items:center;}
 .record-filter-item.active .record-filter-avatar{border:2px solid #ffd700;box-shadow:0 0 4px rgba(255,215,0,0.4);}
-.record-filter-avatar{width:28px;height:28px;border-radius:14px;background:#2a4560;border:2px solid transparent;box-sizing:border-box;}
-.record-filter-avatar-placeholder{display:flex;align-items:center;justify-content:center;font-size:12px;color:#8ab4d6;font-weight:bold;}
+.record-filter-avatar{width:56rpx;height:56rpx;border-radius:50%;background:#2a4560;border:2px solid transparent;box-sizing:border-box;}
+.record-filter-avatar-placeholder{display:flex;align-items:center;justify-content:center;font-size:28rpx;color:#8ab4d6;font-weight:bold;}
 .record-filter-all{display:flex;align-items:center;justify-content:center;font-size:9px;color:#8ab4d6;font-weight:bold;border:1px dashed #4a6a8a;padding:0 4px;}
 .record-filter-item.active .record-filter-all{border:1px solid #4a6a8a;color:#ffd700;background:#2a4560;}
 
 /* ---- 流水记录（可滚动） ---- */
-.records-title{display:flex;justify-content:space-between;align-items:center;margin:6px 0 4px;}
+.records-title{display:flex;justify-content:space-between;align-items:center;margin:4px 0 2px;}
 .records-label{font-size:13px;color:#8ab4d6;font-weight:bold;flex-shrink:0;}
 .records-count{font-size:11px;color:#4a6a8a;font-weight:normal;flex-shrink:0;}
-.records-scroll{flex:1;overflow-y:auto;background:transparent;border:1px solid #1e3044;border-radius:6px;padding:4px 6px;}
+.records-scroll{flex:1;overflow-y:auto;background:transparent;border:1px solid #1e3044;border-radius:6px;padding:2px 4px;}
 .records-scroll::-webkit-scrollbar{width:5px;}
 .records-scroll::-webkit-scrollbar-track{background:transparent;border-radius:3px;}
 .records-scroll::-webkit-scrollbar-thumb{background:#2a4560;border-radius:3px;}
 .records-scroll::-webkit-scrollbar-thumb:active{background:#4a6a8a;}
-.record-item{display:flex;justify-content:space-between;align-items:center;background:#1e3044;padding:6px 8px;border-radius:4px;margin-bottom:3px;font-size:12px;}
+.record-item{display:flex;justify-content:space-between;align-items:center;background:#1e3044;padding:4px 6px;border-radius:4px;margin-bottom:2px;font-size:12px;}
 .record-left{display:flex;align-items:center;gap:6px;}
 .record-action{font-size:11px;padding:2px 6px;border-radius:4px;}
 .record-action.up{background:#2a4560;color:#ff3b30;}
@@ -151,33 +146,33 @@ button.btn-outline{background:transparent;border:1px solid #4a6a8a;color:#8ab4d6
 .empty-records{text-align:center;padding:24px 0;color:#4a6a8a;font-size:14px;}
 
 /* ---- 弹窗 ---- */
-.overlay{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.55);display:flex;align-items:center;justify-content:center;z-index:100;}
-.dialog{background:#1e3044;padding:28px 24px;border-radius:16px;width:380px;max-width:92vw;border:3px solid #ff0000;}
-.d-title{text-align:center;font-size:20px;font-weight:700;color:#ffd700;margin-bottom:18px;display:block;}
-.d-inp{background:#fff;color:#000;padding:16px 16px;border-radius:10px;width:100%;box-sizing:border-box;text-align:center;font-size:36px;font-weight:bold;letter-spacing:6px;margin-bottom:18px;height:60px;}
-.d-inp-score{height:56px;font-size:24px;letter-spacing:0;margin-bottom:16px;border-radius:10px;padding:0 14px;font-weight:bold;}
-.d-btns{display:flex;gap:14px;justify-content:center;}
-.d-btns button{flex:1;height:54px;border-radius:10px;font-size:19px;font-weight:700;background:#27ae60;color:#fff;border:none;display:flex;align-items:center;justify-content:center;}
+.overlay{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:100;}
+.dialog{background:#1e3044;padding:40rpx 32rpx;border-radius:20rpx;width:640rpx;max-width:92vw;}
+.d-title{text-align:center;font-size:34rpx;font-weight:700;color:#ffd700;margin-bottom:24rpx;display:block;}
+.d-inp{background:#fff;color:#000;padding:24rpx 20rpx;border-radius:16rpx;width:100%;box-sizing:border-box;text-align:center;font-size:48rpx;font-weight:bold;letter-spacing:8rpx;margin-bottom:28rpx;height:96rpx;}
+.d-inp-score{height:80rpx;font-size:34rpx;letter-spacing:0;margin-bottom:16px;border-radius:16rpx;padding:0 14px;font-weight:bold;}
+.d-btns{display:flex;gap:20rpx;justify-content:center;}
+.d-btns button{flex:1;height:88rpx;border-radius:16rpx;font-size:32rpx;font-weight:700;background:#27ae60;color:#fff;border:none;display:flex;align-items:center;justify-content:center;}
 .d-btns button::after{border:none;}
-.d-btns .btn-outline{background:rgba(255,255,255,0.08);border:2px solid #8ab4d6;color:#fff;}
-.btn-confirm{flex:1;font-weight:bold;font-size:18px;padding:14px;background:#2980b9;}
-.fast-btns{display:flex;gap:10px;justify-content:center;margin-bottom:18px;flex-wrap:wrap;}
-.fast-btns button{padding:12px 20px;font-size:18px;font-weight:bold;min-width:48px;}
+.d-btns .btn-outline{background:rgba(255,255,255,0.08);border:3rpx solid #8ab4d6;color:#fff;}
+.btn-confirm{flex:1;font-weight:bold;font-size:30rpx;padding:20rpx;background:#2980b9;}
+.fast-btns{display:flex;gap:16rpx;justify-content:center;margin-bottom:18px;flex-wrap:wrap;}
+.fast-btns button{padding:20rpx 32rpx;font-size:30rpx;font-weight:bold;min-width:48px;}
 
 /* ---- 复制提示 ---- */
 .copy-toast{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:rgba(0,0,0,0.8);color:#ffd700;padding:12px 24px;border-radius:8px;font-size:14px;z-index:200;}
 
 /* ---- 结算弹窗 ---- */
-.settle-list{max-height:280px;overflow-y:auto;}
-.settle-item{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid #2a4560;}
+.settle-list{max-height:560rpx;overflow-y:auto;}
+.settle-item{display:flex;align-items:center;gap:20rpx;padding:20rpx 0;border-bottom:1px solid #2a4560;}
 .settle-item:last-child{border-bottom:none;}
-.settle-avatar{width:36px;height:36px;border-radius:18px;background:#2a4560;flex-shrink:0;}
-.settle-avatar-placeholder{display:flex;align-items:center;justify-content:center;font-size:16px;color:#ffd700;font-weight:bold;}
-.settle-name{flex:1;font-size:14px;color:#e0e0e0;font-weight:bold;}
+.settle-avatar{width:80rpx;height:80rpx;border-radius:50%;background:#2a4560;flex-shrink:0;}
+.settle-avatar-placeholder{display:flex;align-items:center;justify-content:center;font-size:36rpx;color:#ffd700;font-weight:bold;}
+.settle-name{flex:1;font-size:28rpx;color:#e0e0e0;font-weight:bold;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .settle-scores{display:flex;flex-direction:column;align-items:flex-end;gap:2px;}
-.settle-net{font-size:18px;font-weight:bold;color:#4cd964;}
+.settle-net{font-size:36rpx;font-weight:bold;color:#4cd964;}
 .settle-net.negative{color:#ff3b30;}
-.settle-base{font-size:11px;color:#4a6a8a;}
+.settle-base{font-size:22rpx;color:#4a6a8a;}
 
 /* ---- 等待房主 ---- */
 .wait-host{text-align:center;padding:30px 0;color:#8ab4d6;}
@@ -185,15 +180,47 @@ button.btn-outline{background:transparent;border:1px solid #4a6a8a;color:#8ab4d6
 /* ---- 成员头像横排 ---- */
 .member-row{margin-bottom:4px;}
 .member-scroll{white-space:nowrap;}
-.member-cards{display:flex;gap:10px;padding:2px 0;}
-.member-card{display:flex;flex-direction:column;align-items:center;gap:2px;flex-shrink:0;width:60px;}
+.member-cards{display:flex;gap:8px;padding:2px 0;}
+.member-card{display:flex;flex-direction:column;align-items:center;gap:2px;flex-shrink:0;width:56px;}
 .member-card.me .m-avatar-lg{border:2px solid #4cd964;}
-.m-avatar-lg{width:44px;height:44px;border-radius:22px;background:#2a4560;flex-shrink:0;box-sizing:border-box;}
-.m-avatar-placeholder-lg{display:flex;align-items:center;justify-content:center;font-size:20px;color:#ffd700;font-weight:bold;}
-.m-name{font-size:10px;color:#e0e0e0;text-align:center;max-width:60px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;line-height:1.2;}
+.m-avatar-lg{width:80rpx;height:80rpx;border-radius:50%;background:#2a4560;flex-shrink:0;box-sizing:border-box;}
+.m-avatar-placeholder-lg{display:flex;align-items:center;justify-content:center;font-size:36rpx;color:#ffd700;font-weight:bold;}
+.m-name{font-size:28rpx;color:#e0e0e0;text-align:center;max-width:120rpx;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;line-height:1.2;}
 .m-score{font-size:14px;font-weight:bold;color:#4cd964;line-height:1.1;}
 .member-add{justify-content:flex-start;}
-.m-add-btn{padding:0;width:44px;height:44px;border-radius:22px;background:transparent;border:2px dashed #4a6a8a;display:flex;align-items:center;justify-content:center;}
+.m-add-btn{padding:0;width:80rpx;height:80rpx;min-width:80rpx;max-width:80rpx;border-radius:50%;background:transparent;border:2px dashed #4a6a8a;display:flex;align-items:center;justify-content:center;box-sizing:border-box;flex:none;line-height:1;overflow:hidden;}
 .m-add-btn::after{border:none;}
-.m-add-icon{font-size:28px;color:#8ab4d6;line-height:1;}
+.m-add-icon{font-size:36rpx;color:#8ab4d6;line-height:1;}
 .m-add-label{font-size:9px;color:#4a6a8a;text-align:center;line-height:1.2;}
+
+/* ---- 成员行提示 ---- */
+.member-hint{font-size:10px;color:#ff3b30;margin-right:6px;flex-shrink:0;}
+
+/* ---- 公共池快捷取分按钮颜色 ---- */
+.btn-pool-half{background:#8e44ad!important;}
+.btn-pool-third{background:#2980b9!important;}
+
+/* ---- 转账弹窗描述 ---- */
+.d-desc{display:block;font-size:26rpx;color:#8ab4d6;text-align:center;padding:16rpx 20rpx 24rpx;line-height:1.5;}
+
+/* ---- 转账弹窗 — 自定义数字键盘（暗色主题） ---- */
+.dialog-transfer{width:560rpx;padding:32rpx 24rpx 24rpx;}
+.kpad-display{background:#0d1a26;border-radius:16rpx;padding:20rpx 24rpx;margin-bottom:24rpx;display:flex;align-items:center;justify-content:center;min-height:88rpx;}
+.kpad-display-symbol{font-size:40rpx;font-weight:700;color:#4cd964;margin-right:4px;}
+.kpad-display-val{font-size:52rpx;font-weight:800;color:#fff;letter-spacing:2px;}
+.kpad-display-placeholder{color:#4a6a8a;font-weight:400;}
+.kpad-grid{margin-bottom:20rpx;}
+.kpad-row{display:flex;gap:12rpx;margin-bottom:12rpx;}
+.kpad-key{flex:1;height:96rpx;background:#2a4560;border-radius:16rpx;display:flex;align-items:center;justify-content:center;font-size:40rpx;font-weight:700;color:#e0e0e0;transition:background 0.15s;}
+.kpad-key:active{background:#1a3044;}
+.kpad-key-double{font-size:34rpx;}
+.kpad-key-del{background:#1e3044;font-size:36rpx;}
+.kpad-actions{display:flex;gap:16rpx;justify-content:flex-end;}
+.kpad-cancel{width:160rpx;height:80rpx;border-radius:16rpx;font-size:30rpx;font-weight:600;border:2rpx solid #4a6a8a;background:transparent;color:#8ab4d6;display:flex;align-items:center;justify-content:center;}
+.kpad-cancel::after{border:none;}
+.kpad-confirm{width:200rpx;height:80rpx;border-radius:16rpx;font-size:30rpx;font-weight:700;border:none;background:#27ae60;color:#fff;display:flex;align-items:center;justify-content:center;}
+.kpad-confirm::after{border:none;}
+
+/* ---- 平分锁定按钮置灰 + 提示 ---- */
+.btn-pool-take.disabled{opacity:0.35;pointer-events:none;}
+.pool-lock-hint{font-size:11px;color:#ffd700;margin-top:4px;text-align:center;}

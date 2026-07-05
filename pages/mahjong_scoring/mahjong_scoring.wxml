@@ -224,7 +224,7 @@ module.exports = { formatTime: formatTime, firstChar: firstChar };
   </block>
 
   <!-- ====== 加入房间弹窗 ====== --><view wx:if="{{showJoinInput}}" class="overlay" bindtap="cancelJoinRoom">
-    <view class="dialog" catchtap="_preventBubble" style="border:6rpx solid red">
+    <view class="dialog" catchtap="_preventBubble">
       <text class="d-title">输入房间号</text>
       <input class="d-inp" type="digit" placeholder="6位数字" value="{{joinRoomCode}}" bindinput="setJoinRoomCode" bindconfirm="joinRoom" maxlength="6" />
       <view class="d-btns">
@@ -279,8 +279,8 @@ module.exports = { formatTime: formatTime, firstChar: firstChar };
       <view class="d-title">📝 计分</view>
 
       <!-- 模式切换 --><view class="scoring-mode-row">
-        <view class="scoring-mode-btn {{scoringMode === 'dianpao' ? 'active' : ''}}" wx:if="{{isCreator}}" data-mode="dianpao" bindtap="onSwitchMode">点炮胡</view>
-        <view class="scoring-mode-btn {{scoringMode === 'zimo' ? 'active' : ''}}" wx:if="{{isCreator}}" data-mode="zimo" bindtap="onSwitchMode">自摸胡</view>
+        <view class="scoring-mode-btn {{scoringMode === 'dianpao' ? 'active' : ''}}" data-mode="dianpao" bindtap="onSwitchMode">点炮胡</view>
+        <view class="scoring-mode-btn {{scoringMode === 'zimo' ? 'active' : ''}}" data-mode="zimo" bindtap="onSwitchMode">自摸胡</view>
         <view class="scoring-mode-btn {{scoringMode === 'transfer' ? 'active' : ''}}" data-mode="transfer" bindtap="onSwitchMode">转账</view>
       </view>
 

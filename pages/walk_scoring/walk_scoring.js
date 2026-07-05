@@ -25,18 +25,18 @@ Page({
     poolScore: 0,
     records: [],
     verify: true,
-    // 公共池取分
-    fractionMode: null,      // null | 'half' | 'third'
-    fractionAmount: 0,       // 锁定后的每人取分值
+    // 公共池取分（谁点谁取）
+    lastTakePlayer: null,    // 最近一次取分的玩家 { openId, avatarUrl, nickName }
+    // 平分锁定状态（服务端原子锁，getRoomInfo 返回）
+    fractionMode: '',        // '' | 'half' | 'third'
+    fractionAmount: 0,       // 锁定后每人固定可取分数
     fractionTakenBy: [],     // 已取分玩家 openId 列表
-    fractionTakenCount: 0,   // 已取人数
-    fractionTotalSlots: 0,   // 模式总人数（2或3）
-    poolRemainder: 0,        // 1/2 或 1/3 模式下的余数
-    halfAmount: 0,           // 当前可取 1/2 的金额
-    thirdAmount: 0,          // 当前可取 1/3 的金额
-    poolTargetOpenId: '',    // 选中的取分目标玩家
-    poolTargetAvatar: '',    // 选中目标的头像
-    poolTargetName: '',      // 选中目标的昵称
+    // 转账弹窗（点击玩家头像 → 转分给该玩家）
+    showTransfer: false,
+    transferTargetOpenId: '',
+    transferTargetName: '',
+    transferTargetAvatar: '',
+    transferAmount: '',
     // UI
     showJoinInput: false,
     joinRoomCode: '',
@@ -46,7 +46,6 @@ Page({
     // 自定义取分弹窗
     showCustomTakeDialog: false,
     customTakeAmount: '',
-    customTakeTargetName: '',
     showSettleDialog: false,
     acting: false,
     _pendingSyncs: 0,  // 后台同步计数器，watcher 在同步期间跳过重载
@@ -152,17 +151,10 @@ Page({
         poolScore: cache.poolScore || 0,
         records: cache.records || [],
         verify: cache.verify !== undefined ? cache.verify : true,
-        fractionMode: cache.fractionMode || null,
+        lastTakePlayer: cache.lastTakePlayer || null,
+        fractionMode: cache.fractionMode || '',
         fractionAmount: cache.fractionAmount || 0,
-        fractionTakenBy: cache.fractionTakenBy || [],
-        fractionTakenCount: cache.fractionTakenCount || 0,
-        fractionTotalSlots: cache.fractionTotalSlots || 0,
-        halfAmount: cache.halfAmount || 0,
-        thirdAmount: cache.thirdAmount || 0,
-        poolRemainder: cache.poolRemainder || 0,
-        poolTargetOpenId: cache.poolTargetOpenId || '',
-        poolTargetAvatar: cache.poolTargetAvatar || '',
-        poolTargetName: cache.poolTargetName || ''
+        fractionTakenBy: cache.fractionTakenBy || []
       })
       // 后台静默拉取最新数据 + 启动实时监听
       this._loadRoomData()
@@ -263,10 +255,8 @@ Page({
       wx.setStorageSync('__walk_room_cache__', {
         roomCode, roomId, isCreator: true,
         players: initialPlayers, poolScore: 0, records: [],
-        verify: true, fractionMode: null, fractionAmount: 0,
-        fractionTakenBy: [], fractionTakenCount: 0, fractionTotalSlots: 0,
-        halfAmount: 0, thirdAmount: 0, poolRemainder: 0,
-        poolTargetOpenId: '', poolTargetAvatar: '', poolTargetName: '',
+        verify: true, lastTakePlayer: null,
+        fractionMode: '', fractionAmount: 0, fractionTakenBy: [],
         cachedAt: Date.now()
       })
       // 后台拉取权威数据 + 启动监听
@@ -349,17 +339,20 @@ Page({
       this._sortSelfFirst(players)
       this.setData({
         roomId, roomCode, isCreator: false, loading: false,
-        players, poolScore, records, verify: true
+        players, poolScore, records, verify: true,
+        fractionMode: roomData.fractionMode || '',
+        fractionAmount: roomData.fractionAmount || 0,
+        fractionTakenBy: roomData.fractionTakenBy || []
       })
       // 写入持久化引用 + 完整缓存
       wx.setStorageSync(STORAGE_WALK_ROOM, { roomId, roomCode })
       wx.setStorageSync('__walk_room_cache__', {
         roomCode, roomId, isCreator: false,
         players, poolScore, records, verify: true,
-        fractionMode: null, fractionAmount: 0,
-        fractionTakenBy: [], fractionTakenCount: 0, fractionTotalSlots: 0,
-        halfAmount: 0, thirdAmount: 0, poolRemainder: 0,
-        poolTargetOpenId: '', poolTargetAvatar: '', poolTargetName: '',
+        lastTakePlayer: null,
+        fractionMode: roomData.fractionMode || '',
+        fractionAmount: roomData.fractionAmount || 0,
+        fractionTakenBy: roomData.fractionTakenBy || [],
         cachedAt: Date.now()
       })
       // 后台拉取权威数据（含分数模式等精确计算）+ 启动监听
@@ -386,7 +379,8 @@ Page({
           wx.removeStorageSync('__walk_room_cache__')
           this.setData({
             roomId: '', roomCode: '', isCreator: false,
-            players: [], poolScore: 0, records: [], verify: true
+            players: [], poolScore: 0, records: [], verify: true,
+            fractionMode: '', fractionAmount: 0, fractionTakenBy: []
           })
         }
       }
@@ -410,7 +404,8 @@ Page({
     wx.removeStorageSync('__walk_room_cache__')
     this.setData({
       roomId: '', roomCode: '', isCreator: false,
-      players: [], poolScore: 0, records: [], verify: true
+      players: [], poolScore: 0, records: [], verify: true,
+      fractionMode: '', fractionAmount: 0, fractionTakenBy: []
     })
     wx.showToast({ title: '已结算并退出', icon: 'success' })
   },
@@ -459,6 +454,10 @@ Page({
         return
       }
       const { room, players, poolScore, records, verify } = res.result
+      // 提取服务端分数锁定状态
+      const fractionMode = room.fractionMode || ''
+      const fractionAmount = room.fractionAmount || 0
+      const fractionTakenBy = room.fractionTakenBy || []
       // 格式化记录时间
       const formatTime = dateStr => {
         const d = new Date(dateStr)
@@ -472,27 +471,19 @@ Page({
         timeStr: formatTime(r.createTime)
       }))
 
-      // 计算公共池取分相关数据
-      const fractionMode = room.fractionMode || null
-      const fractionAmount = room.fractionAmount || 0
-      const fractionTakenBy = room.fractionTakenBy || []
-      const fractionTotalSlots = fractionMode === 'half' ? 2 : fractionMode === 'third' ? 3 : 0
-      const fractionTakenCount = fractionTakenBy.length
-      const halfAmount = fractionMode === 'half' ? fractionAmount : Math.floor(poolScore / 2)
-      const thirdAmount = fractionMode === 'third' ? fractionAmount : Math.floor(poolScore / 3)
-      // 余数：锁定模式下，公共池分数对每人可取量的模（即全部取完后池中剩余）
-      const poolRemainder = fractionMode && fractionAmount > 0 ? poolScore % fractionAmount : 0
-      // 如果已有选中的取分目标但该玩家已不在房间，则清空
-      let poolTargetOpenId = this.data.poolTargetOpenId
-      if (poolTargetOpenId && !players.find(p => p.openId === poolTargetOpenId)) {
-        poolTargetOpenId = players.length > 0 ? players[0].openId : ''
-      } else if (!poolTargetOpenId && players.length > 0) {
-        poolTargetOpenId = players[0].openId
+      // 最近一次取分玩家（用于公共池展示）
+      let lastTakePlayer = this.data.lastTakePlayer
+      const lastDown = [...records].reverse().find(r => r.type === 'down')
+      if (lastDown) {
+        const lp = players.find(p => p.openId === lastDown.playerOpenId)
+        if (lp) {
+          lastTakePlayer = { openId: lp.openId, avatarUrl: lp.avatarUrl || '', nickName: lp.nickName }
+        } else {
+          lastTakePlayer = null
+        }
+      } else {
+        lastTakePlayer = null
       }
-      // 计算选中目标的头像和昵称
-      const targetPlayer = poolTargetOpenId ? players.find(p => p.openId === poolTargetOpenId) : null
-      const poolTargetAvatar = targetPlayer ? targetPlayer.avatarUrl || '' : ''
-      const poolTargetName = targetPlayer ? targetPlayer.nickName || '' : ''
       const isCreator = room.creatorOpenId === this.data.myOpenId
 
       this._sortSelfFirst(players)
@@ -501,20 +492,16 @@ Page({
         loading: false,
         isCreator,
         players, poolScore, records: formattedRecords, verify,
-        fractionMode, fractionAmount, fractionTakenBy,
-        fractionTakenCount, fractionTotalSlots,
-        halfAmount, thirdAmount, poolRemainder,
-        poolTargetOpenId, poolTargetAvatar, poolTargetName
+        lastTakePlayer,
+        fractionMode, fractionAmount, fractionTakenBy
       })
 
       // 写入完整缓存，供下次瞬时恢复
       wx.setStorageSync('__walk_room_cache__', {
         roomCode: this.data.roomCode, roomId: this.data.roomId, isCreator,
         players, poolScore, records: formattedRecords, verify,
+        lastTakePlayer,
         fractionMode, fractionAmount, fractionTakenBy,
-        fractionTakenCount, fractionTotalSlots,
-        halfAmount, thirdAmount, poolRemainder,
-        poolTargetOpenId, poolTargetAvatar, poolTargetName,
         cachedAt: Date.now()
       })
 
@@ -593,87 +580,15 @@ Page({
       poolScore: newPoolScore,
       ['players[' + playerIdx + '].netScore']: newNetScore
     }
-
-    // 上分时重置分数模式（公共池基数变化，旧锁定失效）
-    if (type === 'up' && this.data.fractionMode) {
-      const newHalf = Math.floor(newPoolScore / 2)
-      const newThird = Math.floor(newPoolScore / 3)
-      Object.assign(updates, {
-        fractionMode: null, fractionAmount: 0, fractionTakenBy: [],
-        fractionTakenCount: 0, fractionTotalSlots: 0, poolRemainder: 0,
-        halfAmount: newHalf, thirdAmount: newThird
-      })
+    // 上分时清除平分锁（云函数 addScoreRecord 也会清，前端乐观同步）
+    if (type === 'up') {
+      updates.fractionMode = ''
+      updates.fractionAmount = 0
+      updates.fractionTakenBy = []
     }
 
     this.setData(updates)
     return { playerIdx, newPoolScore, newNetScore }
-  },
-
-  // 公共池取分乐观更新（takeFromPool，含分数模式锁定追踪）
-  _applyOptimisticTakeFromPool(mode, targetOpenId) {
-    const players = this.data.players
-    const playerIdx = players.findIndex(p => p.openId === targetOpenId)
-    if (playerIdx < 0) return null
-
-    let takeAmount
-    if (mode === 'all') {
-      takeAmount = this.data.poolScore
-    } else {
-      // 已锁定则用锁定金额，首次触发取当前计算值
-      takeAmount = this.data.fractionMode === mode
-        ? this.data.fractionAmount
-        : this.data[mode === 'half' ? 'halfAmount' : 'thirdAmount']
-    }
-    if (takeAmount <= 0) return null
-
-    const newPoolScore = this.data.poolScore - takeAmount
-    const newNetScore = players[playerIdx].netScore + takeAmount
-
-    const updates = {
-      poolScore: newPoolScore,
-      ['players[' + playerIdx + '].netScore']: newNetScore
-    }
-
-    // 分数模式追踪
-    if (mode === 'all') {
-      Object.assign(updates, {
-        fractionMode: null, fractionAmount: 0, fractionTakenBy: [],
-        fractionTakenCount: 0, fractionTotalSlots: 0, poolRemainder: 0,
-        halfAmount: Math.floor(newPoolScore / 2),
-        thirdAmount: Math.floor(newPoolScore / 3)
-      })
-    } else {
-      const divisor = mode === 'half' ? 2 : 3
-      const takenBy = [...this.data.fractionTakenBy]
-      if (!takenBy.includes(targetOpenId)) {
-        takenBy.push(targetOpenId)
-      }
-
-      if (takenBy.length >= divisor) {
-        // 本轮取完 → 自动重置
-        Object.assign(updates, {
-          fractionMode: null, fractionAmount: 0, fractionTakenBy: [],
-          fractionTakenCount: 0, fractionTotalSlots: 0, poolRemainder: 0,
-          halfAmount: Math.floor(newPoolScore / 2),
-          thirdAmount: Math.floor(newPoolScore / 3)
-        })
-      } else {
-        updates.fractionTakenBy = takenBy
-        updates.fractionTakenCount = takenBy.length
-        if (!this.data.fractionMode) {
-          // 首次触发 → 锁定
-          updates.fractionMode = mode
-          updates.fractionAmount = takeAmount
-          updates.fractionTotalSlots = divisor
-          updates.halfAmount = mode === 'half' ? takeAmount : this.data.halfAmount
-          updates.thirdAmount = mode === 'third' ? takeAmount : this.data.thirdAmount
-        }
-        // 已锁定模式下 poolRemainder 不变（每次取固定金额）
-      }
-    }
-
-    this.setData(updates)
-    return { playerIdx, takeAmount, newPoolScore }
   },
 
   // 加底分乐观更新
@@ -757,6 +672,107 @@ Page({
     })
   },
 
+  // 点击玩家头像 → 转账（参考麻将计分逻辑）
+  onPlayerAvatarTap(e) {
+    const { openid, nickname, avatar } = e.currentTarget.dataset
+    // 不能转给自己
+    if (openid === this.data.myOpenId) {
+      wx.showToast({ title: '不能转分给自己，请使用取分按钮', icon: 'none' })
+      return
+    }
+    this.setData({
+      showTransfer: true,
+      transferTargetOpenId: openid || '',
+      transferTargetName: nickname || '玩家',
+      transferTargetAvatar: avatar || '',
+      transferAmount: ''
+    })
+  },
+
+  // 转账弹窗 — 数字键盘按键
+  onTransferKpadTap(e) {
+    const key = e.currentTarget.dataset.key
+    let cur = this.data.transferAmount || ''
+    // 限制最多 8 位数
+    if (cur.replace(/\D/g, '').length >= 8) return
+    // 首位不能是多个 0
+    if (cur === '0' && key !== '00') cur = ''
+    const next = cur + key
+    this.setData({ transferAmount: next })
+  },
+
+  // 转账弹窗 — 退格键
+  onTransferKpadDelete() {
+    const cur = this.data.transferAmount || ''
+    if (cur.length <= 1) {
+      this.setData({ transferAmount: '' })
+      return
+    }
+    this.setData({ transferAmount: cur.slice(0, -1) })
+  },
+
+  // 转账弹窗 — 取消
+  cancelTransfer() {
+    this.setData({ showTransfer: false, transferTargetOpenId: '', transferTargetName: '', transferTargetAvatar: '', transferAmount: '' })
+  },
+
+  // 转账弹窗 — 确认（走 addScoreRecord，type=down，目标=收款玩家）
+  confirmTransfer() {
+    const amount = parseInt(this.data.transferAmount) || 0
+    if (amount <= 0) {
+      wx.showToast({ title: '请输入有效的转账金额', icon: 'none' })
+      return
+    }
+    if (amount > this.data.poolScore) {
+      wx.showToast({ title: `公共池仅剩${this.data.poolScore}分`, icon: 'none' })
+      return
+    }
+    if (this.data.acting) return
+    this.setData({ acting: true })
+
+    const targetOpenId = this.data.transferTargetOpenId
+    const targetName = this.data.transferTargetName
+
+    console.log('[walk_scoring] confirmTransfer:', { amount, targetOpenId, targetName })
+
+    // 1. 本地乐观更新 UI
+    const local = this._applyOptimisticScore('down', amount, targetOpenId)
+    if (!local) {
+      this.setData({ acting: false })
+      wx.showToast({ title: '操作失败，请重试', icon: 'none' })
+      return
+    }
+
+    // 2. 更新最近取分玩家、关闭弹窗
+    this.setData({
+      showTransfer: false,
+      transferTargetOpenId: '',
+      transferTargetName: '',
+      transferTargetAvatar: '',
+      transferAmount: '',
+      acting: false,
+      lastTakePlayer: {
+        openId: targetOpenId,
+        avatarUrl: this.data.transferTargetAvatar,
+        nickName: targetName
+      }
+    })
+
+    // 3. 显示操作结果
+    wx.showToast({ title: `转分 ${amount} → ${targetName}`, icon: 'success', duration: 1200 })
+
+    // 4. 后台异步同步到云函数
+    this._backgroundSync({
+      name: 'addScoreRecord',
+      data: {
+        roomCode: this.data.roomCode,
+        type: 'down',
+        score: amount,
+        targetPlayerOpenId: targetOpenId
+      }
+    })
+  },
+
   // 按玩家筛选流水记录
   filterRecordsByPlayer(e) {
     const openId = e.currentTarget.dataset.openid
@@ -774,10 +790,6 @@ Page({
 
   // 快捷上分按钮（给自己上分）
   quickScoreSelf(e) {
-    if (!this.data.isCreator) {
-      wx.showToast({ title: '仅房主可操作', icon: 'none' })
-      return
-    }
     const val = Number(e.currentTarget.dataset.val)
     if (!val || val <= 0) return
     const me = this.data.players.find(p => p.openId === this.data.myOpenId)
@@ -788,7 +800,6 @@ Page({
 
   // 自定义上分弹窗（点击头像触发）
   showCustomUpScore() {
-    if (!this.data.isCreator) return
     this.setData({ showCustomUpDialog: true, customUpAmount: '' })
   },
   setCustomUpAmount(e) {
@@ -814,160 +825,113 @@ Page({
   // 公共池取分操作（取全部 / 取1/2 / 取1/3）
   // ================================================================
 
-  // 选择取分目标玩家
-  selectPoolTarget(e) {
-    const openid = e.currentTarget.dataset.openid
-    if (openid) {
-      const player = this.data.players.find(p => p.openId === openid)
-      this.setData({
-        poolTargetOpenId: openid,
-        poolTargetAvatar: player ? player.avatarUrl || '' : '',
-        poolTargetName: player ? player.nickName || '' : ''
-      })
-    }
-  },
-
-  // 点击取分目标头像：在玩家间循环切换
-  cyclePoolTarget() {
-    const { players, poolTargetOpenId } = this.data
-    if (!players.length) return
-    const idx = players.findIndex(p => p.openId === poolTargetOpenId)
-    const nextIdx = idx < 0 ? 0 : (idx + 1) % players.length
-    const next = players[nextIdx]
-    this.setData({
-      poolTargetOpenId: next.openId,
-      poolTargetAvatar: next.avatarUrl || '',
-      poolTargetName: next.nickName || ''
-    })
-  },
-
-  // 取全部：公共池所有分数给选中玩家
+  // 取全部：清空公共池，走 takeFromPool 云函数，同步清锁
   takeAll() {
-    if (!this.data.isCreator) return
     if (this.data.poolScore <= 0) {
       wx.showToast({ title: '公共池没有可取的分数', icon: 'none' })
       return
     }
-    const target = this.data.players.find(p => p.openId === this.data.poolTargetOpenId)
-    const targetName = target ? target.nickName : ''
-    if (!targetName) {
-      wx.showToast({ title: '请先选择取分玩家', icon: 'none' })
-      return
+    if (this.data.acting) return
+    let content = `确定将公共池 ${this.data.poolScore} 分全部取出？`
+    if (this.data.fractionMode) {
+      content += '\n⚠ 将清除当前分数锁定'
     }
     wx.showModal({
       title: '取全部',
-      content: `确定将公共池 ${this.data.poolScore} 分全部给 ${targetName}？`,
+      content: content,
       success: r => {
         if (r.confirm) {
-          this._doTakeFromPool('all', this.data.poolScore, targetName)
+          this._executePoolTake('all')
         }
       }
     })
   },
 
-  // 取1/2：取一半给选中玩家（首次触发锁定金额）
+  // 取½：首次触发锁定基数 Math.floor(pool/2)，后续同模式复用固定值
   takeHalf() {
-    if (!this.data.isCreator) return
-    if (this.data.fractionMode && this.data.fractionMode !== 'half') return // 已锁定为1/3，不可切换
-    const amount = this.data.halfAmount
-    if (amount <= 0) {
-      wx.showToast({ title: '公共池不足以取1/2', icon: 'none' })
-      return
-    }
-    const target = this.data.players.find(p => p.openId === this.data.poolTargetOpenId)
-    const targetName = target ? target.nickName : ''
-    if (!targetName) {
-      wx.showToast({ title: '请先选择取分玩家', icon: 'none' })
-      return
-    }
-    const modeLabel = this.data.fractionMode === 'half' ? '（已锁定）' : '（首次触发，后续每人固定取' + amount + '分）'
-    wx.showModal({
-      title: '取1/2',
-      content: `确定从公共池取 ${amount} 分给 ${targetName}？\n${modeLabel}`,
-      success: r => {
-        if (r.confirm) {
-          this._doTakeFromPool('half', amount, targetName)
-        }
-      }
-    })
-  },
-
-  // 取1/3：取三分之一给选中玩家（首次触发锁定金额）
-  takeThird() {
-    if (!this.data.isCreator) return
-    if (this.data.fractionMode && this.data.fractionMode !== 'third') return // 已锁定为1/2，不可切换
-    const amount = this.data.thirdAmount
-    if (amount <= 0) {
-      wx.showToast({ title: '公共池不足以取1/3', icon: 'none' })
-      return
-    }
-    const target = this.data.players.find(p => p.openId === this.data.poolTargetOpenId)
-    const targetName = target ? target.nickName : ''
-    if (!targetName) {
-      wx.showToast({ title: '请先选择取分玩家', icon: 'none' })
-      return
-    }
-    const modeLabel = this.data.fractionMode === 'third' ? '（已锁定）' : '（首次触发，后续每人固定取' + amount + '分）'
-    wx.showModal({
-      title: '取1/3',
-      content: `确定从公共池取 ${amount} 分给 ${targetName}？\n${modeLabel}`,
-      success: r => {
-        if (r.confirm) {
-          this._doTakeFromPool('third', amount, targetName)
-        }
-      }
-    })
-  },
-
-  // 通用：调用 takeFromPool 云函数
-  _doTakeFromPool(mode, amount, targetName) {
     if (this.data.acting) return
-    this.setData({ acting: true })
+    const myOpenId = this.data.myOpenId
+    const { fractionMode, fractionAmount, fractionTakenBy, poolScore } = this.data
 
-    console.log('[walk_scoring] _doTakeFromPool:', { mode, amount, targetName, targetId: this.data.poolTargetOpenId })
-
-    // 1. 本地乐观更新 UI（即时响应）
-    const local = this._applyOptimisticTakeFromPool(mode, this.data.poolTargetOpenId)
-    if (!local) {
-      this.setData({ acting: false })
-      wx.showToast({ title: '操作失败，请重试', icon: 'none' })
+    // 对方模式已锁 → 按钮置灰 + toast 拒绝
+    if (fractionMode === 'third') {
+      wx.showToast({ title: '当前已锁定取⅓模式，无法取½', icon: 'none' })
       return
     }
-
-    // 2. 释放防重复锁
-    this.setData({ acting: false })
-
-    // 3. 显示操作结果
-    const modeLabel = mode === 'all' ? '取全部' : mode === 'half' ? '取1/2' : '取1/3'
-    wx.showToast({ title: `${modeLabel} ${local.takeAmount} → ${targetName}`, icon: 'success', duration: 1200 })
-
-    // 4. 后台异步同步到云函数（不阻塞 UI）
-    this._backgroundSync({
-      name: 'takeFromPool',
-      data: {
-        roomCode: this.data.roomCode,
-        targetPlayerOpenId: this.data.poolTargetOpenId,
-        mode: mode
+    // 已取过 → toast 拒绝（防止重复取）
+    if (fractionMode === 'half' && fractionTakenBy.includes(myOpenId)) {
+      wx.showToast({ title: '你已经取过½了', icon: 'none' })
+      return
+    }
+    // 计算金额
+    let amount
+    if (fractionMode === 'half') {
+      amount = fractionAmount  // 已锁，使用固定值
+    } else {
+      amount = Math.floor(poolScore / 2)  // 首次触发，计算基数
+      if (amount <= 0) {
+        wx.showToast({ title: '公共池不足以取½', icon: 'none' })
+        return
+      }
+    }
+    wx.showModal({
+      title: '取½',
+      content: `确定从公共池取 ${amount} 分（一半）？`,
+      success: r => {
+        if (r.confirm) {
+          this._executePoolTake('half')
+        }
       }
     })
   },
 
-  // 自定义取分：弹出数字输入框（不走分数锁定，走 addScoreRecord）
+  // 取⅓：首次触发锁定基数 Math.floor(pool/3)，后续同模式复用固定值
+  takeThird() {
+    if (this.data.acting) return
+    const myOpenId = this.data.myOpenId
+    const { fractionMode, fractionAmount, fractionTakenBy, poolScore } = this.data
+
+    // 对方模式已锁 → 按钮置灰 + toast 拒绝
+    if (fractionMode === 'half') {
+      wx.showToast({ title: '当前已锁定取½模式，无法取⅓', icon: 'none' })
+      return
+    }
+    // 已取过 → toast 拒绝（防止重复取）
+    if (fractionMode === 'third' && fractionTakenBy.includes(myOpenId)) {
+      wx.showToast({ title: '你已经取过⅓了', icon: 'none' })
+      return
+    }
+    // 计算金额
+    let amount
+    if (fractionMode === 'third') {
+      amount = fractionAmount  // 已锁，使用固定值
+    } else {
+      amount = Math.floor(poolScore / 3)  // 首次触发，计算基数
+      if (amount <= 0) {
+        wx.showToast({ title: '公共池不足以取⅓', icon: 'none' })
+        return
+      }
+    }
+    wx.showModal({
+      title: '取⅓',
+      content: `确定从公共池取 ${amount} 分（三分之一）？`,
+      success: r => {
+        if (r.confirm) {
+          this._executePoolTake('third')
+        }
+      }
+    })
+  },
+
+  // 谁点谁取，走 addScoreRecord（type=down）
   showCustomTake() {
-    if (!this.data.isCreator) return
     if (this.data.poolScore <= 0) {
       wx.showToast({ title: '公共池没有可取的分数', icon: 'none' })
-      return
-    }
-    const target = this.data.players.find(p => p.openId === this.data.poolTargetOpenId)
-    if (!target) {
-      wx.showToast({ title: '请先选择取分玩家', icon: 'none' })
       return
     }
     this.setData({
       showCustomTakeDialog: true,
-      customTakeAmount: '',
-      customTakeTargetName: target.nickName
+      customTakeAmount: ''
     })
   },
 
@@ -990,38 +954,50 @@ Page({
       wx.showToast({ title: `公共池仅剩${this.data.poolScore}分`, icon: 'none' })
       return
     }
-    const targetName = this.data.customTakeTargetName
     wx.showModal({
       title: '自定义取分',
-      content: `确定从公共池取 ${amount} 分给 ${targetName}？`,
+      content: `确定从公共池取 ${amount} 分？`,
       success: r => {
         if (r.confirm) {
-          this._executeCustomTake(amount, targetName)
+          this._executeCustomTake(amount)
         }
       }
     })
   },
 
-  // 自定义取分调用 addScoreRecord（type=down），不影响分数锁定
-  _executeCustomTake(amount, targetName) {
+  // 自定义取分调用 addScoreRecord（type=down），谁点谁取
+  _executeCustomTake(amount) {
     if (this.data.acting) return
     this.setData({ acting: true })
 
-    console.log('[walk_scoring] _executeCustomTake:', { amount, targetName, targetId: this.data.poolTargetOpenId })
+    const myOpenId = this.data.myOpenId
+    const me = this.data.players.find(p => p.openId === myOpenId)
+    const myName = me ? me.nickName : '我'
+
+    console.log('[walk_scoring] _executeCustomTake:', { amount, myOpenId })
 
     // 1. 本地乐观更新 UI（即时响应）
-    const local = this._applyOptimisticScore('down', amount, this.data.poolTargetOpenId)
+    const local = this._applyOptimisticScore('down', amount, myOpenId)
     if (!local) {
       this.setData({ acting: false })
-      wx.showToast({ title: '目标玩家不在房间中', icon: 'none' })
+      wx.showToast({ title: '操作失败，请重试', icon: 'none' })
       return
     }
 
-    // 2. 关闭弹窗、释放防重复锁
-    this.setData({ showCustomTakeDialog: false, customTakeAmount: '', acting: false })
+    // 2. 更新最近取分玩家（用于公共池展示头像）
+    this.setData({
+      showCustomTakeDialog: false,
+      customTakeAmount: '',
+      acting: false,
+      lastTakePlayer: {
+        openId: myOpenId,
+        avatarUrl: me ? (me.avatarUrl || '') : '',
+        nickName: myName
+      }
+    })
 
     // 3. 显示操作结果
-    wx.showToast({ title: `取分 ${amount} → ${targetName}`, icon: 'success', duration: 1200 })
+    wx.showToast({ title: `取分 ${amount} → ${myName}`, icon: 'success', duration: 1200 })
 
     // 4. 后台异步同步到云函数（不阻塞 UI）
     this._backgroundSync({
@@ -1030,15 +1006,85 @@ Page({
         roomCode: this.data.roomCode,
         type: 'down',
         score: amount,
-        targetPlayerOpenId: this.data.poolTargetOpenId
+        targetPlayerOpenId: myOpenId
       }
     })
   },
 
+  // 取全部/取½/取⅓ 走 takeFromPool 云函数（同步，服务端原子锁）
+  _executePoolTake(mode) {
+    if (this.data.acting) return
+    this.setData({ acting: true })
+    wx.showLoading({ title: '处理中...', mask: true })
 
-  // 从房间栏给自己加底分（仅限房主）
+    const myOpenId = this.data.myOpenId
+
+    wx.cloud.callFunction({
+      name: 'takeFromPool',
+      data: {
+        roomCode: this.data.roomCode,
+        targetPlayerOpenId: myOpenId,
+        mode: mode
+      }
+    }).then(res => {
+      wx.hideLoading()
+      this.setData({ acting: false })
+
+      if (!res.result.ok) {
+        wx.showToast({ title: res.result.message || '取分失败', icon: 'none', duration: 2000 })
+        // 同步失败 → 重新拉取服务端数据修复本地
+        this._loadRoomData()
+        return
+      }
+
+      const result = res.result
+      const me = this.data.players.find(p => p.openId === myOpenId)
+      const myName = me ? me.nickName : '我'
+
+      // 乐观更新本地 state（服务端已写入，这里做本地同步）
+      const updates = {
+        poolScore: result.poolScore,
+        fractionMode: result.fractionMode || '',
+        fractionAmount: result.fractionAmount || 0,
+        fractionTakenBy: result.takenBy || []
+      }
+
+      // 更新本人 netScore
+      const myIdx = this.data.players.findIndex(p => p.openId === myOpenId)
+      if (myIdx >= 0) {
+        const newNet = this.data.players[myIdx].netScore + result.takeAmount
+        updates['players[' + myIdx + '].netScore'] = newNet
+      }
+
+      // 更新最近取分玩家
+      updates.lastTakePlayer = {
+        openId: myOpenId,
+        avatarUrl: me ? (me.avatarUrl || '') : '',
+        nickName: myName
+      }
+
+      this.setData(updates)
+
+      // 提示信息
+      const modeLabel = mode === 'all' ? '全部' : (mode === 'half' ? '½' : '⅓')
+      wx.showToast({ title: `取${modeLabel} ${result.takeAmount}分 → ${myName}`, icon: 'success', duration: 1500 })
+
+      // 延迟拉取服务端数据做最终确认（确保 netScore 等精确）
+      setTimeout(() => {
+        this._loadRoomData()
+      }, 800)
+    }).catch(err => {
+      wx.hideLoading()
+      this.setData({ acting: false })
+      console.error('[walk_scoring] _executePoolTake 异常:', err)
+      wx.showToast({ title: '网络异常，取分失败', icon: 'none' })
+      this._loadRoomData()
+    })
+  },
+
+
+  // 从房间栏给自己加底分
   addBaseScoreSelf() {
-    if (!this.data.isCreator) return
     const me = this.data.players.find(p => p.openId === this.data.myOpenId)
     if (!me) return
     console.log('[walk_scoring] addBaseScoreSelf')
@@ -1053,13 +1099,8 @@ Page({
     })
   },
 
-  // 给玩家增加100底分（二次确认）
+  // 给玩家增加100底分
   addBaseScore(e) {
-    // 权限校验：仅房主可操作
-    if (!this.data.isCreator) {
-      wx.showToast({ title: '仅房主可操作', icon: 'none' })
-      return
-    }
     const { openid, nickname } = e.currentTarget.dataset
     console.log('[walk_scoring] addBaseScore, dataset:', JSON.stringify(e.currentTarget.dataset))
 

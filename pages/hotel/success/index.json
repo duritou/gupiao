@@ -1,8 +1,0 @@
-{
-    "usingComponents":  {
-                            "van-button":  "../../../vant-weapp/dist/button/index"
-                        },
-    "navigationBarTitleText":  "订餐成功",
-    "navigationBarBackgroundColor":  "#ffffff",
-    "navigationBarTextStyle":  "black"
-}

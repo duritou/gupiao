@@ -1,60 +1,65 @@
 /* 首页 — 页面特有样式 */
 
-/* ---- 用户信息 ---- */
+/* ---- 用户信息卡片 ---- */
 .profile-bar{
-  display:flex;align-items:center;gap:var(--space-md);
-  padding:var(--space-base);background:var(--color-bg-card);
+  display:flex;align-items:center;gap:var(--space-lg);
+  padding:var(--space-md) var(--space-base);
+  background:var(--color-bg-card);
   border-radius:var(--radius-md);margin-bottom:var(--space-xxl);
   box-shadow:var(--shadow-card);
 }
 
+/* 左侧头像：flex:none 固定宽度，背景透明避免 WeChat button 默认 padding 拉长背景条 */
 .avatar-btn{
-  width:88rpx;height:88rpx;border-radius:44rpx;padding:0;
-  overflow:hidden;background:#eee;border:none;flex-shrink:0;
+  width:80rpx;height:80rpx;border-radius:40rpx;padding:0;margin:0;
+  overflow:visible;background:transparent;
+  border:none;flex:none;box-sizing:border-box;
+}
+.avatar-btn::after{
+  border:none;
 }
 
-.avatar-img{width:88rpx;height:88rpx;border-radius:44rpx;}
+.avatar-img{width:80rpx;height:80rpx;border-radius:40rpx;}
 
+/* 蓝色问号默认占位（浅蓝背景仅包裹圆形，不拉长） */
 .avatar-placeholder{
   display:flex;align-items:center;justify-content:center;
-  width:88rpx;height:88rpx;font-size:40rpx;
-  color:var(--color-primary);font-weight:bold;
-  background:var(--color-primary-light);
+  width:80rpx;height:80rpx;border-radius:40rpx;
+  font-size:36rpx;color:var(--color-primary,#1677ff);font-weight:bold;
+  background:var(--color-primary-light,#e8f0fe);
 }
 
-.profile-info{flex:1;min-width:0;}
+/* 中间文字区域：占满剩余空间 */
+.profile-info{
+  flex:1;min-width:0;
+  display:flex;flex-direction:column;gap:6rpx;
+}
 
-/* 尊贵的用户标签 */
-.profile-title{margin-bottom:var(--space-xs);}
+/* 第一行：皇冠 + 红色标题 */
+.profile-title-row{
+  display:flex;align-items:center;gap:4rpx;
+}
+
+.crown-emoji{font-size:24rpx;}
 
 .vip-label{
-  font-size:var(--font-size-caption);color:#cc0000;
-  font-weight:600;letter-spacing:2rpx;
+  font-size:var(--font-size-caption,24rpx);color:#cc0000;
+  font-weight:600;
 }
 
-/* 昵称 + SVIP 行 */
-.profile-name-row{display:flex;align-items:center;gap:var(--space-sm);}
-
+/* 第二行：昵称（无框输入，灰色占位文字） */
 .nickname-inp{
-  flex:1;width:auto;background:transparent;
-  font-size:var(--font-size-body-lg);color:var(--color-text-body);
-  padding:var(--space-sm) 0;min-width:0;
+  width:100%;background:transparent;
+  font-size:var(--font-size-body,28rpx);color:var(--color-text-body,#333);
+  padding:0;min-width:0;
 }
 
-/* SVIP 红标 + 闪闪光效（保持原动画） */
+/* 右侧 SVIP 红标：纯色圆角，无渐变无动效 */
 .svip-badge{
   font-size:20rpx;font-weight:bold;color:#fff;
-  background:linear-gradient(135deg, #d40000, #ff2222, #d40000);
-  background-size:200% 200%;
-  padding:6rpx 18rpx;border-radius:20rpx;letter-spacing:2rpx;
-  flex-shrink:0;
-  animation:svip-shimmer 1.8s ease-in-out infinite;
-}
-
-@keyframes svip-shimmer{
-  0%, 100%{box-shadow:0 0 8rpx rgba(212,0,0,0.5);}
-  30%{box-shadow:0 0 20rpx rgba(255,0,0,0.7), 0 0 36rpx rgba(255,60,60,0.35);}
-  60%{box-shadow:0 0 28rpx rgba(255,20,20,0.85), 0 0 48rpx rgba(255,80,80,0.45);}
+  background:#d40000;
+  padding:6rpx 16rpx;border-radius:18rpx;
+  flex-shrink:0;align-self:center;
 }
 
 /* ---- 四入口卡片 2x2 网格 ---- */
@@ -291,6 +296,7 @@
 
 .msg-nick{
   font-size:var(--font-size-caption);color:var(--color-text-hint);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
 }
 
 .msg-time{

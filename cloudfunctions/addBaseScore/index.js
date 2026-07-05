@@ -48,12 +48,6 @@ exports.main = async (event) => {
       return { ok: false, message: '你不在该房间中' }
     }
 
-    // 权限校验：仅房主可操作
-    if (room.creatorOpenId !== openId) {
-      console.log('[addBaseScore] 非房主尝试操作:', { operatorOpenId: openId, creatorOpenId: room.creatorOpenId })
-      return { ok: false, message: '仅房主可操作底分' }
-    }
-
     // 查找目标玩家
     const targetRes = await db.collection('room_players')
       .where({ roomId: roomCode, openId: targetPlayerOpenId })

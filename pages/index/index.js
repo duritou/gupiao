@@ -72,14 +72,6 @@ Page({
     wx.navigateTo({ url: '/pages/tire_dashboard/tire_dashboard' })
   },
 
-  openHotelBooking() {
-    wx.navigateTo({ url: '/pages/hotel/index/index' })
-  },
-
-  openHotelAdmin() {
-    wx.navigateTo({ url: '/pages/hotel/admin/index' })
-  },
-
   backToHome() {
     this.setData({ showGameList: false })
   },
@@ -144,28 +136,48 @@ Page({
   onChooseAvatar(e) {
     const tempUrl = e.detail.avatarUrl
     if (!tempUrl) return
+    // 先用临时 URL 展示头像（仅当前会话有效），同步到 globalData
     this.setData({ myAvatarUrl: tempUrl })
-    // 同步到 globalData，确保跨页面互通
     getApp().globalData.avatarUrl = tempUrl
-    const id = wx.getStorageSync('__my_identity__') || {}
-    id.avatarUrl = tempUrl
-    wx.setStorageSync('__my_identity__', id)
+    // 上传到云存储，成功后持久化 cloud:// fileID
     if (wx.cloud) {
+      const openId = this.data.myOpenId || getApp().globalData.openId || 'unknown'
       wx.cloud.uploadFile({
-        cloudPath: `avatars/${this.data.myOpenId}_${Date.now()}.png`,
+        cloudPath: `avatars/${openId}_${Date.now()}.png`,
         filePath: tempUrl,
         success: res => {
           const url = res.fileID
+          // 仅在上传成功后写入 localStorage，防止临时 URL 泄漏到持久化缓存
           const ident = wx.getStorageSync('__my_identity__') || {}
           ident.avatarUrl = url
           wx.setStorageSync('__my_identity__', ident)
+          getApp().globalData.avatarUrl = url
           this.setData({ myAvatarUrl: url })
+        },
+        fail: err => {
+          console.error('头像上传失败:', err.errMsg || err)
+          // 上传失败时回退显示，不清空 globalData（保留临时 URL 供当前会话使用）
+          wx.showToast({ title: '头像保存失败，请重试', icon: 'none' })
         }
       })
+    } else {
+      // 无云环境兜底：虽然临时 URL 下次启动会失效，但至少当前会话可用
+      const id = wx.getStorageSync('__my_identity__') || {}
+      id.avatarUrl = tempUrl
+      wx.setStorageSync('__my_identity__', id)
     }
   },
 
   onNickNameBlur(e) {
+    const name = (e.detail.value || '').trim()
+    if (name && name !== this.data.myNickName) {
+      getApp().setNickName(name)
+      this.setData({ myNickName: name })
+    }
+  },
+
+  // nickname 输入框确认事件（type="nickname" 键盘上的确认键/微信昵称选择器）
+  onNickNameConfirm(e) {
     const name = (e.detail.value || '').trim()
     if (name && name !== this.data.myNickName) {
       getApp().setNickName(name)

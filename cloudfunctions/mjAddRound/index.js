@@ -48,10 +48,7 @@ exports.main = async (event) => {
       return { ok: false, message: '房间不存在或类型不匹配' }
     }
 
-    // 权限校验：计分（点炮/自摸）仅房主可操作，转账任何玩家均可发起
-    if (mode !== 'transfer' && room.creatorOpenId !== openId) {
-      return { ok: false, message: '仅房主可操作计分' }
-    }
+    // 所有玩家均可计分（点炮/自摸/转账）
     // 转账模式：校验发起人必须是玩家之一
     if (mode === 'transfer') {
       var isPlayer = room.players && room.players.indexOf(openId) >= 0
