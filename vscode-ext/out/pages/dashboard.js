@@ -30,8 +30,14 @@ function buildDashboardPage(data) {
     const importantAlerts = todayFocus.important || [];
     const trackRecord = data.trackRecord || {};
     const aiAlpha = data.aiAlpha || {};
+    const userProfile = data.userProfile || {};
+    const greeting = userProfile.greeting || '';
     const pfPlColor = (pf.total_pl || 0) >= 0 ? 'up' : 'down';
     const content = `
+<!-- Personalized Greeting (v6.0) -->
+${greeting ? `
+<div style="padding:12px 24px 0"><div style="font-size:13px;color:#A78BFA;line-height:1.5">🤖 ${greeting}</div></div>` : ''}
+
 <!-- ═══════════ Portfolio Summary Cards ═══════════ -->
 ${pf.position_count > 0 ? `
 <div class="grid4">

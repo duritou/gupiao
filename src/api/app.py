@@ -18,6 +18,7 @@ from src.api.routes import (
     detail_routes,
     explain_routes,
     trust_routes,
+    user_routes,
 )
 
 # Portfolio routes — direct import
@@ -52,5 +53,6 @@ app.include_router(dailybrief_routes.router, prefix="/api/v1")
 app.include_router(detail_routes.router, prefix="/api/v1")
 app.include_router(explain_routes.router, prefix="/api/v1")
 app.include_router(trust_routes.router, prefix="/api/v1")
+app.include_router(user_routes.router, prefix="/api/v1")
 app.include_router(portfolio_mod.router, prefix="/api/v1")
 app.include_router(morning_mod.router, prefix="/api/v1")

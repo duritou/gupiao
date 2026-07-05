@@ -16,6 +16,7 @@ import { buildTimelinePage } from './pages/timeline';
 import { buildPortfolioPage } from './pages/portfolio';
 import { buildJournalPage } from './pages/journal';
 import { buildResumePage } from './pages/resume';
+import { buildProfilePage } from './pages/profile';
 
 let serverProcess: cp.ChildProcess | null = null;
 let statusBar: vscode.StatusBarItem;
@@ -49,6 +50,7 @@ export function activate(context: vscode.ExtensionContext) {
         vscode.commands.registerCommand('quantai.portfolio', () => showTerminal('portfolio')),
         vscode.commands.registerCommand('quantai.journal', () => showTerminal('journal')),
         vscode.commands.registerCommand('quantai.resume', () => showTerminal('resume')),
+        vscode.commands.registerCommand('quantai.profile', () => showTerminal('profile')),
         vscode.commands.registerCommand('quantai.startServer', startServer),
         vscode.commands.registerCommand('quantai.stopServer', stopServer),
         vscode.commands.registerCommand('quantai.addWatch', addToWatchlist),
@@ -107,7 +109,7 @@ async function fetchPageData(page: string, extraData?: any): Promise<any> {
     try {
         switch (page) {
             case 'dashboard': {
-                const [market, scanner, watchScores, brief, alerts, trackRecord, aiAlpha] = await Promise.all([
+                const [market, scanner, watchScores, brief, alerts, trackRecord, aiAlpha, userProfile] = await Promise.all([
                     httpGet('/market/overview').catch(() => null),
                     httpPost('/scanner/run?pool_size=30&top_n=8').catch(() => null),
                     httpPost('/signals/batch', { codes: watchlist }).catch(() => null),
@@ -115,10 +117,11 @@ async function fetchPageData(page: string, extraData?: any): Promise<any> {
                     httpGet('/alerts/today').catch(() => null),
                     httpGet('/trust/track-record?days=30').catch(() => null),
                     httpGet('/trust/ai-alpha?days=90').catch(() => null),
+                    httpGet('/user/profile/summary').catch(() => null),
                 ]);
                 // Push VS Code notification for P0/P1 alerts
                 checkUrgentAlerts(alerts);
-                return { market, scanner, watchScores, brief, alerts, trackRecord, aiAlpha };
+                return { market, scanner, watchScores, brief, alerts, trackRecord, aiAlpha, userProfile };
             }
             case 'journal': {
                 const [journal, summary] = await Promise.all([
@@ -137,6 +140,10 @@ async function fetchPageData(page: string, extraData?: any): Promise<any> {
                     httpGet('/trust/track-record?days=30').catch(() => null),
                 ]);
                 return { resume, versions, monthly, strategies, scoreRanges, trackRecord };
+            }
+            case 'profile': {
+                const profile = await httpGet('/user/profile').catch(() => null);
+                return { profile };
             }
             case 'watchlist': {
                 const watchScores = await httpPost('/signals/batch', { codes: watchlist }).catch(() => null);
@@ -184,6 +191,7 @@ function buildPage(page: string, data: any): string {
         case 'portfolio': return buildPortfolioPage(data);
         case 'journal': return buildJournalPage(data);
         case 'resume': return buildResumePage(data);
+        case 'profile': return buildProfilePage(data);
         case 'compare': return buildComparePage(data);
         case 'timeline': return buildTimelinePage(data);
         default: return pageShell('dashboard', 'AI Research Terminal', '<div class="empty-state"><div class="icon">🤖</div><h2>AI Research Terminal</h2><p>选择一个页面开始</p></div>');

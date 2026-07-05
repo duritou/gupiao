@@ -20,6 +20,7 @@ export class TerminalNavProvider implements vscode.TreeDataProvider<vscode.TreeI
             navItem('Watchlist · 自选股', 'quantai.watchlist', 'list-tree'),
             navItem('Decision Journal · 决策日志', 'quantai.journal', 'notebook'),
             navItem('AI Resume · 信任档案', 'quantai.resume', 'verified'),
+            navItem('AI Profile · 投资画像', 'quantai.profile', 'person'),
             navItem('', '', ''),
             navItem('Alert Center · 预警', 'quantai.alerts', 'bell'),
             navItem('Market Map · 行业热力图', 'quantai.marketmap', 'graph'),
