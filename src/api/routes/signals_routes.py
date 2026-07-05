@@ -2,8 +2,14 @@
 
 import math
 from fastapi import APIRouter, Query
+from pydantic import BaseModel
 
 router = APIRouter(tags=["signals"], prefix="/signals")
+
+
+class BatchRequest(BaseModel):
+    codes: list[str]
+    trend: str = "up"
 
 
 def _mock_klines(n: int = 60, trend: str = "up") -> list[dict]:
@@ -57,3 +63,17 @@ async def compute_signals(
         "buy_signals": result.buy_signals,
         "sell_signals": result.sell_signals,
     }
+
+
+@router.post("/batch")
+async def compute_batch(req: BatchRequest):
+    """批量计算多只股票信号 — Watchlist auto-refresh 使用"""
+    from src.shared.mock_data import generate_klines, mock_signal_result
+
+    results = []
+    for code in req.codes:
+        klines = generate_klines(code, 80, req.trend)
+        signal = mock_signal_result(code, klines)
+        results.append(signal)
+
+    return {"signals": results}

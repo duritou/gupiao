@@ -16,6 +16,38 @@
   "contributes": {
     "commands": [
       {
+        "command": "quantai.dashboard",
+        "title": "AI Research: Dashboard"
+      },
+      {
+        "command": "quantai.watchlist",
+        "title": "AI Research: 自选股"
+      },
+      {
+        "command": "quantai.marketmap",
+        "title": "AI Research: 行业热力图"
+      },
+      {
+        "command": "quantai.compare",
+        "title": "AI Research: 股票对比"
+      },
+      {
+        "command": "quantai.timeline",
+        "title": "AI Research: 评分演变"
+      },
+      {
+        "command": "quantai.alerts",
+        "title": "AI Research: 预警中心"
+      },
+      {
+        "command": "quantai.backtest",
+        "title": "AI Research: 回测"
+      },
+      {
+        "command": "quantai.dailybrief",
+        "title": "AI Research: 每日简报"
+      },
+      {
         "command": "quantai.scan",
         "title": "AI Research: 全市场扫描"
       },
@@ -26,10 +58,6 @@
       {
         "command": "quantai.research",
         "title": "AI Research: 运行研究管线"
-      },
-      {
-        "command": "quantai.backtest",
-        "title": "AI Research: 运行回测"
       },
       {
         "command": "quantai.knowledge",
