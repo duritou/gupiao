@@ -17,25 +17,15 @@ async def run_research(
     from src.pipeline.research_pipeline import ResearchPipeline
     from src.agents.orchestrator import AgentOrchestrator
 
-    # 构造模拟数据
-    pool = []
-    for i in range(pool_size):
-        code = f"{600000 + i:06d}.SH" if i < pool_size // 2 else f"{i - pool_size // 2:06d}.SZ"
-        pool.append({
-            "code": code, "name": f"研究标的{i}",
-            "market_cap": 50 + i * 5, "avg_amount": 100 + i * 3,
-            "price": 10.0 + i * 0.5, "change_pct": (i - pool_size // 2) * 0.4,
-        })
+    # 构造模拟数据（使用真实股票名称）
+    from src.shared.mock_data import generate_stock_pool
+    pool = generate_stock_pool(pool_size)
 
+    from src.shared.mock_data import generate_klines
     klines = {}
     for i in range(min(10, pool_size)):
         code = pool[i]["code"]
-        trend = []
-        for j in range(80):
-            p = 10.0 + j * 0.1 + math.sin(j * 0.15) * 0.5
-            trend.append({"close": p, "open": p - 0.03, "high": p + 0.08,
-                         "low": p - 0.06, "volume": 1000000 + j * 10000})
-        klines[code] = trend
+        klines[code] = generate_klines(code, 80, "up")
 
     # Pipeline
     pipeline = ResearchPipeline(scanner_config=ScannerConfig(score_top_n=top_n))
