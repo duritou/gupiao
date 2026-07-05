@@ -1,0 +1,30 @@
+# 半导体行业知识
+id: semiconductor
+name: 半导体
+category: industry
+tags: [半导体, 芯片, 集成电路, IC, 晶圆, 封测]
+summary: >
+  半导体行业是电子信息产业的核心基础，涵盖芯片设计、制造、封测等环节。
+  具有强周期、高资本投入、技术迭代快等特点。
+
+industry_chain:
+  upstream: [EDA软件, IP核, 半导体设备, 硅片, 光刻胶, 特种气体]
+  midstream: [芯片设计, 晶圆制造, 封装测试]
+  downstream: [消费电子, 汽车电子, 工业控制, 通信设备, 数据中心]
+
+key_drivers:
+  - 国产替代政策
+  - AI/数据中心算力需求
+  - 消费电子周期
+  - 5G/物联网渗透率
+  - 新能源汽车增长
+
+cycle_characteristics:
+  typical_cycle_months: 36-48
+  current_phase: "复苏初期"
+  indicators: [费城半导体指数, DRAM价格, 晶圆代工产能利用率]
+
+valuation_baseline:
+  pe_range: [30, 80]
+  pb_range: [3, 10]
+  ps_range: [5, 15]

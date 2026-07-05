@@ -1,0 +1,20 @@
+# 银行业知识
+id: banking
+name: 银行
+category: industry
+tags: [银行, 金融, 信贷, 息差, 不良贷款]
+summary: >
+  银行业是金融体系的核心，盈利主要来源于息差收入和中间业务收入。
+  与宏观经济周期高度相关，受货币政策和监管政策影响显著。
+
+key_drivers:
+  - 净息差走势
+  - 信贷规模增速
+  - 资产质量（不良贷款率）
+  - 货币政策（降准/降息）
+  - 资本充足率监管
+
+valuation_baseline:
+  pe_range: [4, 10]
+  pb_range: [0.5, 1.5]
+  dividend_yield_range: [3, 7]
