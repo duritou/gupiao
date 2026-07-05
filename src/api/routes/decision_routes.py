@@ -6,6 +6,7 @@ from src.explain.decision_center import decision_center
 from src.explain.evidence_quality import (
     grader, archive_case, get_case, get_case_library_stats,
 )
+from src.explain.portfolio_intelligence import portfolio_intelligence
 from src.shared.mock_data import STOCK_NAMES, generate_stock_pool, mock_signal_result
 
 router = APIRouter(tags=["decision"], prefix="/decision")
@@ -112,3 +113,90 @@ async def case_detail(case_id: str):
     if not case:
         return {"error": "case not found", "case_id": case_id}
     return case.to_dict()
+
+
+# ================================================================
+# v9.0 Portfolio Intelligence
+# ================================================================
+
+@router.get("/confidence-decomposed")
+async def decomposed_confidence(
+    confidence: float = Query(0.82),
+    data_trust: float = Query(0.85),
+    model_version: str = Query("v6.0"),
+    user_win_rate: float = Query(0.65),
+):
+    """Decompose AI confidence into its components."""
+    result = portfolio_intelligence.decompose_confidence(
+        ai_confidence=confidence,
+        data_trust_score=data_trust,
+        model_version=model_version,
+        user_win_rate=user_win_rate,
+    )
+    return result.to_dict()
+
+
+@router.get("/counterfactual/{code}")
+async def counterfactual(code: str, base_score: float = Query(85)):
+    """What drives the score? Remove each factor to see impact."""
+    name = STOCK_NAMES.get(code, code)
+    impacts = portfolio_intelligence.counterfactual_analysis(name, base_score)
+    return {
+        "stock_code": code,
+        "stock_name": name,
+        "base_score": base_score,
+        "factors": [f.to_dict() for f in impacts],
+        "critical_factors": [f.factor for f in impacts if f.is_critical],
+        "insight": _counterfactual_insight(impacts),
+    }
+
+
+def _counterfactual_insight(impacts) -> str:
+    if not impacts:
+        return ""
+    critical = [f for f in impacts if f.is_critical]
+    if critical:
+        return f"核心驱动因素：{'、'.join(f.factor for f in critical)}。移除任一项将显著降低评分。"
+    return f"评分由多项因素均衡支撑，没有单一决定性因素。"
+
+
+@router.get("/allocate")
+async def allocate_capital(cash_reserve: float = Query(20.0), risk: str = Query("moderate")):
+    """Optimal capital allocation for today."""
+    from src.shared.mock_data import generate_stock_pool, mock_signal_result
+    import hashlib, random
+    from datetime import date
+
+    today_seed = int(hashlib.md5(date.today().isoformat().encode()).hexdigest()[:8], 16)
+    rng = random.Random(today_seed)
+
+    pool = generate_stock_pool(15)
+    candidates = []
+    for p in pool:
+        sig = mock_signal_result(p["code"], [])
+        candidates.append({
+            "stock_code": p["code"],
+            "stock_name": p.get("name", STOCK_NAMES.get(p["code"], p["code"])),
+            "ai_score": sig["fusion_score"],
+            "risk_level": rng.choice(["低", "中", "高"]),
+            "user_win_rate": rng.uniform(0.4, 0.85),
+        })
+
+    allocation = portfolio_intelligence.allocate_capital(
+        candidates, cash_reserve_pct=cash_reserve, user_risk=risk,
+    )
+    return allocation.to_dict()
+
+
+@router.get("/compare")
+async def compare_opportunity(
+    code_a: str = Query("688256.SH"), code_b: str = Query("688981.SH"),
+    score_a: float = Query(92), score_b: float = Query(87),
+):
+    """Why stock A over stock B? Pairwise comparison."""
+    name_a = STOCK_NAMES.get(code_a, code_a)
+    name_b = STOCK_NAMES.get(code_b, code_b)
+    result = portfolio_intelligence.compare_opportunity_cost(
+        name_a, score_a, name_b, score_b,
+    )
+    return result.to_dict()
