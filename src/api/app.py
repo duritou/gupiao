@@ -16,11 +16,12 @@ from src.api.routes import (
     alerts_routes,
     dailybrief_routes,
     detail_routes,
+    explain_routes,
 )
 
 app = FastAPI(
     title="AI Research Terminal",
-    version="0.11.0",
+    version="0.12.0",
     description="AI 股票研究终端 — REST API",
 )
 
@@ -44,3 +45,4 @@ app.include_router(timeline_routes.router, prefix="/api/v1")
 app.include_router(alerts_routes.router, prefix="/api/v1")
 app.include_router(dailybrief_routes.router, prefix="/api/v1")
 app.include_router(detail_routes.router, prefix="/api/v1")
+app.include_router(explain_routes.router, prefix="/api/v1")

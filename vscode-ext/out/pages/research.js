@@ -1,7 +1,8 @@
 "use strict";
-/** Research Page v3.1 — Chart Runtime: DataFeed + Indicator Registry + Overlay System. */
+/** Research Page v3.3 — Chart Runtime + Score Breakdown + Explain. */
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.buildResearchPage = buildResearchPage;
+const constants_1 = require("../constants");
 const chart_runtime_1 = require("../chart/chart-runtime");
 const chart_indicators_1 = require("../chart/chart-indicators");
 const chart_overlays_1 = require("../chart/chart-overlays");
@@ -133,6 +134,11 @@ body{font-family:'Segoe UI',system-ui,-apple-system,sans-serif;background:#0B122
 <div class="score-num ${sc}">${(d.ai_score || 50).toFixed(0)}</div>
 <div class="score-rec" style="background:${recColor}22;color:${recColor};border:1px solid ${recColor}44">${d.recommendation || '观望'}</div>
 <div class="score-conf">置信度 ${((d.confidence || 0) * 100).toFixed(0)}% · ${d.buy_signals || 0}看多/${d.sell_signals || 0}看空</div>
+</div>
+
+<!-- Score Breakdown (loaded from API) -->
+<div id="score-breakdown" style="margin-bottom:12px">
+<div class="loading" style="padding:12px;text-align:center;color:#9CA3AF;font-size:11px">加载评分分解...</div>
 </div>
 
 <!-- Timeline Context (populated when clicking timeline markers) -->
@@ -334,8 +340,87 @@ ${chart_timeline_1.TIMELINE_JS}
                 runtime.setPeriod(parseInt(this.dataset.days));
             });
         });
+
+        // Load Score Breakdown
+        loadBreakdown('${code}');
     }, 100);
 })();
+
+// ========== Score Breakdown Renderer ==========
+async function loadBreakdown(code) {
+    const container = document.getElementById('score-breakdown');
+    if (!container) return;
+    try {
+        const resp = await fetch('${constants_1.BASE_URL}/explain/breakdown/' + code);
+        const data = await resp.json();
+        renderBreakdown(container, data);
+    } catch(e) {
+        container.innerHTML = '<div style="font-size:11px;color:#EF4444;padding:8px">评分分解加载失败</div>';
+    }
+}
+
+function renderBreakdown(container, bd) {
+    const cats = bd.category_totals || {};
+    const comps = bd.components || [];
+    const grouped = {};
+    comps.forEach(c => { if (!grouped[c.category]) grouped[c.category] = []; grouped[c.category].push(c); });
+
+    const catNames = {signal:'技术信号',knowledge:'行业知识',market:'市场环境',risk:'风险评估',backtest:'回测验证'};
+    const catColors = {signal:'#22C55E',knowledge:'#7C3AED',market:'#3B82F6',risk:'#F59E0B',backtest:'#60A5FA'};
+
+    let html = '<div style="background:#111827;border:1px solid #1F2937;border-radius:6px;padding:10px 12px">';
+    html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">';
+    html += '<span style="font-size:12px;font-weight:600;color:#9CA3AF">评分分解</span>';
+    html += '<span style="font-size:20px;font-weight:800;color:' + (bd.final_score>=70?'#22C55E':bd.final_score>=50?'#F59E0B':'#EF4444') + '">' + (bd.final_score||50).toFixed(0) + '</span>';
+    html += '</div>';
+
+    // Total bar
+    const pct = bd.final_score || 50;
+    html += '<div style="height:4px;background:#1F2937;border-radius:2px;margin-bottom:10px">';
+    html += '<div style="height:4px;border-radius:2px;width:' + pct + '%;background:' + (pct>=70?'#22C55E':pct>=50?'#F59E0B':'#EF4444') + '"></div></div>';
+
+    // Categories with expandable items
+    for (const [cat, items] of Object.entries(grouped)) {
+        const catTotal = cats[cat] || 0;
+        const catColor = catColors[cat] || '#9CA3AF';
+        const catName = catNames[cat] || cat;
+        const catId = 'cat_' + cat + '_' + Math.random().toString(36).slice(2,6);
+        const sign = catTotal >= 0 ? '+' : '';
+
+        html += '<div style="margin-bottom:6px">';
+        html += '<div style="display:flex;justify-content:space-between;align-items:center;cursor:pointer;padding:4px 0" onclick="document.getElementById(\'' + catId + '\').style.display = document.getElementById(\'' + catId + '\').style.display === \'none\' ? \'block\' : \'none\'">';
+        html += '<span style="font-size:11px;color:' + catColor + ';font-weight:600">' + catName + '</span>';
+        html += '<span style="font-size:11px;font-family:JetBrains Mono;color:' + (catTotal>=0?'#22C55E':'#EF4444') + '">' + sign + catTotal.toFixed(0) + '</span>';
+        html += '</div>';
+
+        // Items (expandable)
+        html += '<div id="' + catId + '" style="padding-left:12px;display:block">';
+        items.forEach(c => {
+            const cs = c.score || 0;
+            const csSign = cs >= 0 ? '+' : '';
+            const csColor = cs > 3 ? '#22C55E' : cs < -3 ? '#EF4444' : '#9CA3AF';
+            const barW = Math.min(100, Math.abs(cs) * 2.5);
+            html += '<div style="display:flex;justify-content:space-between;align-items:center;padding:2px 0;font-size:10px" title="' + (c.detail||'') + '">';
+            html += '<span style="color:#9CA3AF">' + (c.name||'') + '</span>';
+            html += '<div style="display:flex;align-items:center;gap:6px">';
+            html += '<div style="width:40px;height:2px;background:#1F2937;border-radius:1px"><div style="height:2px;border-radius:1px;width:' + barW + '%;background:' + csColor + '"></div></div>';
+            html += '<span style="font-family:JetBrains Mono;color:' + csColor + ';min-width:32px;text-align:right">' + csSign + cs.toFixed(0) + '</span>';
+            html += '</div></div>';
+        });
+        html += '</div>';
+        html += '</div>';
+    }
+
+    // Net total
+    html += '<div style="border-top:1px solid #1F2937;padding-top:6px;display:flex;justify-content:space-between;font-size:11px">';
+    html += '<span style="color:#9CA3AF">综合</span>';
+    html += '<span style="font-family:JetBrains Mono;font-weight:700;color:' + (bd.final_score>=70?'#22C55E':bd.final_score>=50?'#F59E0B':'#EF4444') + '">' + (bd.final_score||50).toFixed(0) + ' / 100</span>';
+    html += '</div>';
+    html += '<div style="font-size:9px;color:#6B7280;margin-top:3px">置信度 ' + ((bd.confidence||0)*100).toFixed(0) + '% · ' + (bd.positive_count||0) + '利好 / ' + (bd.negative_count||0) + '利空</div>';
+
+    html += '</div>';
+    container.innerHTML = html;
+}
 </script>
 
 <script>
