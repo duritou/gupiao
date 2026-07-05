@@ -52,3 +52,55 @@ async def live_status():
         "indices_count": len(indices),
         "provider": "akshare",
     }
+
+
+@router.get("/data-quality")
+async def data_quality():
+    """Data quality report — validates real data against expected ranges."""
+    from src.shared.mock_data import STOCK_NAMES
+
+    # Test with a sample of well-known stocks
+    test_codes = ["000001.SZ", "000725.SZ", "600519.SH", "300750.SZ", "688981.SH"]
+    results = []
+
+    for code in test_codes:
+        quote = await live_service.get_realtime_quote(code)
+        if quote:
+            quality = quote.get("_quality_score", 1.0)
+            warnings = quote.get("_quality_warnings", [])
+            results.append({
+                "code": code,
+                "name": quote.get("stock_name", ""),
+                "price": quote.get("price", 0),
+                "change_pct": quote.get("change_pct", 0),
+                "amount_yi": quote.get("amount_yi", 0),
+                "quality_score": quality,
+                "warnings": warnings,
+                "status": "ok" if quality >= 0.8 else "degraded" if quality >= 0.5 else "error",
+            })
+
+    # Overall health
+    avg_quality = sum(r["quality_score"] for r in results) / len(results) if results else 0
+    provider = "akshare" if results else "mock"
+
+    return {
+        "provider": provider,
+        "overall_quality": round(avg_quality, 2),
+        "status": "healthy" if avg_quality >= 0.8 else "degraded" if avg_quality >= 0.5 else "unhealthy",
+        "samples": results,
+        "suggestions": _generate_quality_suggestions(results),
+    }
+
+
+def _generate_quality_suggestions(results: list[dict]) -> list[str]:
+    """Generate actionable suggestions from quality results."""
+    suggestions = []
+    for r in results:
+        if r["quality_score"] < 0.5:
+            suggestions.append(
+                f"[{r['code']} {r['name']}] 数据质量异常(分数{r['quality_score']:.1f})，"
+                f"价格{r['price']}元。建议对照同花顺验证。"
+            )
+    if not suggestions:
+        suggestions.append("所有抽样数据通过质量检查 ✓")
+    return suggestions

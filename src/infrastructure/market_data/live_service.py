@@ -14,6 +14,8 @@ from functools import lru_cache
 
 from loguru import logger
 
+from src.infrastructure.market_data.validator import validator as data_validator
+
 
 class LiveMarketService:
     """Real-time market data service. Uses akshare for A-share data.
@@ -43,7 +45,7 @@ class LiveMarketService:
             if row.empty:
                 return None
             r = row.iloc[0]
-            return {
+            raw_quote = {
                 "stock_code": code,
                 "stock_name": str(r.get("名称", "")),
                 "price": float(r.get("最新价", 0)),
@@ -61,6 +63,19 @@ class LiveMarketService:
                 "total_market_cap": float(r.get("总市值", 0)),
                 "circ_market_cap": float(r.get("流通市值", 0)),
             }
+
+            # Validate + normalize
+            validation = data_validator.validate_quote(raw_quote, code)
+            if validation.has_errors:
+                logger.warning(f"Data validation errors for {code}: {validation.errors}")
+            if validation.has_warnings:
+                logger.debug(f"Data validation warnings for {code}: {validation.warnings}")
+
+            # Merge normalized fields
+            result = {**raw_quote, **validation.normalized_data}
+            result["_quality_score"] = validation.quality_score
+            result["_quality_warnings"] = validation.warnings
+            return result
         except Exception as e:
             logger.debug(f"Live quote failed for {code}: {e}")
             return None
