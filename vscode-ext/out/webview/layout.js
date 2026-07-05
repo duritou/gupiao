@@ -56,7 +56,7 @@ function createOrShowPanel(title, html, onMessage) {
     return currentPanel;
 }
 function getPageTitle(page) {
-    return constants_1.PAGE_TITLES[page] || 'AI Research Terminal';
+    return constants_1.PAGE_TITLES[page] || 'Adaptive Investment Intelligence';
 }
 function buildNav(active) {
     return `<div class="nav">${constants_1.NAV_ITEMS.map(i => `<span class="nav-item${i.id === active ? ' active' : ''}" onclick="navigate('${i.id}')">${i.label}</span>`).join('')}</div>`;

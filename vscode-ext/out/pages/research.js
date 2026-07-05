@@ -79,7 +79,7 @@ body{font-family:'Segoe UI',system-ui,-apple-system,sans-serif;background:#0B122
 <!-- Top Bar -->
 <div class="top-bar">
 <button class="back-btn" onclick="vscode.postMessage({command:'navigate',page:'watchlist'})">← 返回</button>
-<div style="font-size:13px;color:#9CA3AF">AI Research Terminal</div>
+<div style="font-size:13px;color:#9CA3AF">Adaptive Investment Intelligence</div>
 </div>
 
 <!-- Three-Column Layout -->

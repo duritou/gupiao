@@ -17,7 +17,7 @@ export function buildResumePage(data: any): string {
 <!-- Hero -->
 <div style="text-align:center;padding:32px 24px 24px">
 <div style="font-size:48px;margin-bottom:8px">🤖</div>
-<h1 style="font-size:24px;color:#58a6ff;margin-bottom:4px">AI Research Terminal</h1>
+<h1 style="font-size:24px;color:#58a6ff;margin-bottom:4px">Adaptive Investment Intelligence</h1>
 <div style="font-size:14px;color:#8b949e">成立于 ${resume.established || '2026-06'} · 累计研究 ${(resume.total_studies || 0).toLocaleString()} 次</div>
 </div>
 

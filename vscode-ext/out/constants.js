@@ -1,5 +1,5 @@
 "use strict";
-/** Shared constants for the AI Research Terminal extension. */
+/** Shared constants for the Adaptive Investment Intelligence Platform extension. */
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.TERMINAL_CSS = exports.PAGE_TITLES = exports.NAV_ITEMS = exports.BASE_URL = void 0;
 exports.BASE_URL = 'http://127.0.0.1:8888/api/v1';

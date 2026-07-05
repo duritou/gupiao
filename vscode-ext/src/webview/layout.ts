@@ -29,7 +29,7 @@ export function createOrShowPanel(
 }
 
 export function getPageTitle(page: string): string {
-    return PAGE_TITLES[page] || 'AI Research Terminal';
+    return PAGE_TITLES[page] || 'Adaptive Investment Intelligence';
 }
 
 export function buildNav(active: string): string {

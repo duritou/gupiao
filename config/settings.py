@@ -17,8 +17,8 @@ class Settings(BaseSettings):
     APP_ENV: Literal["development", "staging", "production"] = "development"
     APP_DEBUG: bool = True
     APP_SECRET_KEY: str = "change-me-in-production"
-    APP_NAME: str = "AI Research Terminal"
-    APP_VERSION: str = "0.1.0"
+    APP_NAME: str = "Adaptive Investment Intelligence Platform"
+    APP_VERSION: str = "6.0.0"
 
     # ---- 数据库 ----
     DATABASE_URL: str = "sqlite+aiosqlite:///./data/sqlite/quant.db"

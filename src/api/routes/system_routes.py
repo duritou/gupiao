@@ -7,14 +7,14 @@ router = APIRouter(tags=["system"])
 
 @router.get("/system/health")
 async def health_check():
-    return {"status": "ok", "version": "0.11.0"}
+    return {"status": "ok", "version": "6.0.0"}
 
 
 @router.get("/system/status")
 async def system_status():
     return {
-        "app": "AI Research Terminal",
-        "version": "0.11.0",
+        "app": "Adaptive Investment Intelligence Platform",
+        "version": "6.0.0",
         "modules": [
             "plugin_registry",
             "market_gateway",

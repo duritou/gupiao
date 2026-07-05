@@ -1,4 +1,4 @@
-"""FastAPI Application — AI Research Terminal API"""
+"""FastAPI Application — Adaptive Investment Intelligence Platform API"""
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -26,9 +26,9 @@ from src.api.routes import portfolio_routes as portfolio_mod
 from src.api.routes import morning_brief_routes as morning_mod
 
 app = FastAPI(
-    title="AI Research Terminal",
-    version="0.13.0",
-    description="AI 股票研究终端 — REST API",
+    title="Adaptive Investment Intelligence Platform",
+    version="6.0.0",
+    description="Adaptive Investment Intelligence Platform — REST API",
 )
 
 app.add_middleware(

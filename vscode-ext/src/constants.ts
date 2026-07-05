@@ -1,4 +1,4 @@
-/** Shared constants for the AI Research Terminal extension. */
+/** Shared constants for the Adaptive Investment Intelligence Platform extension. */
 
 export const BASE_URL = 'http://127.0.0.1:8888/api/v1';
 

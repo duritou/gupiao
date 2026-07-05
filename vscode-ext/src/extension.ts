@@ -27,12 +27,12 @@ let extensionContext: vscode.ExtensionContext | null = null;
 // ACTIVATION
 // ============================================================
 export function activate(context: vscode.ExtensionContext) {
-    console.log('AI Research Terminal v2.0 activated');
+    console.log('Adaptive Investment Intelligence Platform activated');
     extensionContext = context;
     watchlist = context.globalState.get('watchlist', ['000001.SZ', '600519.SH', '000858.SZ', '300750.SZ', '002475.SZ']);
 
     statusBar = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
-    statusBar.text = '$(pulse) AI Research';
+    statusBar.text = '$(pulse) AIIP';
     statusBar.command = 'quantai.terminal';
     statusBar.show();
 
@@ -59,7 +59,7 @@ export function activate(context: vscode.ExtensionContext) {
         vscode.commands.registerCommand('quantai.knowledge', () => showTerminal('dashboard')),
         vscode.commands.registerCommand('quantai.status', async () => {
             const ok = await healthCheck();
-            vscode.window.showInformationMessage(ok ? 'AI Research Terminal: 后端运行中' : 'AI Research Terminal: 后端未启动');
+            vscode.window.showInformationMessage(ok ? 'AIIP: 后端运行中' : 'AIIP: 后端未启动');
         }),
     );
 
@@ -75,7 +75,7 @@ export function deactivate() { stopServer(); stopAlertPolling(); }
 // SERVER LIFECYCLE
 // ============================================================
 async function checkAndStartServer() {
-    if (await healthCheck()) { statusBar.text = '$(check) AI Research'; startAlertPolling(); return; }
+    if (await healthCheck()) { statusBar.text = '$(check) AIIP'; startAlertPolling(); return; }
     await startServer();
 }
 
@@ -89,9 +89,9 @@ async function startServer() {
     });
     for (let i = 0; i < 20; i++) {
         await sleep(1000);
-        if (await healthCheck()) { statusBar.text = '$(check) AI Research'; startAlertPolling(); return; }
+        if (await healthCheck()) { statusBar.text = '$(check) AIIP'; startAlertPolling(); return; }
     }
-    statusBar.text = '$(error) AI Research';
+    statusBar.text = '$(error) AIIP';
 }
 
 function stopServer() { if (serverProcess) { serverProcess.kill(); serverProcess = null; } }
@@ -194,7 +194,7 @@ function buildPage(page: string, data: any): string {
         case 'profile': return buildProfilePage(data);
         case 'compare': return buildComparePage(data);
         case 'timeline': return buildTimelinePage(data);
-        default: return pageShell('dashboard', 'AI Research Terminal', '<div class="empty-state"><div class="icon">🤖</div><h2>AI Research Terminal</h2><p>选择一个页面开始</p></div>');
+        default: return pageShell('dashboard', 'Adaptive Investment Intelligence', '<div class="empty-state"><div class="icon">🤖</div><h2>Adaptive Investment Intelligence</h2><p>选择一个页面开始</p></div>');
     }
 }
 
