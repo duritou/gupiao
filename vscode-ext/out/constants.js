@@ -11,6 +11,7 @@ exports.NAV_ITEMS = [
     { id: 'resume', label: 'AI Resume' },
     { id: 'profile', label: 'My Profile' },
     { id: 'aios', label: 'AI OS' },
+    { id: 'replay', label: 'Replay' },
     { id: 'marketmap', label: 'Market Map' },
     { id: 'compare', label: 'Compare' },
     { id: 'timeline', label: 'Timeline' },
@@ -20,7 +21,7 @@ exports.NAV_ITEMS = [
 ];
 exports.PAGE_TITLES = {
     dashboard: 'Dashboard', portfolio: 'Portfolio', watchlist: 'Watchlist',
-    journal: 'Decision Journal', resume: 'AI Resume', profile: 'AI Profile', aios: 'AI OS',
+    journal: 'Decision Journal', resume: 'AI Resume', profile: 'AI Profile', aios: 'AI OS', replay: 'Replay Engine',
     marketmap: 'Market Map', compare: 'Compare', timeline: 'Timeline',
     alerts: 'Alert Center', backtest: 'Backtest', dailybrief: 'Daily Brief',
 };

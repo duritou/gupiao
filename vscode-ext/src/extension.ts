@@ -18,6 +18,7 @@ import { buildJournalPage } from './pages/journal';
 import { buildResumePage } from './pages/resume';
 import { buildProfilePage } from './pages/profile';
 import { buildAIOSPage } from './pages/aios';
+import { buildReplayPage } from './pages/replay';
 
 let serverProcess: cp.ChildProcess | null = null;
 let statusBar: vscode.StatusBarItem;
@@ -53,6 +54,7 @@ export function activate(context: vscode.ExtensionContext) {
         vscode.commands.registerCommand('quantai.resume', () => showTerminal('resume')),
         vscode.commands.registerCommand('quantai.profile', () => showTerminal('profile')),
         vscode.commands.registerCommand('quantai.aios', () => showTerminal('aios')),
+        vscode.commands.registerCommand('quantai.replay', () => showTerminal('replay')),
         vscode.commands.registerCommand('quantai.startServer', startServer),
         vscode.commands.registerCommand('quantai.stopServer', stopServer),
         vscode.commands.registerCommand('quantai.addWatch', addToWatchlist),
@@ -157,6 +159,7 @@ async function fetchPageData(page: string, extraData?: any): Promise<any> {
                 ]);
                 return { status, todayMemory, weeklyMemory, learningLog, events };
             }
+            case 'replay': return {};
             case 'watchlist': {
                 const watchScores = await httpPost('/signals/batch', { codes: watchlist }).catch(() => null);
                 return { stocks: watchlist, watchScores };
@@ -205,6 +208,7 @@ function buildPage(page: string, data: any): string {
         case 'resume': return buildResumePage(data);
         case 'profile': return buildProfilePage(data);
         case 'aios': return buildAIOSPage(data);
+        case 'replay': return buildReplayPage(data);
         case 'compare': return buildComparePage(data);
         case 'timeline': return buildTimelinePage(data);
         default: return pageShell('dashboard', 'Adaptive Investment Intelligence', '<div class="empty-state"><div class="icon">🤖</div><h2>Adaptive Investment Intelligence</h2><p>选择一个页面开始</p></div>');
