@@ -20,6 +20,7 @@ import { buildProfilePage } from './pages/profile';
 import { buildAIOSPage } from './pages/aios';
 import { buildReplayPage } from './pages/replay';
 import { buildHealthPage } from './pages/health';
+import { buildConnectorsPage } from './pages/connectors';
 
 let serverProcess: cp.ChildProcess | null = null;
 let statusBar: vscode.StatusBarItem;
@@ -57,6 +58,7 @@ export function activate(context: vscode.ExtensionContext) {
         vscode.commands.registerCommand('quantai.aios', () => showTerminal('aios')),
         vscode.commands.registerCommand('quantai.replay', () => showTerminal('replay')),
         vscode.commands.registerCommand('quantai.health', () => showTerminal('health')),
+        vscode.commands.registerCommand('quantai.connectors', () => showTerminal('connectors')),
         vscode.commands.registerCommand('quantai.startServer', startServer),
         vscode.commands.registerCommand('quantai.stopServer', stopServer),
         vscode.commands.registerCommand('quantai.addWatch', addToWatchlist),
@@ -167,6 +169,13 @@ async function fetchPageData(page: string, extraData?: any): Promise<any> {
                 const health = await httpGet('/market/system-health').catch(() => null);
                 return { health };
             }
+            case 'connectors': {
+                const [dataStatus, registry] = await Promise.all([
+                    httpGet('/market/data-status').catch(() => null),
+                    httpGet('/market/registry').catch(() => null),
+                ]);
+                return { dataStatus, registry };
+            }
             case 'watchlist': {
                 const watchScores = await httpPost('/signals/batch', { codes: watchlist }).catch(() => null);
                 return { stocks: watchlist, watchScores };
@@ -217,6 +226,7 @@ function buildPage(page: string, data: any): string {
         case 'aios': return buildAIOSPage(data);
         case 'replay': return buildReplayPage(data);
         case 'health': return buildHealthPage(data);
+        case 'connectors': return buildConnectorsPage(data);
         case 'compare': return buildComparePage(data);
         case 'timeline': return buildTimelinePage(data);
         default: return pageShell('dashboard', 'Adaptive Investment Intelligence', '<div class="empty-state"><div class="icon">🤖</div><h2>Adaptive Investment Intelligence</h2><p>选择一个页面开始</p></div>');

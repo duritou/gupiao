@@ -22,3 +22,37 @@ Macro ────────── CPI/PMI/利率/汇率（AkShare）
 每个 Feed 定义了 category / frequency / primary + backup sources / cache TTL / required fields。新增 Provider 只需注册到 Feed 配置中。
 
 285 tests pass · 全部端点已验证
+
+
+v7.4 完成 ✅ — 29 个数据源，7 层架构
+当前数据生态
+
+✓ Active
+  └─ Layer 3 Market: AkShare (东方财富)
+
+○ Planned (28 sources ready for integration)
+  ├─ Layer 1 Exchange:  上交所 · 深交所 · 北交所     [官方, 98%信任]
+  ├─ Layer 2 Disclosure: 巨潮资讯 · 证监会 · SEC EDGAR [官方, 97-99%]
+  ├─ Layer 3 Market:     Tushare · BaoStock · Yahoo · Stooq
+  ├─ Layer 4 Macro:      统计局 · 人民银行 · SAFE · 财政部 · FRED · Fed
+  ├─ Layer 5 Industry:   工信部 · 能源局 · 发改委 · 医保局 · 药监局
+  ├─ Layer 6 News:       新华社 · 中证报 · 上证报 · 证券时报 · 一财 · Reuters
+  └─ Layer 7 Company:    上市公司IR页面
+AI 证据链现在可以写
+
+AI Score: 91
+  ✓ MACD金叉        → 来源: AkShare (东方财富日K)
+  ✓ 行业景气提升     → 来源: 工信部产业政策
+  ✓ 半年报发布       → 来源: 巨潮资讯
+  ✓ 北向资金流入     → 来源: AkShare (东方财富行情)
+  ✓ ROE 18.5%       → 来源: Tushare (财务数据)
+不是"来源: 网络新闻"。每条证据都可追溯到具体来源和可信度。
+
+API
+
+GET /market/registry              → 全部 29 个数据源
+GET /market/registry?layer=macro  → 宏观层 6 个源
+GET /market/feeds                 → 8 个结构化 Data Feed
+GET /market/data-status           → Provider 排名 + 新鲜度
+GET /market/system-health         → 8 个子系统健康
+285 tests pass · 全部端点已验证

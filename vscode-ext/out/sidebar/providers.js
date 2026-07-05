@@ -61,6 +61,7 @@ class TerminalNavProvider {
             navItem('AI OS · 系统运行', 'quantai.aios', 'pulse'),
             navItem('Replay · 时间机器', 'quantai.replay', 'history'),
             navItem('System Health · 系统健康', 'quantai.health', ' pulse'),
+            navItem('Data Connectors · 数据连接', 'quantai.connectors', 'plug'),
             navItem('', '', ''),
             navItem('Alert Center · 预警', 'quantai.alerts', 'bell'),
             navItem('Market Map · 行业热力图', 'quantai.marketmap', 'graph'),
