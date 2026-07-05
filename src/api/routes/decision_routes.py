@@ -1,8 +1,11 @@
-"""Decision Center API — v8.0. Daily prioritized action list."""
+"""Decision Center + Evidence Quality + Research Case Library API — v8.0."""
 
 from fastapi import APIRouter, Query
 
 from src.explain.decision_center import decision_center
+from src.explain.evidence_quality import (
+    grader, archive_case, get_case, get_case_library_stats,
+)
 from src.shared.mock_data import STOCK_NAMES, generate_stock_pool, mock_signal_result
 
 router = APIRouter(tags=["decision"], prefix="/decision")
@@ -73,3 +76,39 @@ def _generate_summary(decisions) -> str:
     if urgent:
         return f"今日{len(urgent)}条紧急建议需要关注。优先级最高: {urgent[0].stock_name}。"
     return f"今日{len(decisions)}条建议，暂无紧急操作。保持现有仓位。"
+
+
+@router.get("/evidence-grade/{code}")
+async def evidence_grade(code: str, score: float = Query(50), direction: str = Query("buy"), confidence: float = Query(0.8)):
+    """Grade the evidence quality for a specific recommendation."""
+    quality, case = grader.grade_recommendation(
+        stock_code=code, stock_name=STOCK_NAMES.get(code, code),
+        ai_score=score, direction=direction, confidence=confidence,
+        official_sources=1, commercial_sources=1, community_sources=1,
+        cross_verified=3, total_evidence=5,
+    )
+    archive_case(case)
+    return {
+        "evidence_grade": quality.to_dict(),
+        "case": case.to_dict(),
+    }
+
+
+@router.get("/cases")
+async def case_library(limit: int = Query(30, ge=1, le=100)):
+    """Research Case Library — all tracked AI recommendations."""
+    from src.explain.evidence_quality import _case_history
+    cases = sorted(_case_history, key=lambda c: c.created_at, reverse=True)[:limit]
+    return {
+        "cases": [c.to_dict() for c in cases],
+        "stats": get_case_library_stats(),
+    }
+
+
+@router.get("/cases/{case_id}")
+async def case_detail(case_id: str):
+    """Get a single research case by ID."""
+    case = get_case(case_id)
+    if not case:
+        return {"error": "case not found", "case_id": case_id}
+    return case.to_dict()
