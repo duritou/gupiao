@@ -1,0 +1,17 @@
+plugin:
+  name: "test_source"
+  version: "1.0.0"
+  type: "datasource"
+  display_name: "Test Data Source"
+  description: "A test data source for unit tests"
+  author: "Test"
+  entry_point: "adapter:TestAdapter"
+  api_version: 1
+  minimum_core: "1.0.0"
+
+  capabilities:
+    supports_history: true
+    supports_realtime: true
+    supports_lhb: true
+    coverage_markets: ["SH", "SZ"]
+    data_quality: "good"

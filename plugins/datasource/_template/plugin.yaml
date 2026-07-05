@@ -1,0 +1,30 @@
+# DataSource Plugin Template
+# 复制此目录 → 编辑 plugin.yaml + adapter.py → 丢回 plugins/datasource/ → 自动识别
+
+plugin:
+  name: "my_datasource"
+  version: "1.0.0"
+  type: "datasource"
+  display_name: "My Data Source"
+  description: "A custom data source adapter"
+  author: "Your Name"
+  entry_point: "adapter:MyAdapter"
+  api_version: 1
+  minimum_core: "1.0.0"
+  dependencies:
+    - "requests>=2.28"
+
+  capabilities:
+    supports_realtime: false
+    supports_intraday: false
+    supports_history: true
+    supports_financials: false
+    supports_lhb: false
+    supports_fund_flow: false
+    supports_news: false
+    supports_indices: false
+    supports_sectors: false
+    coverage_markets: []
+    data_quality: "basic"
+    latency: "t+1"
+    rate_limit_recommended: 30
