@@ -63,13 +63,13 @@ export function activate(context: vscode.ExtensionContext) {
     checkAndStartServer();
 }
 
-export function deactivate() { stopServer(); }
+export function deactivate() { stopServer(); stopAlertPolling(); }
 
 // ============================================================
 // SERVER LIFECYCLE
 // ============================================================
 async function checkAndStartServer() {
-    if (await healthCheck()) { statusBar.text = '$(check) AI Research'; return; }
+    if (await healthCheck()) { statusBar.text = '$(check) AI Research'; startAlertPolling(); return; }
     await startServer();
 }
 
@@ -83,7 +83,7 @@ async function startServer() {
     });
     for (let i = 0; i < 20; i++) {
         await sleep(1000);
-        if (await healthCheck()) { statusBar.text = '$(check) AI Research'; return; }
+        if (await healthCheck()) { statusBar.text = '$(check) AI Research'; startAlertPolling(); return; }
     }
     statusBar.text = '$(error) AI Research';
 }
@@ -103,13 +103,16 @@ async function fetchPageData(page: string, extraData?: any): Promise<any> {
     try {
         switch (page) {
             case 'dashboard': {
-                const [market, scanner, watchScores, brief] = await Promise.all([
+                const [market, scanner, watchScores, brief, alerts] = await Promise.all([
                     httpGet('/market/overview').catch(() => null),
                     httpPost('/scanner/run?pool_size=30&top_n=8').catch(() => null),
                     httpPost('/signals/batch', { codes: watchlist }).catch(() => null),
                     httpGet('/morning-brief/today').catch(() => null),
+                    httpGet('/alerts/today').catch(() => null),
                 ]);
-                return { market, scanner, watchScores, brief };
+                // Push VS Code notification for P0/P1 alerts
+                checkUrgentAlerts(alerts);
+                return { market, scanner, watchScores, brief, alerts };
             }
             case 'watchlist': {
                 const watchScores = await httpPost('/signals/batch', { codes: watchlist }).catch(() => null);
@@ -197,4 +200,53 @@ async function addToWatchlist() {
         extensionContext.globalState.update('watchlist', watchlist);
     }
     vscode.window.showInformationMessage(`${code} 已添加到自选`);
+}
+
+// ============================================================
+// ALERT INTELLIGENCE — Proactive notifications
+// ============================================================
+let lastAlertIds: Set<string> = new Set();
+let alertPollInterval: NodeJS.Timeout | null = null;
+
+function checkUrgentAlerts(alertsData: any) {
+    if (!alertsData) return;
+    const focus = alertsData.today_focus || {};
+    const urgent = focus.urgent || [];
+    for (const alert of urgent) {
+        if (!lastAlertIds.has(alert.id) && alert.status === 'new') {
+            lastAlertIds.add(alert.id);
+            const levelIcon = alert.level === 'P0' ? '🔴' : '🟢';
+            const msg = `${levelIcon} [${alert.level}] ${alert.title}`;
+            if (alert.level === 'P0') {
+                vscode.window.showErrorMessage(msg, '查看', '忽略').then(choice => {
+                    if (choice === '查看') showTerminal('alerts');
+                });
+            } else {
+                vscode.window.showWarningMessage(msg, '查看', '忽略').then(choice => {
+                    if (choice === '查看') showTerminal('alerts');
+                });
+            }
+        }
+    }
+    // Track seen alert IDs
+    for (const alert of urgent) {
+        lastAlertIds.add(alert.id);
+    }
+}
+
+function startAlertPolling() {
+    if (alertPollInterval) return;
+    alertPollInterval = setInterval(async () => {
+        try {
+            const alertsData = await httpGet('/alerts/today');
+            checkUrgentAlerts(alertsData);
+        } catch {}
+    }, 120000); // Every 2 minutes
+}
+
+function stopAlertPolling() {
+    if (alertPollInterval) {
+        clearInterval(alertPollInterval);
+        alertPollInterval = null;
+    }
 }

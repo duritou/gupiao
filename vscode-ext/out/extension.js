@@ -73,13 +73,14 @@ function activate(context) {
     vscode.window.registerTreeDataProvider('quantai-status', new providers_1.StatusProvider());
     checkAndStartServer();
 }
-function deactivate() { stopServer(); }
+function deactivate() { stopServer(); stopAlertPolling(); }
 // ============================================================
 // SERVER LIFECYCLE
 // ============================================================
 async function checkAndStartServer() {
     if (await (0, client_1.healthCheck)()) {
         statusBar.text = '$(check) AI Research';
+        startAlertPolling();
         return;
     }
     await startServer();
@@ -98,6 +99,7 @@ async function startServer() {
         await (0, client_1.sleep)(1000);
         if (await (0, client_1.healthCheck)()) {
             statusBar.text = '$(check) AI Research';
+            startAlertPolling();
             return;
         }
     }
@@ -119,13 +121,16 @@ async function fetchPageData(page, extraData) {
     try {
         switch (page) {
             case 'dashboard': {
-                const [market, scanner, watchScores, brief] = await Promise.all([
+                const [market, scanner, watchScores, brief, alerts] = await Promise.all([
                     (0, client_1.httpGet)('/market/overview').catch(() => null),
                     (0, client_1.httpPost)('/scanner/run?pool_size=30&top_n=8').catch(() => null),
                     (0, client_1.httpPost)('/signals/batch', { codes: watchlist }).catch(() => null),
                     (0, client_1.httpGet)('/morning-brief/today').catch(() => null),
+                    (0, client_1.httpGet)('/alerts/today').catch(() => null),
                 ]);
-                return { market, scanner, watchScores, brief };
+                // Push VS Code notification for P0/P1 alerts
+                checkUrgentAlerts(alerts);
+                return { market, scanner, watchScores, brief, alerts };
             }
             case 'watchlist': {
                 const watchScores = await (0, client_1.httpPost)('/signals/batch', { codes: watchlist }).catch(() => null);
@@ -225,5 +230,56 @@ async function addToWatchlist() {
         extensionContext.globalState.update('watchlist', watchlist);
     }
     vscode.window.showInformationMessage(`${code} 已添加到自选`);
+}
+// ============================================================
+// ALERT INTELLIGENCE — Proactive notifications
+// ============================================================
+let lastAlertIds = new Set();
+let alertPollInterval = null;
+function checkUrgentAlerts(alertsData) {
+    if (!alertsData)
+        return;
+    const focus = alertsData.today_focus || {};
+    const urgent = focus.urgent || [];
+    for (const alert of urgent) {
+        if (!lastAlertIds.has(alert.id) && alert.status === 'new') {
+            lastAlertIds.add(alert.id);
+            const levelIcon = alert.level === 'P0' ? '🔴' : '🟢';
+            const msg = `${levelIcon} [${alert.level}] ${alert.title}`;
+            if (alert.level === 'P0') {
+                vscode.window.showErrorMessage(msg, '查看', '忽略').then(choice => {
+                    if (choice === '查看')
+                        showTerminal('alerts');
+                });
+            }
+            else {
+                vscode.window.showWarningMessage(msg, '查看', '忽略').then(choice => {
+                    if (choice === '查看')
+                        showTerminal('alerts');
+                });
+            }
+        }
+    }
+    // Track seen alert IDs
+    for (const alert of urgent) {
+        lastAlertIds.add(alert.id);
+    }
+}
+function startAlertPolling() {
+    if (alertPollInterval)
+        return;
+    alertPollInterval = setInterval(async () => {
+        try {
+            const alertsData = await (0, client_1.httpGet)('/alerts/today');
+            checkUrgentAlerts(alertsData);
+        }
+        catch { }
+    }, 120000); // Every 2 minutes
+}
+function stopAlertPolling() {
+    if (alertPollInterval) {
+        clearInterval(alertPollInterval);
+        alertPollInterval = null;
+    }
 }
 //# sourceMappingURL=extension.js.map

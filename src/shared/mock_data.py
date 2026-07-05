@@ -445,6 +445,285 @@ def generate_alerts(count: int = 20) -> list[dict]:
     return alerts
 
 
+def generate_intelligent_alerts(portfolio_positions: list[dict] | None = None) -> list[dict]:
+    """Generate v4.2 intelligent alerts with P0-P4 levels, evidence, lifecycle.
+
+    These are AI-driven, evidence-backed alerts — not simple signal notifications.
+    """
+    rng = random.Random(int(hashlib.md5(date.today().isoformat().encode()).hexdigest()[:8], 16))
+    now = datetime.now()
+    alerts: list[dict] = []
+
+    # Use portfolio positions if provided, otherwise pick from STOCK_NAMES
+    if portfolio_positions:
+        positions = portfolio_positions
+    else:
+        positions = [
+            {"stock_code": "688256.SH", "stock_name": "寒武纪", "ai_score": 92, "last_score_change": 3,
+             "ai_direction": "buy", "ai_signal": "MACD金叉", "risk_level": "中", "weight_pct": 25},
+            {"stock_code": "002371.SZ", "stock_name": "北方华创", "ai_score": 88, "last_score_change": 2,
+             "ai_direction": "buy", "ai_signal": "放量突破", "risk_level": "低", "weight_pct": 20},
+            {"stock_code": "300308.SZ", "stock_name": "中际旭创", "ai_score": 90, "last_score_change": 5,
+             "ai_direction": "buy", "ai_signal": "MA多头排列", "risk_level": "低", "weight_pct": 18},
+            {"stock_code": "688981.SH", "stock_name": "中芯国际", "ai_score": 79, "last_score_change": -2,
+             "ai_direction": "neutral", "ai_signal": "RSI偏弱", "risk_level": "中", "weight_pct": 15},
+            {"stock_code": "600519.SH", "stock_name": "贵州茅台", "ai_score": 72, "last_score_change": -6,
+             "ai_direction": "neutral", "ai_signal": "MACD死叉", "risk_level": "高", "weight_pct": 22},
+        ]
+
+    # ---- P0: Emergency (stop-loss, crash) ----
+    # Rare, only 0-1 per day
+    if rng.random() < 0.15:
+        code = "600519.SH"
+        alerts.append({
+            "id": f"alt_{now.strftime('%Y%m%d')}_p0_001",
+            "level": "P0", "category": "risk",
+            "status": "new",
+            "stock_code": code, "stock_name": get_stock_name(code),
+            "title": f"🔴 {get_stock_name(code)} 触发止损预警 · 跌超7%",
+            "body": f"{get_stock_name(code)}盘中跌幅超7%，触发止损预警线。建议立即关注并评估是否需要执行止损。",
+            "direction": "sell", "score": 25, "score_change": -15,
+            "created_at": now.replace(hour=10, minute=rng.randint(0, 59)).isoformat(),
+            "read_at": "", "acted_at": "",
+            "evidence": [
+                {"type": "risk", "title": "止损预警触发", "description": "盘中跌幅超7%，触发硬止损线",
+                 "confidence": 0.95, "source": "RiskMonitor", "impact": -15, "detail": {}},
+                {"type": "signal", "title": "MACD死叉", "description": "DIF下穿DEA，空头信号确认",
+                 "confidence": 0.82, "source": "MACDSignal", "impact": -8, "detail": {}},
+            ],
+            "ai_confidence": 0.95, "historical_accuracy": 0.82,
+            "action": None, "outcome": None,
+            "tags": ["止损", "紧急", "P0"],
+            "related_alert_ids": [],
+        })
+
+    # ---- P1: Strong opportunity / risk ----
+    upgraded = [p for p in positions if p.get("last_score_change", 0) >= 3]
+    for p in upgraded[:2]:
+        change = p["last_score_change"]
+        score = p["ai_score"]
+        alerts.append({
+            "id": f"alt_{now.strftime('%Y%m%d')}_p1_{p['stock_code'].replace('.', '')}",
+            "level": "P1", "category": "opportunity",
+            "status": "new",
+            "stock_code": p["stock_code"], "stock_name": p["stock_name"],
+            "title": f"{p['stock_name']} AI评分 {score:.0f} · 强烈买入信号 ▲{change:.0f}",
+            "body": f"AI评分从{score - change:.0f}升至{score:.0f}（▲{change:.0f}）。"
+                     f"主要驱动：{p.get('ai_signal', '多信号共振')}。"
+                     f"历史类似信号成功率{p.get('ai_confidence', rng.uniform(0.7, 0.85)):.0%}。",
+            "direction": "buy", "score": score, "score_change": change,
+            "created_at": now.replace(hour=9, minute=30 + rng.randint(0, 30)).isoformat(),
+            "read_at": "", "acted_at": "",
+            "evidence": [
+                {"type": "signal", "title": p.get("ai_signal", "MACD金叉"),
+                 "description": f"{p.get('ai_signal', 'MACD金叉')}信号确认，技术面积极",
+                 "confidence": rng.uniform(0.75, 0.92), "source": "SignalEngine",
+                 "impact": change * 0.6, "detail": {}},
+                {"type": "market", "title": "放量突破",
+                 "description": f"成交量放大{rng.randint(130, 200)}%，资金积极入场",
+                 "confidence": rng.uniform(0.7, 0.85), "source": "VolumeSignal",
+                 "impact": change * 0.3, "detail": {}},
+                {"type": "knowledge", "title": "行业景气度提升",
+                 "description": f"{_guess_sector_name(p['stock_name'])}行业评分+{rng.randint(5, 15)}，景气度上行",
+                 "confidence": rng.uniform(0.65, 0.8), "source": "KnowledgeBase",
+                 "impact": change * 0.2, "detail": {}},
+            ],
+            "ai_confidence": rng.uniform(0.8, 0.95),
+            "historical_accuracy": rng.uniform(0.68, 0.82),
+            "action": None, "outcome": None,
+            "tags": ["强烈买入", "多信号共振", "高置信"],
+            "related_alert_ids": [],
+        })
+
+    downgraded = [p for p in positions if p.get("last_score_change", 0) <= -3]
+    for p in downgraded[:1]:
+        change = abs(p["last_score_change"])
+        score = p["ai_score"]
+        alerts.append({
+            "id": f"alt_{now.strftime('%Y%m%d')}_p1_{p['stock_code'].replace('.', '')}_risk",
+            "level": "P1", "category": "risk",
+            "status": "new",
+            "stock_code": p["stock_code"], "stock_name": p["stock_name"],
+            "title": f"⚠ {p['stock_name']} AI评分下降 · {score:.0f}分 ▼{change:.0f}",
+            "body": f"AI评分从{score + change:.0f}降至{score:.0f}（▼{change:.0f}）。"
+                     f"主要风险：{p.get('ai_signal', '技术面转弱')}。建议检查是否需要调整仓位。",
+            "direction": "sell", "score": score, "score_change": -change,
+            "created_at": now.replace(hour=9, minute=45 + rng.randint(0, 20)).isoformat(),
+            "read_at": "", "acted_at": "",
+            "evidence": [
+                {"type": "signal", "title": p.get("ai_signal", "MACD死叉"),
+                 "description": f"{p.get('ai_signal', 'MACD死叉')}信号确认，技术面转弱",
+                 "confidence": rng.uniform(0.7, 0.88), "source": "SignalEngine",
+                 "impact": -change * 0.5, "detail": {}},
+                {"type": "market", "title": "资金流出",
+                 "description": f"近5日主力资金净流出，短期承压",
+                 "confidence": rng.uniform(0.65, 0.8), "source": "MarketMonitor",
+                 "impact": -change * 0.3, "detail": {}},
+            ],
+            "ai_confidence": rng.uniform(0.75, 0.9),
+            "historical_accuracy": rng.uniform(0.65, 0.78),
+            "action": None, "outcome": None,
+            "tags": ["持仓风险", "建议关注", f"降级{change:.0f}"],
+            "related_alert_ids": [],
+        })
+
+    # ---- P2: Portfolio / Position changes ----
+    for p in positions:
+        if abs(p.get("last_score_change", 0)) >= 1 and abs(p.get("last_score_change", 0)) < 3:
+            change = p["last_score_change"]
+            arrow = "▲" if change >= 0 else "▼"
+            alerts.append({
+                "id": f"alt_{now.strftime('%Y%m%d')}_p2_{p['stock_code'].replace('.', '')}",
+                "level": "P2", "category": "portfolio",
+                "status": "new" if abs(change) >= 2 else "read",
+                "stock_code": p["stock_code"], "stock_name": p["stock_name"],
+                "title": f"{p['stock_name']} 评分微调 {p['ai_score']:.0f} {arrow}{abs(change):.0f}",
+                "body": f"持仓{p['stock_name']}的AI评分小幅变化。"
+                         f"当前方向：{_direction_cn(p.get('ai_direction', 'neutral'))}，"
+                         f"风险等级：{p.get('risk_level', '中')}。",
+                "direction": p.get("ai_direction", "neutral"),
+                "score": p["ai_score"], "score_change": change,
+                "created_at": now.replace(hour=rng.randint(9, 14), minute=rng.randint(0, 59)).isoformat(),
+                "read_at": "", "acted_at": "",
+                "evidence": [
+                    {"type": "portfolio", "title": "持仓评分变化",
+                     "description": f"AI评分从{p['ai_score'] - change:.0f}→{p['ai_score']:.0f}",
+                     "confidence": 0.8, "source": "PortfolioAnalyzer",
+                     "impact": change, "detail": {}},
+                ],
+                "ai_confidence": 0.8,
+                "historical_accuracy": 0.72,
+                "action": None, "outcome": None,
+                "tags": ["持仓监控", "评分微调"],
+                "related_alert_ids": [],
+            })
+
+    # Portfolio risk: concentration
+    semicon_weight = sum(p["weight_pct"] for p in positions
+                         if _guess_sector_name(p["stock_name"]) in ("半导体", "科技"))
+    if semicon_weight > 35:
+        alerts.append({
+            "id": f"alt_{now.strftime('%Y%m%d')}_p2_concentration",
+            "level": "P2", "category": "risk",
+            "status": "new",
+            "stock_code": "", "stock_name": "投资组合",
+            "title": f"⚠ 行业集中度偏高 · 半导体占比{semicon_weight:.0f}%",
+            "body": f"半导体/科技板块占仓位{semicon_weight:.0f}%。"
+                     f"AI建议：略微降低集中度，考虑增加消费或金融板块配置。",
+            "direction": "neutral", "score": 50, "score_change": 0,
+            "created_at": now.replace(hour=8, minute=30).isoformat(),
+            "read_at": "", "acted_at": "",
+            "evidence": [
+                {"type": "risk", "title": "行业集中度",
+                 "description": f"半导体板块占比{semicon_weight:.0f}%，超40%警戒线",
+                 "confidence": 0.9, "source": "PortfolioAnalyzer",
+                 "impact": -5, "detail": {}},
+            ],
+            "ai_confidence": 0.9, "historical_accuracy": 0.0,
+            "action": None, "outcome": None,
+            "tags": ["组合风险", "行业集中", "分散化"],
+            "related_alert_ids": [],
+        })
+
+    # ---- P3: Market events ----
+    alerts.append({
+        "id": f"alt_{now.strftime('%Y%m%d')}_p3_market",
+        "level": "P3", "category": "market",
+        "status": "read",
+        "stock_code": "", "stock_name": "全市场",
+        "title": "📊 今日市场情绪积极 · 78分",
+        "body": f"上涨{rng.randint(3200, 4000)}家，下跌{rng.randint(800, 1500)}家。"
+                 f"成交额{rng.uniform(1.2, 1.6):.2f}万亿。北向资金净流入{rng.randint(30, 80)}亿。"
+                 f"AI人工智能、机器人、半导体板块活跃。",
+        "direction": "neutral", "score": 78, "score_change": 3,
+        "created_at": now.replace(hour=9, minute=25).isoformat(),
+        "read_at": now.replace(hour=9, minute=25).isoformat(),
+        "acted_at": "",
+        "evidence": [
+            {"type": "market", "title": "市场情绪",
+             "description": "涨跌比3:1，市场偏乐观",
+             "confidence": 0.7, "source": "MarketMonitor", "impact": 0, "detail": {}},
+        ],
+        "ai_confidence": 0.7, "historical_accuracy": 0.0,
+        "action": None, "outcome": None,
+        "tags": ["市场情绪", "日报"],
+        "related_alert_ids": [],
+    })
+
+    # Hot sector alert
+    alerts.append({
+        "id": f"alt_{now.strftime('%Y%m%d')}_p3_sector",
+        "level": "P3", "category": "knowledge",
+        "status": "read",
+        "stock_code": "", "stock_name": "行业热点",
+        "title": "🔥 机器人板块热度飙升 · AI评分+12",
+        "body": "机器人大会召开在即，产业链关注度提升。关注：电机、减速器、传感器环节。",
+        "direction": "buy", "score": 85, "score_change": 12,
+        "created_at": now.replace(hour=9, minute=0).isoformat(),
+        "read_at": now.replace(hour=9, minute=1).isoformat(),
+        "acted_at": "",
+        "evidence": [
+            {"type": "knowledge", "title": "行业事件",
+             "description": "机器人大会召开在即，产业链关注度提升",
+             "confidence": 0.6, "source": "KnowledgeBase", "impact": 12, "detail": {}},
+        ],
+        "ai_confidence": 0.6, "historical_accuracy": 0.55,
+        "action": None, "outcome": None,
+        "tags": ["行业热点", "机器人"],
+        "related_alert_ids": [],
+    })
+
+    # ---- P4: Informational ----
+    alerts.append({
+        "id": f"alt_{now.strftime('%Y%m%d')}_p4_earnings",
+        "level": "P4", "category": "knowledge",
+        "status": "read",
+        "stock_code": "688256.SH", "stock_name": "寒武纪",
+        "title": "📅 寒武纪 · 7月15日发财报",
+        "body": "寒武纪预计7月15日发布半年报。AI芯片出货量是关注焦点。",
+        "direction": "neutral", "score": 50, "score_change": 0,
+        "created_at": now.replace(hour=8, minute=0).isoformat(),
+        "read_at": now.replace(hour=8, minute=1).isoformat(),
+        "acted_at": "",
+        "evidence": [
+            {"type": "knowledge", "title": "财报日历",
+             "description": "预计7月15日发布半年报",
+             "confidence": 0.9, "source": "EarningsCalendar", "impact": 0, "detail": {}},
+        ],
+        "ai_confidence": 0.9, "historical_accuracy": 0.0,
+        "action": None, "outcome": None,
+        "tags": ["财报", "事件提醒"],
+        "related_alert_ids": [],
+    })
+
+    # Sort: P0 > P1 > P2 > P3 > P4
+    level_order = {"P0": 0, "P1": 1, "P2": 2, "P3": 3, "P4": 4}
+    alerts.sort(key=lambda a: level_order.get(a["level"], 9))
+    return alerts
+
+
+def _direction_cn(d: str) -> str:
+    """Translate direction to Chinese."""
+    return {"buy": "看多", "sell": "看空", "neutral": "中性"}.get(d, d)
+
+
+def _guess_sector_name(name: str) -> str:
+    """Guess sector from stock name."""
+    tech_kw = ["微", "芯", "光", "软", "网", "数据", "智能", "云", "科技", "通信", "电子", "讯飞", "创"]
+    for kw in tech_kw:
+        if kw in name:
+            return "半导体" if any(k in name for k in ["微", "芯", "半", "光"]) else "科技"
+    if any(k in name for k in ["酒", "药", "食品", "饮料", "生物"]):
+        return "消费"
+    if any(k in name for k in ["银行", "证券", "保险", "金融"]):
+        return "金融"
+    if any(k in name for k in ["车", "锂", "汽"]):
+        return "汽车"
+    if any(k in name for k in ["能源", "光伏", "电池", "电", "新能源"]):
+        return "新能源"
+    return "综合"
+
+
 # ============================================================
 # Timeline / score history
 # ============================================================

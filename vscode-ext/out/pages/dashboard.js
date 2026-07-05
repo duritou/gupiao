@@ -1,5 +1,14 @@
 "use strict";
-/** Dashboard v3 — AI Research Terminal home page with Portfolio + Morning Brief. */
+/** Dashboard v4.2 — Mission Control with Alert Intelligence.
+ *
+ * Layout:
+ *   1. Portfolio Summary Cards (from Morning Brief)
+ *   2. 🔥 Today Focus — AI-prioritized urgent alerts (P0/P1)
+ *   3. Market Overview — breadth, volume, northbound
+ *   4. Hot Sectors + Risk Warnings
+ *   5. Top Opportunities (from Scanner)
+ *   6. My Watchlist Snapshot
+ */
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.buildDashboardPage = buildDashboardPage;
 const layout_1 = require("../webview/layout");
@@ -15,12 +24,13 @@ function buildDashboardPage(data) {
     const watchScores = data.watchScores?.signals || [];
     const brief = data.brief || {};
     const pf = brief.portfolio || {};
-    const items = pf.items || [];
-    const changes = brief.score_changes || {};
-    // Portfolio summary cards
+    const alertFeed = data.alerts || {};
+    const todayFocus = alertFeed.today_focus || {};
+    const urgentAlerts = todayFocus.urgent || [];
+    const importantAlerts = todayFocus.important || [];
     const pfPlColor = (pf.total_pl || 0) >= 0 ? 'up' : 'down';
     const content = `
-<!-- Portfolio Summary (from Morning Brief) -->
+<!-- ═══════════ Portfolio Summary Cards ═══════════ -->
 ${pf.position_count > 0 ? `
 <div class="grid4">
 <div class="card" style="border-left:3px solid #7C3AED"><h3>总资产</h3><div class="metric-value" style="font-size:24px">¥${((pf.total_value || 0) / 10000).toFixed(1)}万</div><span class="text-sm text-muted">${pf.position_count || 0}只持仓</span></div>
@@ -28,50 +38,28 @@ ${pf.position_count > 0 ? `
 <div class="card" style="border-left:3px solid ${(pf.avg_score || 50) >= 70 ? '#22C55E' : '#F59E0B'}"><h3>AI评分</h3><div class="metric-value ${(pf.avg_score || 50) >= 70 ? 'up' : 'warn'}">${(pf.avg_score || 50).toFixed(0)}</div><span class="text-sm ${(pf.score_trend || 0) >= 0 ? 'up' : 'down'}">${(pf.score_trend || 0) >= 0 ? '↑' : '↓'}${Math.abs(pf.score_trend || 0).toFixed(0)} vs 昨日</span></div>
 <div class="card"><h3>情绪</h3><div class="metric-value" style="color:#F59E0B;font-size:36px">${'★'.repeat(brief.market?.sentiment_stars || 4)}${'☆'.repeat(5 - (brief.market?.sentiment_stars || 4))}</div><span class="text-sm text-muted">${brief.market?.sentiment_label || '积极'} ${brief.market?.sentiment_score || 72}分</span></div>
 </div>
-
-<!-- Score Changes -->
-${(changes.upgraded || []).length > 0 || (changes.downgraded || []).length > 0 ? `
-<div class="grid2">
-${(changes.upgraded || []).length > 0 ? `
-<div class="card" style="border-left:3px solid #22C55E">
-<h3>▲ 评分提升</h3>
-${changes.upgraded.map((p) => `
-<div class="stock-row" onclick="analyzeStock('${p.stock_code}')">
-<span><span class="stock-name">${p.stock_name}</span> <span class="stock-code">${p.stock_code}</span></span>
-<span><span style="color:#22C55E;font-weight:700">${p.ai_score.toFixed(0)}</span> <span style="color:#22C55E;font-size:11px">↑${p.score_change.toFixed(0)}</span> <span class="tag tag-up" style="font-size:10px">${p.top_signal || ''}</span></span>
-</div>`).join('')}
-</div>` : ''}
-${(changes.downgraded || []).length > 0 ? `
-<div class="card" style="border-left:3px solid #EF4444">
-<h3>▼ 评分下降</h3>
-${changes.downgraded.map((p) => `
-<div class="stock-row" onclick="analyzeStock('${p.stock_code}')">
-<span><span class="stock-name">${p.stock_name}</span> <span class="stock-code">${p.stock_code}</span></span>
-<span><span style="color:#EF4444;font-weight:700">${p.ai_score.toFixed(0)}</span> <span style="color:#EF4444;font-size:11px">↓${Math.abs(p.score_change).toFixed(0)}</span> <span class="tag tag-down" style="font-size:10px">${p.risk_level || ''}风险</span></span>
-</div>`).join('')}
-</div>` : ''}
-</div>` : ''}
-
-<!-- AI One-Liner -->
-${brief.one_liner ? `
-<div class="card" style="border-left:3px solid #7C3AED;margin:0 24px 12px">
-<div style="font-size:14px;color:#A78BFA;line-height:1.6">💬 ${brief.one_liner}</div>
-</div>` : ''}
-
-<!-- AI Recommendations -->
-${(brief.recommendations || []).length > 0 ? `
-<div style="padding:0 24px;margin-bottom:12px">
-<div class="card">
-<h3>AI 建议</h3>
-${brief.recommendations.map((r) => `
-<div class="stock-row" onclick="analyzeStock('${r.stock_code}')">
-<span><span class="stock-name">${r.stock_name}</span> <span class="stock-code">${r.stock_code}</span></span>
-<span><span class="tag tag-${r.type === 'hold_or_add' ? 'up' : 'down'}">${r.type === 'hold_or_add' ? '继续持有' : '建议减仓'}</span> <span class="text-sm text-muted">${r.reason}</span></span>
-</div>`).join('')}
-</div></div>` : ''}
 ` : ''}
 
-<!-- Market Overview -->
+<!-- ═══════════ 🔥 Today Focus (Alert Intelligence) ═══════════ -->
+<div style="padding:0 24px;margin-bottom:8px">
+<div class="card" style="border:1px solid ${urgentAlerts.length > 0 ? '#F59E0B' : '#30363d'};${urgentAlerts.length > 0 ? 'background:linear-gradient(135deg,#1a1800 0%,#161b22 100%);' : ''}">
+<div class="card-header">
+<h3 style="font-size:15px;color:#F59E0B">🔥 Today Focus · 今日最重要</h3>
+<span class="text-sm text-muted">AI 已为你排好优先级</span>
+</div>
+${urgentAlerts.length > 0 || importantAlerts.length > 0 ? `
+<div style="display:flex;flex-direction:column;gap:8px">
+${urgentAlerts.map((a) => _renderFocusAlert(a, true)).join('')}
+${importantAlerts.map((a) => _renderFocusAlert(a, false)).join('')}
+</div>` : `
+<div class="empty-state" style="padding:24px"><p>今日暂无紧急预警 · AI持续监控中</p></div>`}
+${alertFeed.one_liner ? `
+<div style="margin-top:12px;padding-top:12px;border-top:1px solid #21262d;font-size:13px;color:#A78BFA;line-height:1.5">💬 ${alertFeed.one_liner}</div>` : ''}
+${brief.one_liner ? `
+<div style="margin-top:8px;font-size:13px;color:#8B5CF6;line-height:1.5">💬 ${brief.one_liner}</div>` : ''}
+</div></div>
+
+<!-- ═══════════ Market Overview ═══════════ -->
 <div class="grid4">
 <div class="card"><h3>上涨</h3><div class="metric-value up">${m.up?.toLocaleString() || '3,865'}</div><span class="text-sm text-muted">涨停 ${m.limit_up || 68}</span></div>
 <div class="card"><h3>下跌</h3><div class="metric-value down">${m.down?.toLocaleString() || '1,023'}</div><span class="text-sm text-muted">跌停 ${m.limit_down || 12}</span></div>
@@ -79,6 +67,7 @@ ${brief.recommendations.map((r) => `
 <div class="card"><h3>北向资金</h3><div class="metric-value ${nb.direction === 'inflow' ? 'up' : 'down'}">${nb.net_flow != null ? (nb.net_flow > 0 ? '+' : '') + nb.net_flow + '亿' : '+58亿'}</div></div>
 </div>
 
+<!-- ═══════════ Hot Sectors + Risk ═══════════ -->
 <div class="grid2">
 <div class="card"><div class="card-header"><h3>今日热点</h3></div>
 ${hotSectors.map((s) => `<div class="stock-row" onclick="navigate('marketmap')">
@@ -93,6 +82,7 @@ ${risks.map((r) => `<div class="stock-row">
 </div>
 </div>
 
+<!-- ═══════════ Top Opportunities ═══════════ -->
 <div style="padding:0 24px"><div class="card"><div class="card-header"><h3>🔥 今日机会 Top ${candidates.length}</h3></div>
 ${candidates.map((c, i) => {
         const sc = c.fusion_score >= 75 ? 'up' : c.fusion_score >= 55 ? 'neutral' : 'down';
@@ -106,6 +96,7 @@ ${candidates.map((c, i) => {
     }).join('') || '<div class="empty-state"><div class="icon">🔍</div><p>运行扫描以发现机会</p></div>'}
 </div></div>
 
+<!-- ═══════════ My Watchlist Snapshot ═══════════ -->
 ${watchScores.length > 0 ? `
 <div style="padding:0 24px;margin-top:16px"><div class="card">
 <div class="card-header"><h3>📈 我的关注</h3><span class="text-sm text-muted" style="cursor:pointer" onclick="navigate('watchlist')">查看全部 →</span></div>
@@ -125,9 +116,20 @@ ${watchScores.slice(0, 4).map((s) => {
 </div>`;
     const extraScript = `
 let dashInterval;
+let alertUnread = ${alertFeed.unread_count || 0};
 async function refreshDashboard() {
     try {
         await fetch('${constants_1.BASE_URL}/market/overview');
+        // Refresh alerts for Today Focus
+        const alertsResp = await fetch('${constants_1.BASE_URL}/alerts/today').catch(() => null);
+        if (alertsResp) {
+            const alertData = await alertsResp.json();
+            const newUnread = alertData.unread_count || 0;
+            if (newUnread > alertUnread) {
+                vscode.postMessage({command:'alertUpdate',unread:newUnread,urgent:alertData.urgent_count||0});
+            }
+            alertUnread = newUnread;
+        }
         document.getElementById('lastUpdate').textContent = new Date().toLocaleTimeString('zh-CN');
     } catch(e) {}
 }
@@ -135,6 +137,53 @@ function startAutoRefresh() { refreshDashboard(); dashInterval = setInterval(ref
 function stopAutoRefresh() { clearInterval(dashInterval); }
 document.addEventListener('visibilitychange', () => { document.hidden ? stopAutoRefresh() : startAutoRefresh(); });
 startAutoRefresh();`;
-    return (0, layout_1.pageShell)('dashboard', 'Dashboard · 晨报', content, extraScript);
+    return (0, layout_1.pageShell)('dashboard', 'Dashboard · Mission Control', content, extraScript);
+}
+/** Render a single Today Focus alert card. */
+function _renderFocusAlert(a, isUrgent) {
+    const levelColor = a.level === 'P0' ? '#EF4444' : a.level === 'P1' ? '#F59E0B' : '#8b949e';
+    const levelBg = a.level === 'P0' ? '#3a1b1b' : a.level === 'P1' ? '#3a351b' : '#21262d';
+    const levelBadge = `<span style="display:inline-block;padding:1px 6px;border-radius:3px;background:${levelBg};color:${levelColor};font-size:10px;font-weight:700;font-family:monospace">${a.level}</span>`;
+    const directionIcon = a.direction === 'buy' ? '🟢' : a.direction === 'sell' ? '🔴' : '⚪';
+    const clickAction = a.stock_code
+        ? `onclick="analyzeStock('${a.stock_code}')"`
+        : '';
+    return `
+<div class="evidence-card" style="cursor:${a.stock_code ? 'pointer' : 'default'};border-left:3px solid ${levelColor};${isUrgent ? 'background:#1a1a10;' : ''}" ${clickAction}>
+<div class="flex-between">
+<div class="flex-row gap-8">
+${levelBadge}
+<span style="font-size:14px;font-weight:600">${a.title}</span>
+</div>
+<div class="flex-row gap-8">
+<span style="color:#8b949e;font-size:11px">${_timeAgo(a.created_at)}</span>
+${a.status === 'new' ? '<span style="color:#58a6ff;font-size:10px">● NEW</span>' : ''}
+</div>
+</div>
+${a.evidence && a.evidence.length > 0 ? `
+<div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:4px">
+${a.evidence.slice(0, 3).map((e) => `<span style="font-size:10px;padding:1px 6px;border-radius:8px;background:#21262d;color:#8b949e">✓ ${e.title}</span>`).join('')}
+</div>` : ''}
+${a.ai_confidence ? `
+<div style="margin-top:6px;display:flex;gap:16px;font-size:11px;color:#8b949e">
+<span>置信度 ${(a.ai_confidence * 100).toFixed(0)}%</span>
+${a.historical_accuracy ? `<span>历史准确率 ${(a.historical_accuracy * 100).toFixed(0)}%</span>` : ''}
+</div>` : ''}
+</div>`;
+}
+function _timeAgo(iso) {
+    if (!iso)
+        return '';
+    const now = new Date();
+    const then = new Date(iso);
+    const mins = Math.floor((now.getTime() - then.getTime()) / 60000);
+    if (mins < 1)
+        return '刚刚';
+    if (mins < 60)
+        return `${mins}分钟前`;
+    const hours = Math.floor(mins / 60);
+    if (hours < 24)
+        return `${hours}小时前`;
+    return `${Math.floor(hours / 24)}天前`;
 }
 //# sourceMappingURL=dashboard.js.map
