@@ -16,6 +16,14 @@
   "contributes": {
     "commands": [
       {
+        "command": "quantai.journal",
+        "title": "AI Research: 决策日志"
+      },
+      {
+        "command": "quantai.resume",
+        "title": "AI Research: AI信任档案"
+      },
+      {
         "command": "quantai.portfolio",
         "title": "AI Research: 持仓中心"
       },

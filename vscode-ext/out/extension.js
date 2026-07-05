@@ -50,6 +50,8 @@ const dailybrief_1 = require("./pages/dailybrief");
 const compare_1 = require("./pages/compare");
 const timeline_1 = require("./pages/timeline");
 const portfolio_1 = require("./pages/portfolio");
+const journal_1 = require("./pages/journal");
+const resume_1 = require("./pages/resume");
 let serverProcess = null;
 let statusBar;
 let watchlist = [];
@@ -65,7 +67,7 @@ function activate(context) {
     statusBar.text = '$(pulse) AI Research';
     statusBar.command = 'quantai.terminal';
     statusBar.show();
-    context.subscriptions.push(vscode.commands.registerCommand('quantai.terminal', () => showTerminal('dashboard')), vscode.commands.registerCommand('quantai.dashboard', () => showTerminal('dashboard')), vscode.commands.registerCommand('quantai.watchlist', () => showTerminal('watchlist')), vscode.commands.registerCommand('quantai.research', () => showStockResearch()), vscode.commands.registerCommand('quantai.marketmap', () => showTerminal('marketmap')), vscode.commands.registerCommand('quantai.alerts', () => showTerminal('alerts')), vscode.commands.registerCommand('quantai.backtest', () => showTerminal('backtest')), vscode.commands.registerCommand('quantai.dailybrief', () => showTerminal('dailybrief')), vscode.commands.registerCommand('quantai.compare', () => showTerminal('compare')), vscode.commands.registerCommand('quantai.timeline', () => showTerminal('timeline')), vscode.commands.registerCommand('quantai.portfolio', () => showTerminal('portfolio')), vscode.commands.registerCommand('quantai.startServer', startServer), vscode.commands.registerCommand('quantai.stopServer', stopServer), vscode.commands.registerCommand('quantai.addWatch', addToWatchlist), vscode.commands.registerCommand('quantai.scan', () => showTerminal('dashboard')), vscode.commands.registerCommand('quantai.analyze', () => showStockResearch()), vscode.commands.registerCommand('quantai.knowledge', () => showTerminal('dashboard')), vscode.commands.registerCommand('quantai.status', async () => {
+    context.subscriptions.push(vscode.commands.registerCommand('quantai.terminal', () => showTerminal('dashboard')), vscode.commands.registerCommand('quantai.dashboard', () => showTerminal('dashboard')), vscode.commands.registerCommand('quantai.watchlist', () => showTerminal('watchlist')), vscode.commands.registerCommand('quantai.research', () => showStockResearch()), vscode.commands.registerCommand('quantai.marketmap', () => showTerminal('marketmap')), vscode.commands.registerCommand('quantai.alerts', () => showTerminal('alerts')), vscode.commands.registerCommand('quantai.backtest', () => showTerminal('backtest')), vscode.commands.registerCommand('quantai.dailybrief', () => showTerminal('dailybrief')), vscode.commands.registerCommand('quantai.compare', () => showTerminal('compare')), vscode.commands.registerCommand('quantai.timeline', () => showTerminal('timeline')), vscode.commands.registerCommand('quantai.portfolio', () => showTerminal('portfolio')), vscode.commands.registerCommand('quantai.journal', () => showTerminal('journal')), vscode.commands.registerCommand('quantai.resume', () => showTerminal('resume')), vscode.commands.registerCommand('quantai.startServer', startServer), vscode.commands.registerCommand('quantai.stopServer', stopServer), vscode.commands.registerCommand('quantai.addWatch', addToWatchlist), vscode.commands.registerCommand('quantai.scan', () => showTerminal('dashboard')), vscode.commands.registerCommand('quantai.analyze', () => showStockResearch()), vscode.commands.registerCommand('quantai.knowledge', () => showTerminal('dashboard')), vscode.commands.registerCommand('quantai.status', async () => {
         const ok = await (0, client_1.healthCheck)();
         vscode.window.showInformationMessage(ok ? 'AI Research Terminal: 后端运行中' : 'AI Research Terminal: 后端未启动');
     }));
@@ -121,16 +123,35 @@ async function fetchPageData(page, extraData) {
     try {
         switch (page) {
             case 'dashboard': {
-                const [market, scanner, watchScores, brief, alerts] = await Promise.all([
+                const [market, scanner, watchScores, brief, alerts, trackRecord] = await Promise.all([
                     (0, client_1.httpGet)('/market/overview').catch(() => null),
                     (0, client_1.httpPost)('/scanner/run?pool_size=30&top_n=8').catch(() => null),
                     (0, client_1.httpPost)('/signals/batch', { codes: watchlist }).catch(() => null),
                     (0, client_1.httpGet)('/morning-brief/today').catch(() => null),
                     (0, client_1.httpGet)('/alerts/today').catch(() => null),
+                    (0, client_1.httpGet)('/trust/track-record?days=30').catch(() => null),
                 ]);
                 // Push VS Code notification for P0/P1 alerts
                 checkUrgentAlerts(alerts);
-                return { market, scanner, watchScores, brief, alerts };
+                return { market, scanner, watchScores, brief, alerts, trackRecord };
+            }
+            case 'journal': {
+                const [journal, summary] = await Promise.all([
+                    (0, client_1.httpGet)('/trust/journal?limit=30').catch(() => null),
+                    (0, client_1.httpGet)('/trust/journal/summary').catch(() => null),
+                ]);
+                return { journal, summary };
+            }
+            case 'resume': {
+                const [resume, versions, monthly, strategies, scoreRanges, trackRecord] = await Promise.all([
+                    (0, client_1.httpGet)('/trust/resume').catch(() => null),
+                    (0, client_1.httpGet)('/trust/model-evolution').catch(() => null),
+                    (0, client_1.httpGet)('/trust/monthly').catch(() => null),
+                    (0, client_1.httpGet)('/trust/strategies').catch(() => null),
+                    (0, client_1.httpGet)('/trust/score-ranges').catch(() => null),
+                    (0, client_1.httpGet)('/trust/track-record?days=30').catch(() => null),
+                ]);
+                return { resume, versions, monthly, strategies, scoreRanges, trackRecord };
             }
             case 'watchlist': {
                 const watchScores = await (0, client_1.httpPost)('/signals/batch', { codes: watchlist }).catch(() => null);
@@ -178,6 +199,8 @@ function buildPage(page, data) {
         case 'backtest': return (0, backtest_1.buildBacktestPage)(data);
         case 'dailybrief': return (0, dailybrief_1.buildDailyBriefPage)(data);
         case 'portfolio': return (0, portfolio_1.buildPortfolioPage)(data);
+        case 'journal': return (0, journal_1.buildJournalPage)(data);
+        case 'resume': return (0, resume_1.buildResumePage)(data);
         case 'compare': return (0, compare_1.buildComparePage)(data);
         case 'timeline': return (0, timeline_1.buildTimelinePage)(data);
         default: return (0, layout_1.pageShell)('dashboard', 'AI Research Terminal', '<div class="empty-state"><div class="icon">🤖</div><h2>AI Research Terminal</h2><p>选择一个页面开始</p></div>');

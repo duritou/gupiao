@@ -7,6 +7,8 @@ exports.NAV_ITEMS = [
     { id: 'dashboard', label: 'Dashboard' },
     { id: 'portfolio', label: 'Portfolio' },
     { id: 'watchlist', label: 'Watchlist' },
+    { id: 'journal', label: 'Journal' },
+    { id: 'resume', label: 'AI Resume' },
     { id: 'marketmap', label: 'Market Map' },
     { id: 'compare', label: 'Compare' },
     { id: 'timeline', label: 'Timeline' },
@@ -16,6 +18,7 @@ exports.NAV_ITEMS = [
 ];
 exports.PAGE_TITLES = {
     dashboard: 'Dashboard', portfolio: 'Portfolio', watchlist: 'Watchlist',
+    journal: 'Decision Journal', resume: 'AI Resume',
     marketmap: 'Market Map', compare: 'Compare', timeline: 'Timeline',
     alerts: 'Alert Center', backtest: 'Backtest', dailybrief: 'Daily Brief',
 };

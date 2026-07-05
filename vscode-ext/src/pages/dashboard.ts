@@ -27,6 +27,7 @@ export function buildDashboardPage(data: any): string {
     const todayFocus = alertFeed.today_focus || {};
     const urgentAlerts = todayFocus.urgent || [];
     const importantAlerts = todayFocus.important || [];
+    const trackRecord = data.trackRecord || {};
 
     const pfPlColor = (pf.total_pl || 0) >= 0 ? 'up' : 'down';
 
@@ -111,6 +112,18 @@ ${watchScores.slice(0, 4).map((s: any) => {
 </div>`;
 }).join('')}
 </div></div></div>` : ''}
+
+<!-- ═══════════ AI Track Record Mini-Card ═══════════ -->
+${trackRecord.total_recommendations > 0 ? `
+<div style="padding:0 24px;margin-top:8px;margin-bottom:8px"><div class="card" style="border-left:3px solid #7C3AED">
+<div class="card-header"><h3>🤖 AI Track Record</h3><span class="text-sm text-muted" style="cursor:pointer" onclick="navigate('resume')">AI完整档案 →</span></div>
+<div class="grid4">
+<div style="text-align:center"><div style="font-size:20px;font-weight:700;color:#22C55E">${(trackRecord.accuracy * 100).toFixed(0)}%</div><div class="text-sm text-muted">${trackRecord.period_label}准确率</div></div>
+<div style="text-align:center"><div style="font-size:20px;font-weight:700;color:#22C55E">${trackRecord.correct_count}/${trackRecord.total_recommendations}</div><div class="text-sm text-muted">正确/总推荐</div></div>
+<div style="text-align:center"><div style="font-size:20px;font-weight:700;color:#22C55E">${trackRecord.current_streak}次</div><div class="text-sm text-muted">连续命中</div></div>
+<div style="text-align:center"><div style="font-size:20px;font-weight:700;color:${trackRecord.avg_return_pct >= 0 ? '#22C55E' : '#EF4444'}">${trackRecord.avg_return_pct >= 0 ? '+' : ''}${trackRecord.avg_return_pct.toFixed(1)}%</div><div class="text-sm text-muted">平均收益</div></div>
+</div>
+</div></div>` : ''}
 
 <div style="padding:16px 24px;text-align:center" class="text-muted text-sm">
 🔄 Auto-refresh: 60s · 最后更新: <span id="lastUpdate">${new Date().toLocaleTimeString('zh-CN')}</span>

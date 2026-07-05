@@ -994,3 +994,217 @@ def generate_stock_detail(code: str) -> dict:
         "top_signal": signal["top_signal"],
         "trend_arrow": signal["trend_arrow"],
     }
+
+
+# ============================================================
+# v5.0 Trust — Recommendation Snapshot history
+# ============================================================
+
+def generate_trust_snapshots(count: int = 60) -> list[dict]:
+    """Generate realistic recommendation history with varied outcomes.
+
+    Creates a rich dataset that powers Track Record, Decision Journal,
+    Strategy Breakdown, and Model Evolution.
+    """
+    rng = random.Random(42)  # Fixed seed for reproducibility
+    today = date.today()
+
+    snapshots: list[dict] = []
+    codes = list(STOCK_NAMES.keys())
+    rng.shuffle(codes)
+
+    # AI versions with improving accuracy
+    versions = [
+        ("v4.0", 0.68), ("v4.1", 0.72), ("v4.2", 0.76), ("v5.0", 0.80),
+    ]
+
+    # Strategy names for breakdowns
+    strategies = ["MACD金叉", "放量突破", "MA多头排列", "RSI超卖反弹",
+                  "KDJ金叉", "BOLL突破", "北向加仓"]
+
+    for i in range(count):
+        code = codes[i % len(codes)]
+        name = get_stock_name(code)
+        days_ago = rng.randint(3, 120)
+        rec_date = today - timedelta(days=days_ago)
+        mins_offset = rng.randint(0, 330)  # Spread across trading hours 9:30-15:00
+        hour = 9 + mins_offset // 60
+        minute = 30 + (mins_offset % 60)
+        if minute >= 60:
+            hour += 1
+            minute -= 60
+        rec_dt = datetime(rec_date.year, rec_date.month, rec_date.day,
+                          min(hour, 15), minute if hour < 15 else max(0, min(minute, 59)))
+
+        # AI score — higher = more likely correct
+        ai_score = rng.uniform(40, 96)
+        ai_confidence = rng.uniform(0.55, 0.95)
+
+        # Direction
+        if ai_score >= 70:
+            direction = "buy" if rng.random() < 0.85 else "sell"
+        elif ai_score <= 40:
+            direction = "sell" if rng.random() < 0.85 else "buy"
+        else:
+            direction = rng.choice(["buy", "sell", "hold"])
+
+        price = round(rng.uniform(8, 500), 2)
+
+        # Signal snapshot
+        signals_used = rng.sample(strategies, rng.randint(2, 5))
+        signals = []
+        for sig_name in signals_used:
+            sig_score = rng.uniform(45, 92)
+            signals.append({
+                "name": sig_name, "score": round(sig_score, 1),
+                "direction": "buy" if sig_score > 50 else "sell",
+            })
+
+        # Market snapshot
+        market_snapshot = {
+            "index_level": round(rng.uniform(2900, 3400), 2),
+            "index_change_pct": round(rng.uniform(-2, 2), 2),
+            "market_breadth_up": rng.randint(1500, 4200),
+            "market_breadth_down": rng.randint(500, 3000),
+            "northbound_flow": round(rng.uniform(-100, 150), 2),
+            "sector_score": round(rng.uniform(30, 95), 1),
+            "sentiment": round(rng.uniform(25, 85), 1),
+        }
+
+        # Determine outcome (probabilistic based on score)
+        score_boost = (ai_score - 50) / 100  # -0.1 to +0.46
+        correct_prob = 0.5 + score_boost + rng.uniform(-0.1, 0.15)
+        correct_prob = max(0.15, min(0.92, correct_prob))
+        is_correct = rng.random() < correct_prob
+
+        # Profit if correct: 3-25%, if wrong: -3 to -18%
+        if is_correct:
+            profit_30d = round(rng.uniform(3, 25), 1)
+            profit_7d = round(profit_30d * rng.uniform(0.3, 0.7), 1)
+            profit_90d = round(profit_30d * rng.uniform(1.1, 2.0), 1)
+        else:
+            profit_30d = round(-rng.uniform(3, 18), 1)
+            profit_7d = round(profit_30d * rng.uniform(0.4, 0.8), 1)
+            profit_90d = round(profit_30d * rng.uniform(1.1, 2.5), 1)
+        max_dd = round(-rng.uniform(abs(profit_30d) * 0.3, abs(profit_30d) * 0.8), 1)
+
+        # User action (follow more when AI score is higher)
+        follow_prob = 0.3 + (ai_score / 100) * 0.5  # 0.3-0.8
+        if rng.random() < follow_prob:
+            user_action = "bought" if direction == "buy" else "sold" if direction == "sell" else "held"
+        else:
+            user_action = "ignored" if rng.random() < 0.7 else "partial"
+
+        action_dt = rec_dt + timedelta(hours=rng.randint(0, 48))
+        action_price = round(price * (1 + rng.uniform(-0.02, 0.02)), 2)
+
+        # AI version (newer recs use newer versions)
+        version_idx = min(i // (count // len(versions)), len(versions) - 1)
+        version, version_base_acc = versions[version_idx]
+
+        # Final verdict
+        if days_ago >= 30:
+            verdict = "correct" if is_correct else "wrong"
+        elif days_ago >= 7:
+            verdict = "correct" if is_correct else "wrong" if rng.random() < 0.6 else "pending"
+        else:
+            verdict = "pending"
+
+        final_profit = profit_30d if verdict != "pending" else 0
+
+        # Build snapshot
+        snap = {
+            "id": f"rec_{rec_date.isoformat()}_{code.replace('.', '')}_{i:03d}",
+            "created_at": rec_dt.isoformat(),
+            "stock_code": code, "stock_name": name,
+            "direction": direction, "price_at_rec": price,
+            "ai_score": round(ai_score, 1), "ai_confidence": round(ai_confidence, 2),
+            "signals": signals,
+            "market_snapshot": market_snapshot,
+            "knowledge_context": f"{_guess_sector_name(name)}行业景气度{'提升' if ai_score > 60 else '一般'}",
+            "recommendation_text": (
+                f"AI综合评分{ai_score:.0f}，{'强烈建议买入' if direction == 'buy' and ai_score >= 80 else '建议关注' if direction == 'buy' else '建议观望'}。"
+                f"主要信号：{', '.join(s['name'] for s in signals[:3])}。"
+            ),
+            "source": rng.choice(["alert", "scanner", "portfolio", "manual"]),
+            "alert_id": f"alt_{rec_date.isoformat()}_{i:03d}" if rng.random() < 0.5 else "",
+            "ai_version": version,
+            "model_info": "deepseek-v4-pro",
+            "user_action": user_action,
+            "user_action_at": action_dt.isoformat() if user_action != "ignored" else "",
+            "user_action_price": action_price if user_action != "ignored" else 0,
+            "user_notes": _generate_user_note(rng, user_action, name, ai_score) if rng.random() < 0.4 else "",
+            "outcome_7d": {
+                "days": 7, "price": round(price * (1 + profit_7d / 100), 2),
+                "profit_pct": profit_7d,
+                "max_drawdown_pct": round(max_dd * 0.6, 1),
+                "was_correct": is_correct if days_ago >= 7 else None,
+                "verdict": "correct" if is_correct and days_ago >= 7 else "wrong" if days_ago >= 7 else "pending",
+            },
+            "outcome_30d": {
+                "days": 30, "price": round(price * (1 + profit_30d / 100), 2),
+                "profit_pct": profit_30d,
+                "max_drawdown_pct": max_dd,
+                "was_correct": is_correct if days_ago >= 30 else None,
+                "verdict": "correct" if is_correct and days_ago >= 30 else "wrong" if days_ago >= 30 else "pending",
+            },
+            "outcome_90d": {
+                "days": 90, "price": round(price * (1 + profit_90d / 100), 2),
+                "profit_pct": profit_90d,
+                "max_drawdown_pct": round(max_dd * 1.2, 1),
+                "was_correct": is_correct if days_ago >= 90 else None,
+                "verdict": "correct" if is_correct and days_ago >= 90 else "wrong" if days_ago >= 90 else "pending",
+            },
+            "final_verdict": verdict,
+            "final_profit_pct": final_profit,
+            "ai_reflection": (
+                _generate_reflection(rng, is_correct, direction, name)
+                if verdict != "pending" and rng.random() < 0.5 else ""
+            ),
+            "reflection_at": rec_dt.isoformat() if verdict != "pending" else "",
+        }
+        snapshots.append(snap)
+
+    # Sort by date desc
+    snapshots.sort(key=lambda s: s["created_at"], reverse=True)
+    return snapshots
+
+
+def _generate_user_note(rng: random.Random, action: str, name: str, score: float) -> str:
+    """Generate a realistic user note."""
+    if action == "ignored":
+        reasons = [
+            f"觉得{name}太贵了，等回调再买",
+            "感觉大盘不太好，先观望",
+            f"AI评分{score:.0f}不太高，再等等",
+            "仓位已经比较重了",
+            "不太熟悉这个行业",
+        ]
+        return rng.choice(reasons)
+    elif action in ("bought", "sold"):
+        reasons = [
+            f"相信AI判断，按建议操作",
+            "信号比较明确，跟了",
+            f"评分{score:.0f}很高，值得尝试",
+            "技术面和基本面共振",
+        ]
+        return rng.choice(reasons)
+    return ""
+
+
+def _generate_reflection(rng: random.Random, is_correct: bool, direction: str, name: str) -> str:
+    """Generate AI self-reflection on a recommendation outcome."""
+    if is_correct:
+        reflections = [
+            f"信号判断准确。{name}的{direction}信号被市场验证。技术面+基本面共振是这次成功的关键。",
+            f"这次推荐正确。成交量放大配合技术指标形成了有效的买入点。",
+            f"市场环境配合，信号有效。但需注意——行业beta贡献了约40%的收益。",
+        ]
+    else:
+        reflections = [
+            f"这次判断失误。主要问题：过度依赖技术信号，低估了市场整体回调的影响。建议降低市场情绪权重。",
+            f"信号判断错误的根本原因：行业轮动速度加快，传统MACD信号滞后。考虑引入更短周期的信号。",
+            f"失败原因分析：成交量信号有效，但行业判断错误。该行业正处于下行周期。",
+        ]
+    return rng.choice(reflections)
+
