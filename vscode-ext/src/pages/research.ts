@@ -115,6 +115,7 @@ body{font-family:'Segoe UI',system-ui,-apple-system,sans-serif;background:#0B122
 <button class="period-btn" id="btn-kdj" onclick="window._runtime&&_runtime.toggle('kdj')" style="color:#F59E0B">KDJ</button>
 <button class="period-btn" id="btn-vol" onclick="window._runtime&&_runtime.toggle('volume')" style="color:#9CA3AF">VOL</button>
 <span style="flex:1"></span>
+<button class="period-btn" id="btn-live" style="color:#22C55E" onclick="toggleLiveFeed()">Live</button>
 <button class="period-btn" style="color:#7C3AED" onclick="addAIDemo()">+ AI</button>
 </div>
 
@@ -338,6 +339,48 @@ ${TIMELINE_JS}
 
         // Load Score Breakdown
         loadBreakdown('${code}');
+
+        // Live feed toggle
+        window._isLive = false;
+        window._liveFeed = null;
+        window.toggleLiveFeed = async function() {
+            const btn = document.getElementById('btn-live');
+            if (!window._isLive) {
+                // Switch to live
+                btn.textContent = 'Live ●';
+                btn.style.color = '#22C55E';
+                window._liveFeed = new LiveFeed('${BASE_URL}', '${code}', 30000);
+                await window._liveFeed.start();
+                runtime.setFeed(window._liveFeed);
+                if (window._timeline) window._timeline.render();
+                window._isLive = true;
+                // Check status
+                try {
+                    const s = await fetch('${BASE_URL}/market/live-status');
+                    const st = await s.json();
+                    if (!st.live_available) btn.textContent = 'Mock';
+                } catch(e) {}
+            } else {
+                // Switch back to static
+                btn.textContent = 'Live';
+                btn.style.color = '#9CA3AF';
+                if (window._liveFeed) window._liveFeed.stop();
+                runtime.setFeed(new StaticFeed(klineData));
+                runtime.refresh();
+                if (window._timeline) window._timeline.render();
+                window._isLive = false;
+            }
+        };
+
+        // Auto-check live status
+        try {
+            const s = await fetch('${BASE_URL}/market/live-status');
+            const st = await s.json();
+            if (st.live_available) {
+                document.getElementById('btn-live').textContent = 'Live ✓';
+                document.getElementById('btn-live').style.color = '#22C55E';
+            }
+        } catch(e) {}
     }, 100);
 })();
 

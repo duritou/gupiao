@@ -62,6 +62,45 @@ class StaticFeed extends DataFeed {
     get latest() { return this._data[this._data.length - 1]; }
 }
 
+/** LiveFeed — polls backend API for real market data */
+class LiveFeed extends DataFeed {
+    constructor(baseUrl, code, pollMs = 30000) {
+        super();
+        this._baseUrl = baseUrl;
+        this._code = code;
+        this._pollMs = pollMs;
+        this._data = [];
+        this._callbacks = [];
+        this._timer = null;
+    }
+    get length() { return this._data.length; }
+    getVisibleRange(startIdx, endIdx) {
+        return this._data.slice(Math.max(0, startIdx), Math.min(this._data.length, endIdx + 1));
+    }
+    get latest() { return this._data[this._data.length - 1]; }
+
+    async start() {
+        await this._fetchKline();
+        this._timer = setInterval(() => this._fetchKline(), this._pollMs);
+    }
+    stop() {
+        if (this._timer) { clearInterval(this._timer); this._timer = null; }
+    }
+    onUpdate(callback) { this._callbacks.push(callback); }
+
+    async _fetchKline() {
+        try {
+            const resp = await fetch(this._baseUrl + '/detail/' + this._code + '?include=kline');
+            const detail = await resp.json();
+            const klines = detail.live_klines || [];
+            if (klines.length > 0) {
+                this._data = klines;
+                for (const cb of this._callbacks) cb(this._data);
+            }
+        } catch(e) { console.log('LiveFeed: fetch skipped'); }
+    }
+}
+
 // ============================================================
 // 2. Indicator — compute + create panel
 // ============================================================
@@ -765,6 +804,7 @@ window.C = C;
 window.PRIORITY = PRIORITY;
 window.DataFeed = DataFeed;
 window.StaticFeed = StaticFeed;
+window.LiveFeed = LiveFeed;
 window.Indicator = Indicator;
 window.IndicatorRegistry = IndicatorRegistry;
 window.Overlay = Overlay;
