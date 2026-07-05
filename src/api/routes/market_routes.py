@@ -104,3 +104,22 @@ def _generate_quality_suggestions(results: list[dict]) -> list[str]:
     if not suggestions:
         suggestions.append("所有抽样数据通过质量检查 ✓")
     return suggestions
+
+
+@router.get("/system-health")
+async def system_health():
+    """Complete system health check — Data Trust + all subsystems."""
+    from src.infrastructure.market_data.trust import trust_engine
+
+    health = trust_engine.check_system_health()
+    result = health.to_dict()
+
+    # Add live status check
+    from src.infrastructure.market_data.live_service import live_service
+    indices = await live_service.get_index_quotes()
+    result["live_data"] = {
+        "available": len(indices) > 0,
+        "indices_count": len(indices),
+    }
+
+    return result

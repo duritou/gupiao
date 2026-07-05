@@ -15,6 +15,7 @@ from functools import lru_cache
 from loguru import logger
 
 from src.infrastructure.market_data.validator import validator as data_validator
+from src.infrastructure.market_data.trust import trust_engine as data_trust_engine
 
 
 class LiveMarketService:
@@ -75,6 +76,16 @@ class LiveMarketService:
             result = {**raw_quote, **validation.normalized_data}
             result["_quality_score"] = validation.quality_score
             result["_quality_warnings"] = validation.warnings
+
+            # Compute Data Trust Score (v7.3)
+            data_trust_engine.mark_data_updated(f"quote:{code}", datetime.now())
+            trust = data_trust_engine.compute_trust_score(
+                data_key=f"quote:{code}",
+                validation_score=validation.quality_score,
+                provider_name="akshare",
+                max_age=60,
+            )
+            result["_trust_score"] = trust.to_dict()
             return result
         except Exception as e:
             logger.debug(f"Live quote failed for {code}: {e}")
