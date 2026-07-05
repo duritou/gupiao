@@ -39,6 +39,7 @@ diskcache = "^5.6"
 arq = { version = "^0.26", optional = true }
 # 监控 (Phase 6+)
 prometheus-client = { version = "^0.21", optional = true }
+httpx = "^0.28.1"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.0"

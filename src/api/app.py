@@ -1,0 +1,34 @@
+"""FastAPI Application — AI Research Terminal API"""
+
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+
+from src.api.routes import (
+    system_routes,
+    knowledge_routes,
+    signals_routes,
+    scanner_routes,
+    research_routes,
+    backtest_routes,
+)
+
+app = FastAPI(
+    title="AI Research Terminal",
+    version="0.10.0",
+    description="AI 股票研究终端 — REST API",
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# 注册路由
+app.include_router(system_routes.router, prefix="/api/v1")
+app.include_router(knowledge_routes.router, prefix="/api/v1")
+app.include_router(signals_routes.router, prefix="/api/v1")
+app.include_router(scanner_routes.router, prefix="/api/v1")
+app.include_router(research_routes.router, prefix="/api/v1")
+app.include_router(backtest_routes.router, prefix="/api/v1")
