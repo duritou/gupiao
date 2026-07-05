@@ -1,0 +1,90 @@
+[tool.poetry]
+name = "quantai-research-terminal"
+version = "0.1.0"
+description = "AI Research Terminal — A股 AI 股票研究终端"
+authors = ["QuantAI Team"]
+readme = "README.md"
+license = "MIT"
+repository = "https://github.com/quantai/research-terminal"
+keywords = ["quant", "ai", "stock", "research", "a-share", "trading"]
+packages = [{ include = "src" }]
+
+[tool.poetry.dependencies]
+python = "^3.10"
+# 配置管理
+pydantic = "^2.0"
+pydantic-settings = "^2.0"
+python-dotenv = "^1.0"
+# 数据库
+sqlalchemy = { version = "^2.0", extras = ["asyncio"] }
+aiosqlite = "^0.20"
+# Web 框架 (Phase 9)
+fastapi = "^0.115"
+uvicorn = { version = "^0.32", extras = ["standard"] }
+# 异步
+aiohttp = "^3.10"
+# 日志
+loguru = "^0.7"
+# 序列化
+orjson = "^3.10"
+pyyaml = "^6.0"
+# 模板
+jinja2 = "^3.1"
+# 定时任务
+apscheduler = "^3.10"
+# 缓存 (Phase 2+)
+redis = { version = "^5.0", optional = true }
+diskcache = "^5.6"
+# 任务队列 (Phase 7+)
+arq = { version = "^0.26", optional = true }
+# 监控 (Phase 6+)
+prometheus-client = { version = "^0.21", optional = true }
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.0"
+pytest-asyncio = "^0.24"
+pytest-cov = "^5.0"
+ruff = "^0.6"
+mypy = "^1.11"
+black = "^24.0"
+pre-commit = "^3.8"
+
+[tool.poetry.extras]
+redis = ["redis"]
+arq = ["arq"]
+prometheus = ["prometheus-client"]
+all = ["redis", "arq", "prometheus-client"]
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.ruff]
+target-version = "py310"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W", "UP", "B", "C4", "SIM"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["src"]
+
+[tool.mypy]
+python_version = "3.10"
+strict = true
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+addopts = "-v --cov=src --cov-report=term-missing"
+
+[tool.black]
+line-length = 100
+target-version = ["py310"]
+
+[tool.coverage.run]
+source = ["src"]
+omit = ["tests/*", "scripts/*"]
