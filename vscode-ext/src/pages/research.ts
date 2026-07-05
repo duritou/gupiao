@@ -121,6 +121,19 @@ ${turnoverVal > 0 ? `<span class="si-item">换手 <span>${turnoverVal.toFixed(1)
 ${dataAvail ? `<span class="si-item" style="color:#22C55E">● ${dataSource}</span>` : `<span class="si-item" style="color:#EF4444">● ${d.data_error || '数据不可用'}</span>`}
 </div>
 
+<!-- Data Status Panel (v7.4) -->
+<div style="margin-bottom:12px;background:#0B1220;border:1px solid #1F2937;border-radius:6px;padding:10px 12px">
+<div style="font-size:10px;color:#6B7280;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px">Data Status</div>
+<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
+<span style="font-size:11px">${quoteProv.status || (isLive ? 'Live' : 'Unavailable')}</span>
+<span style="width:6px;height:6px;border-radius:50%;background:${isLive ? '#22C55E' : '#EF4444'};display:inline-block"></span>
+</div>
+<div style="font-size:10px;color:#6B7280">
+来源: ${dataSource}${quoteProv.fetched_at ? ' · ' + quoteProv.fetched_at.slice(11, 19) : ''}
+</div>
+${!dataAvail ? `<div style="font-size:10px;color:#EF4444;margin-top:4px">${d.data_error || '数据不可用 — AI分析暂停'}</div>` : ''}
+</div>
+
 <!-- Period + Panel Toggles -->
 <div class="indicator-row">
 <button class="period-btn active" data-days="80">日K</button>

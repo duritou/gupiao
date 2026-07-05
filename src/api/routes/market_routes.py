@@ -66,6 +66,16 @@ async def market_sectors():
     return {"sectors": [], "data_source": "none", "is_live": False}
 
 
+@router.get("/data-status")
+async def data_status(code: str = ""):
+    """Full data pipeline status — transparent to the user.
+
+    Shows: source, timestamp, freshness, latency, backup providers,
+    provider rankings, recent reliability stats.
+    """
+    return source_manager.get_data_status(code)
+
+
 @router.get("/live-status")
 async def live_status():
     """Check data source availability."""

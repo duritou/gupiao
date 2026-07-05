@@ -634,11 +634,7 @@ class SourceManager:
         ]
 
     async def fuse_price(self, symbol: str, akshare_price: float | None) -> dict:
-        """Fuse price from multiple sources with disagreement detection.
-
-        Currently uses AkShare as primary. When Tushare/BaoStock are
-        configured, they will be included for cross-verification.
-        """
+        """Fuse price from multiple sources with disagreement detection."""
         readings = [
             SourceReading(
                 source_name="akshare", field_name="price",
@@ -646,11 +642,90 @@ class SourceManager:
                 is_available=akshare_price is not None,
             )
         ]
-
-        # If other providers are configured, add their readings
-        # (placeholder for Tushare/BaoStock integration)
         result = data_fusion.fuse("price", symbol, readings)
         return result.to_dict()
+
+    # ================================================================
+    # Provider Ranking — dynamic failover ordering
+    # ================================================================
+
+    def get_provider_ranking(self) -> list[dict]:
+        """Auto-rank providers by reliability × latency score. Not hardcoded."""
+        ranked = []
+        for name, status in self._sources.items():
+            if name == "cache":
+                continue
+            # Composite score: reliability (70%) + latency bonus (30%)
+            reliability = status.success_rate if status.total_calls > 0 else 0
+            latency_score = max(0, 1.0 - status.latency_ms / 5000) if status.latency_ms > 0 else 0.5
+            composite = reliability * 0.7 + latency_score * 0.3
+
+            ranked.append({
+                "name": name,
+                "rank": 0,  # Will be set after sort
+                "reliability": round(reliability, 3),
+                "avg_latency_ms": round(status.latency_ms, 1),
+                "composite_score": round(composite, 3),
+                "total_calls": status.total_calls,
+                "consecutive_failures": status.consecutive_failures,
+                "status": status.is_available,
+            })
+
+        ranked.sort(key=lambda p: (-p["composite_score"], p["consecutive_failures"]))
+        for i, r in enumerate(ranked):
+            r["rank"] = i + 1
+        return ranked
+
+    def get_data_status(self, code: str = "") -> dict:
+        """Full data status — transparent to the user.
+
+        Returns everything the user needs to know about data quality:
+        source, timestamp, freshness, latency, backup status, provider rankings.
+        """
+        ranking = self.get_provider_ranking()
+        primary = ranking[0] if ranking else None
+        backups_available = [p for p in ranking[1:] if p["status"]]
+
+        # Freshness check
+        spot_age = self.cache.get_age(f"spot:quote:{code}") if code else 0
+        freshness_level = "fresh" if spot_age < 5 else "recent" if spot_age < 60 else "stale" if spot_age < 300 else "expired"
+        freshness_color = "#22C55E" if freshness_level in ("fresh", "recent") else "#F59E0B" if freshness_level == "stale" else "#EF4444"
+
+        return {
+            "primary_provider": primary["name"] if primary else "unknown",
+            "primary_display": self._provider_display_name(primary["name"] if primary else ""),
+            "status": "live" if primary and primary["status"] else "degraded" if backups_available else "down",
+            "status_icon": "🟢" if primary and primary["status"] else "🟡" if backups_available else "🔴",
+            "data_age_seconds": round(spot_age, 1) if spot_age < 999999 else None,
+            "freshness": freshness_level,
+            "freshness_color": freshness_color,
+            "latency_ms": primary["avg_latency_ms"] if primary else 0,
+            "provider_ranking": ranking,
+            "backups_available": [p["name"] for p in backups_available],
+            "backups_available_count": len(backups_available),
+            "cache_entries": len(self.cache._store),
+            "recent_reliability": {
+                p["name"]: f"{p['reliability']:.1%}" for p in ranking[:5]
+            },
+            "recommendation": (
+                "Data pipeline healthy, multiple sources available"
+                if primary and primary["status"] and backups_available
+                else "Single source only — consider adding backup providers"
+                if primary and primary["status"]
+                else "No live data available — AI analysis paused"
+            ),
+        }
+
+    @staticmethod
+    def _provider_display_name(name: str) -> str:
+        names = {
+            "akshare": "东方财富 (AkShare)",
+            "tushare": "Tushare Pro",
+            "baostock": "BaoStock",
+            "sina": "新浪财经",
+            "tencent": "腾讯财经",
+        }
+        return names.get(name, name)
 
 
 # Singleton

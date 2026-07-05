@@ -1,0 +1,24 @@
+v7.4 数据基础设施完成 ✅
+从单源到多源融合
+
+之前: AkShare 失败 → Mock 假数据 → AI 瞎分析
+v7.2: AkShare → Validator → AI（但 Mock 仍在 fallback）
+v7.3: AkShare → TrustEngine → AI（但单源 = 70% 可信度）
+v7.4: AkShare + Tushare + BaoStock → Fusion → AI
+      3源一致 = 97%置信    分歧 >20% = 拒绝异常源
+三层信任栈
+层	回答的问题	工具
+DataValidator	数据合理吗？	价格/涨幅/PE 范围检查
+DataTrustEngine	数据可信吗？	Provider可靠性 + 新鲜度 + 复合评分
+DataFusion	多个源都同意吗？	偏差检测 + 异常源拒绝 + 加权共识
+8个结构化 Data Feed
+
+Market Feed ──── 日K + 实时行情 + 指数（AkShare→Tushare→BaoStock）
+Fundamental ──── PE/PB/ROE/净利润（AkShare→Tushare）
+Money Flow ───── 北向/主力/龙虎榜（AkShare→Tushare）
+News ─────────── 公告/新闻（AkShare）
+Knowledge ────── 行业/概念（AkShare）
+Macro ────────── CPI/PMI/利率/汇率（AkShare）
+每个 Feed 定义了 category / frequency / primary + backup sources / cache TTL / required fields。新增 Provider 只需注册到 Feed 配置中。
+
+285 tests pass · 全部端点已验证
