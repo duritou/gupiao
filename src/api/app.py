@@ -1,7 +1,14 @@
 """FastAPI Application — Adaptive Investment Intelligence Platform API"""
 
+import asyncio
+import logging
+from contextlib import asynccontextmanager
+from datetime import datetime, date as dt_date
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+
+logger = logging.getLogger("uvicorn.error")  # 复用 uvicorn 日志 handler,确保启动同步日志可见
 
 from src.api.routes import (
     system_routes,
@@ -29,10 +36,44 @@ from src.api.routes import (
 from src.api.routes import portfolio_routes as portfolio_mod
 from src.api.routes import morning_brief_routes as morning_mod
 
+@asynccontextmanager
+async def lifespan(app):
+    """启动时:若本地数据仓库落后,后台触发一次全 A 股增量同步(不阻塞 API)。"""
+    try:
+        from src.infrastructure.storage.market_database import market_db
+        stats = market_db.get_stats()
+        latest = stats.get("latest_data_date")
+        stale = True
+        if latest:
+            try:
+                stale = (dt_date.today() - dt_date.fromisoformat(latest)).days > 3
+            except Exception:
+                stale = True
+
+        if stale:
+            logger.info(
+                "[sync] 本地数据落后(latest=%s),启动后台增量同步(全 A 股,约 30-60 分钟)...",
+                latest,
+            )
+            from src.api.routes.market_routes import _run_sync, _sync_state
+            _sync_state["running"] = True
+            _sync_state["started_at"] = datetime.now().isoformat()
+            _sync_state["progress"] = {"done": 0, "total": 0, "current": "startup"}
+            _sync_state["result"] = None
+            _sync_state["error"] = None
+            asyncio.create_task(_run_sync(None, 30, True))
+        else:
+            logger.info("[sync] 本地数据新鲜(latest=%s),跳过启动同步。", latest)
+    except Exception as e:
+        logger.warning("[sync] 启动同步检查失败: %s", e)
+    yield
+
+
 app = FastAPI(
     title="Adaptive Investment Intelligence Platform",
     version="6.0.0",
     description="Adaptive Investment Intelligence Platform — REST API",
+    lifespan=lifespan,
 )
 
 app.add_middleware(
