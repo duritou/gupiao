@@ -3,16 +3,6 @@ const cloud = require('wx-server-sdk')
 cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV })
 const db = cloud.database()
 
-async function ensureCollection(name) {
-  try {
-    await db.createCollection(name)
-  } catch (e) {
-    const msg = (e.errMsg || e.message || e.errCode || '')
-    if (msg.indexOf('ResourceUnavailable.ResourceExist') > -1) return
-    throw e
-  }
-}
-
 exports.main = async (event) => {
   const wxContext = cloud.getWXContext()
   const openId = wxContext.OPENID
@@ -38,10 +28,6 @@ exports.main = async (event) => {
   console.log('[mjAddRound] 入参:', { roomCode, roundNum, mode, winnerName, playerDeltas: playerDeltas && playerDeltas.length })
 
   try {
-    await ensureCollection('rooms')
-    await ensureCollection('room_players')
-    await ensureCollection('score_records')
-
     const roomRes = await db.collection('rooms').doc(roomCode).get()
     const room = roomRes.data
     if (!room || room.gameType !== 'mahjong_scoring') {

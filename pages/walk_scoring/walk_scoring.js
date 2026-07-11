@@ -473,7 +473,8 @@ Page({
 
       // 最近一次取分玩家（用于公共池展示）
       let lastTakePlayer = this.data.lastTakePlayer
-      const lastDown = [...records].reverse().find(r => r.type === 'down')
+      // records 已按 createTime desc（最新在前）返回，直接 find 即取最近一次取分，无需 reverse
+      const lastDown = records.find(r => r.type === 'down')
       if (lastDown) {
         const lp = players.find(p => p.openId === lastDown.playerOpenId)
         if (lp) {

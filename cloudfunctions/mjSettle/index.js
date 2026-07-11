@@ -24,6 +24,25 @@ async function ensureCollection(name) {
   }
 }
 
+/** 全量拉取房间计分记录（云函数 db.get() 默认上限 100 条，记录超过会静默截断导致求和漏数据，必须分页累加） */
+async function fetchAllScoreRecords(roomCode) {
+  var PAGE_SIZE = 100
+  var all = []
+  var skip = 0
+  while (true) {
+    var res = await db.collection('score_records')
+      .where({ roomId: roomCode })
+      .orderBy('createTime', 'desc')
+      .skip(skip)
+      .limit(PAGE_SIZE)
+      .get()
+    all = all.concat(res.data)
+    if (res.data.length < PAGE_SIZE) break
+    skip += PAGE_SIZE
+  }
+  return all
+}
+
 exports.main = async (event, context) => {
   const { roomCode } = event
   const wxContext = cloud.getWXContext()
@@ -49,12 +68,8 @@ exports.main = async (event, context) => {
       .orderBy('joinTime', 'asc')
       .get()
 
-    // 4. 查询 score_records，汇总每位玩家的净得分（与 getRoomInfo 逻辑一致）
-    const recordsRes = await db.collection('score_records')
-      .where({ roomId: roomCode })
-      .get()
-
-    const records = recordsRes.data
+    // 4. 查询 score_records，汇总每位玩家的净得分（分页全量拉取，避免漏数据）
+    const records = await fetchAllScoreRecords(roomCode)
     const playerDeltas = {} // openId → 累计 delta
     for (const r of records) {
       if (r.type !== 'mj_round') continue

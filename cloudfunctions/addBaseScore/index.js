@@ -3,19 +3,6 @@ const cloud = require('wx-server-sdk')
 cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV })
 const db = cloud.database()
 
-// 确保集合存在（不存在则创建，已存在则跳过）
-async function ensureCollection(name) {
-  try {
-    await db.createCollection(name)
-  } catch (e) {
-    const msg = (e.errMsg || e.message || e.errCode || '')
-    if (msg.indexOf('ResourceUnavailable.ResourceExist') > -1) {
-      return
-    }
-    throw e
-  }
-}
-
 exports.main = async (event) => {
   const wxContext = cloud.getWXContext()
   const openId = wxContext.OPENID
@@ -29,10 +16,6 @@ exports.main = async (event) => {
   console.log('[addBaseScore] 入参:', { roomCode, targetPlayerOpenId, operatorOpenId: openId })
 
   try {
-    await ensureCollection('rooms')
-    await ensureCollection('room_players')
-    await ensureCollection('score_records')
-
     // 验证房间存在
     const roomRes = await db.collection('rooms').doc(roomCode).get()
     const room = roomRes.data

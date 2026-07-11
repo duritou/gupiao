@@ -51,6 +51,23 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - 用文字规格替代 tire 关联。
 - **擅作主张修改无关代码/功能**：每个改动必须直接对应当前任务，不得"顺手"优化、重构、添加或删除与用户指令无关的代码。发现可改进之处只能告知用户，不可擅自修改。
 
+## Git 远程仓库（双推送）
+
+用户说「上传」「推送」「上传branch」「推代码」等指令时，**必须同时推送到两个远程仓库**：
+
+| 远程 | 地址 | 分支 |
+|------|------|------|
+| `origin`（微信云 Git） | `https://git.weixin.qq.com/mster/master.git` | `master` |
+| `github`（GitHub） | `https://github.com/duritou/gupiao.git` | `dapaijifen` |
+
+推送命令：
+```bash
+git push origin master
+git push github master:dapaijifen
+```
+
+> 注意：GitHub 端 `dapaijifen` 分支与本地 `master` 历史不同源，首次推送需 `--force`，后续正常推送。
+
 ---
 
 # 1. LLM Coding Best Practices

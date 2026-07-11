@@ -3,19 +3,24 @@ const cloud = require('wx-server-sdk')
 cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV })
 const db = cloud.database()
 
-// 确保集合存在（不存在则创建，已存在则跳过）
-async function ensureCollection(name) {
-  try {
-    await db.createCollection(name)
-  } catch (e) {
-    // ResourceUnavailable.ResourceExist → 集合已存在，正常跳过
-    // SDK 错误信息可能在 errMsg、message 或 errCode 中
-    const msg = (e.errMsg || e.message || e.errCode || '')
-    if (msg.indexOf('ResourceUnavailable.ResourceExist') > -1) {
-      return
-    }
-    throw e
+// 全量拉取房间计分记录
+// 云函数 db.get() 默认上限 100 条，记录超过会静默截断导致求和漏数据，必须分页累加
+async function fetchAllScoreRecords(roomCode) {
+  const PAGE_SIZE = 100
+  let all = []
+  let skip = 0
+  while (true) {
+    const res = await db.collection('score_records')
+      .where({ roomId: roomCode })
+      .orderBy('createTime', 'desc')
+      .skip(skip)
+      .limit(PAGE_SIZE)
+      .get()
+    all = all.concat(res.data)
+    if (res.data.length < PAGE_SIZE) break
+    skip += PAGE_SIZE
   }
+  return all
 }
 
 exports.main = async (event) => {
@@ -37,12 +42,6 @@ exports.main = async (event) => {
   console.log('[addScoreRecord] 入参:', { roomCode, type, score, targetPlayerOpenId, operatorOpenId: openId })
 
   try {
-    // 确保集合存在
-    await ensureCollection('rooms')
-    await ensureCollection('room_players')
-    await ensureCollection('score_records')
-    console.log('[addScoreRecord] 所有集合就绪')
-
     // _id 即房间号，doc 查询无需索引
     const roomRes = await db.collection('rooms').doc(roomCode).get()
     console.log('[addScoreRecord] rooms.doc 结果:', !!roomRes.data)
@@ -79,16 +78,22 @@ exports.main = async (event) => {
 
     const targetPlayer = targetRes.data[0]
 
-    // down 操作：校验公共池余额是否充足
+    // down 操作：校验公共池余额是否充足，并顺带算出 target 玩家写前净分（供末尾增量返回复用，省去二次全表拉取）
+    let poolScoreBefore = 0   // 仅 down 路径赋值
+    let targetNetBefore = 0   // target 玩家写前净分（不含 base）
     if (type === 'down') {
-      const allRecords = await db.collection('score_records').where({ roomId: roomCode }).get()
-      let poolScore = 0
-      for (const r of allRecords.data) {
-        if (r.type === 'up') poolScore += r.score
-        else if (r.type === 'down') poolScore -= r.score
+      const allRecords = await fetchAllScoreRecords(roomCode)
+      for (const r of allRecords) {
+        if (r.type === 'up') {
+          poolScoreBefore += r.score
+          if (r.playerOpenId === targetPlayerOpenId) targetNetBefore -= r.score
+        } else if (r.type === 'down') {
+          poolScoreBefore -= r.score
+          if (r.playerOpenId === targetPlayerOpenId) targetNetBefore += r.score
+        }
       }
-      if (poolScore < score) {
-        return { ok: false, message: `公共池仅剩${poolScore}分，不足以取出${score}分` }
+      if (poolScoreBefore < score) {
+        return { ok: false, message: `公共池仅剩${poolScoreBefore}分，不足以取出${score}分` }
       }
     }
 
@@ -120,43 +125,23 @@ exports.main = async (event) => {
       data: roomUpdate
     })
 
-    // 重新计算目标玩家净分数和公共池分数
-    const recordsRes = await db.collection('score_records')
-      .where({ roomId: roomCode })
-      .get()
-    console.log('[addScoreRecord] 重新计算, 记录总数:', recordsRes.data.length)
-
+    // 增量构造返回值（省去末尾二次全表拉取）：
+    // - down 路径：写后 poolScore = 写前 poolScoreBefore - score；target 净分 = base + targetNetBefore + score
+    // - up 路径：前端不读返回的分数字段（_backgroundSync 只看 ok），最终以 _loadRoomData 拉取为准
     const DEFAULT_BASE_SCORE = 100
     const actualBaseScore = targetPlayer.baseScore !== undefined ? targetPlayer.baseScore : DEFAULT_BASE_SCORE
-    const records = recordsRes.data
-    let playerNetScore = 0
-    let poolScore = 0
-
-    for (const r of records) {
-      if (r.type === 'base') continue // base 类型不计入净分，不影响公共池
-      if (r.type === 'up') {
-        poolScore += r.score
-        if (r.playerOpenId === targetPlayerOpenId) {
-          playerNetScore -= r.score
-        }
-      } else if (r.type === 'down') {
-        poolScore -= r.score
-        if (r.playerOpenId === targetPlayerOpenId) {
-          playerNetScore += r.score
-        }
-      }
-    }
-
-    const displayScore = actualBaseScore + playerNetScore
-    console.log('[addScoreRecord] 计算完成, displayScore:', displayScore, 'poolScore:', poolScore)
-    return {
+    const result = {
       ok: true,
-      playerNetScore: displayScore,
-      poolScore: poolScore,
       actionType: type,
       actionScore: score,
       targetPlayerName: targetPlayer.nickName
     }
+    if (type === 'down') {
+      result.poolScore = poolScoreBefore - score
+      result.playerNetScore = actualBaseScore + targetNetBefore + score
+    }
+    console.log('[addScoreRecord] 完成, type:', type, 'score:', score)
+    return result
   } catch (e) {
     console.error('[addScoreRecord] 异常:', e.message || e)
     return { ok: false, message: e.message || '添加记录失败' }

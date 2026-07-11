@@ -3,17 +3,24 @@ const cloud = require('wx-server-sdk')
 cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV })
 const db = cloud.database()
 
-// 确保集合存在（不存在则创建，已存在则跳过）
-async function ensureCollection(name) {
-  try {
-    await db.createCollection(name)
-  } catch (e) {
-    const msg = (e.errMsg || e.message || e.errCode || '')
-    if (msg.indexOf('ResourceUnavailable.ResourceExist') > -1) {
-      return
-    }
-    throw e
+// 全量拉取房间计分记录
+// 云函数 db.get() 默认上限 100 条，记录超过会静默截断导致求和漏数据，必须分页累加
+async function fetchAllScoreRecords(roomCode) {
+  const PAGE_SIZE = 100
+  let all = []
+  let skip = 0
+  while (true) {
+    const res = await db.collection('score_records')
+      .where({ roomId: roomCode })
+      .orderBy('createTime', 'desc')
+      .skip(skip)
+      .limit(PAGE_SIZE)
+      .get()
+    all = all.concat(res.data)
+    if (res.data.length < PAGE_SIZE) break
+    skip += PAGE_SIZE
   }
+  return all
 }
 
 exports.main = async (event) => {
@@ -32,10 +39,6 @@ exports.main = async (event) => {
   console.log('[takeFromPool] 入参:', { roomCode, mode, targetPlayerOpenId, operatorOpenId: openId })
 
   try {
-    await ensureCollection('rooms')
-    await ensureCollection('room_players')
-    await ensureCollection('score_records')
-
     // 验证房间存在
     const roomRes = await db.collection('rooms').doc(roomCode).get()
     const room = roomRes.data
@@ -61,11 +64,8 @@ exports.main = async (event) => {
 
     const targetPlayer = targetRes.data[0]
 
-    // 计算当前公共池分数（从所有计分记录推算）
-    const recordsRes = await db.collection('score_records')
-      .where({ roomId: roomCode })
-      .get()
-    const records = recordsRes.data
+    // 计算当前公共池分数（从所有计分记录推算，分页全量拉取避免漏数据）
+    const records = await fetchAllScoreRecords(roomCode)
     let poolScore = 0
     for (const r of records) {
       if (r.type === 'up') poolScore += r.score

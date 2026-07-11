@@ -4,6 +4,26 @@ const cloud = require('wx-server-sdk')
 cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV })
 const db = cloud.database()
 
+// 全量拉取房间计分记录
+// 云函数 db.get() 默认上限 100 条，记录超过会静默截断导致求和漏数据，必须分页累加
+async function fetchAllScoreRecords(roomCode) {
+  const PAGE_SIZE = 100
+  let all = []
+  let skip = 0
+  while (true) {
+    const res = await db.collection('score_records')
+      .where({ roomId: roomCode })
+      .orderBy('createTime', 'desc')
+      .skip(skip)
+      .limit(PAGE_SIZE)
+      .get()
+    all = all.concat(res.data)
+    if (res.data.length < PAGE_SIZE) break
+    skip += PAGE_SIZE
+  }
+  return all
+}
+
 exports.main = async (event) => {
   const { roomCode } = event
 
@@ -29,14 +49,9 @@ exports.main = async (event) => {
       .get()
     console.log('[getRoomInfo] 玩家数:', playersRes.data.length)
 
-    // 查询所有计分记录
-    const recordsRes = await db.collection('score_records')
-      .where({ roomId: roomCode })
-      .orderBy('createTime', 'desc')
-      .get()
-    console.log('[getRoomInfo] 记录数:', recordsRes.data.length)
-
-    const records = recordsRes.data
+    // 查询所有计分记录（分页全量拉取，避免 db.get() 默认 100 条上限漏数据）
+    const records = await fetchAllScoreRecords(roomCode)
+    console.log('[getRoomInfo] 记录数:', records.length)
     const isMahjong = room.gameType === 'mahjong_scoring'
 
     // 计算每位玩家的净分数
