@@ -1,7 +1,7 @@
 """Knowledge Graph — v7.4. Connects events, stocks, sectors into evidence chains.
 
 Not a full graph database. A lightweight link graph that answers:
-  "Show me the evidence chain for this AI recommendation on 寒武纪."
+  "Show me the evidence chain for this AI recommendation."
   "What's happening in the 半导体 sector right now?"
   "Connect this earnings event to the AI signal that triggered."
 

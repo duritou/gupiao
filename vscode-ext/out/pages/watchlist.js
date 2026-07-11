@@ -5,7 +5,7 @@ exports.buildWatchlistPage = buildWatchlistPage;
 const layout_1 = require("../webview/layout");
 const constants_1 = require("../constants");
 function buildWatchlistPage(data) {
-    const stocks = data.stocks || ['000001.SZ', '600519.SH', '000858.SZ', '300750.SZ', '002475.SZ'];
+    const stocks = data.stocks || [];
     const initialScores = data.watchScores?.signals || [];
     const scoreMap = {};
     initialScores.forEach((s) => { scoreMap[s.stock_code] = s; });

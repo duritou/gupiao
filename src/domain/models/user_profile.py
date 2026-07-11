@@ -224,7 +224,7 @@ class AdaptiveRecommendation:
     base_direction: str = "neutral"
     adjusted_direction: str = "neutral"
 
-    personalized_reason: str = ""     # e.g. "寒武纪符合你成功率最高的模式..."
+    personalized_reason: str = ""     # Personalized reason from real user history
 
     def to_dict(self) -> dict:
         return {

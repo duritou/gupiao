@@ -123,7 +123,7 @@ class Alert:
     stock_name: str = ""
 
     # Content
-    title: str = ""             # One-line summary, e.g. "寒武纪 AI评分 +6 → 强烈买入"
+    title: str = ""             # One-line summary generated from a real alert
     body: str = ""              # Rich description with reasoning
     direction: str = "neutral"  # buy / sell / neutral
     score: float = 50.0         # Current AI score

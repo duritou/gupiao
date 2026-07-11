@@ -1,9 +1,16 @@
-"""Compare routes — side-by-side stock comparison"""
+﻿"""Compare routes backed by the real decision journal."""
 
 from fastapi import APIRouter
 from pydantic import BaseModel
 
-from src.shared.mock_data import generate_klines, mock_signal_result, get_stock_name
+from src.api.routes.journal_utils import (
+    decision_scores,
+    latest_decision_for_code,
+    recommendation_from_score,
+    risk_level,
+    score_stars,
+    top_signal,
+)
 
 router = APIRouter(tags=["compare"], prefix="/compare")
 
@@ -14,35 +21,44 @@ class CompareRequest(BaseModel):
 
 @router.post("")
 async def compare_stocks(req: CompareRequest):
-    """Compare multiple stocks side by side."""
+    """Compare stocks using their latest real pipeline decisions."""
     stocks = []
-    for code in req.codes[:6]:  # Max 6 at a time
-        klines = generate_klines(code, 80)
-        signal = mock_signal_result(code, klines)
+    missing = []
+    for code in req.codes[:6]:
+        decision = latest_decision_for_code(code)
+        if not decision:
+            missing.append(code)
+            continue
 
-        stocks.append({
-            "stock_code": code,
-            "stock_name": get_stock_name(code),
-            "ai_score": signal["fusion_score"],
-            "direction": signal["direction"],
-            "confidence": signal["confidence"],
-            "stars": 5 if signal["fusion_score"] >= 80 else 4 if signal["fusion_score"] >= 65 else
-                     3 if signal["fusion_score"] >= 45 else 2,
-            "macd": "✓ 金叉" if signal["scores"].get("macd", 50) >= 60 else
-                    "✗ 死叉" if signal["scores"].get("macd", 50) <= 40 else "→ 中性",
-            "rsi": round(signal["scores"].get("rsi", 50)),
-            "ma": "多头排列" if signal["scores"].get("ma", 50) >= 60 else
-                  "空头排列" if signal["scores"].get("ma", 50) <= 40 else "横盘整理",
-            "volume": "放量" if signal["scores"].get("volume", 50) >= 60 else
-                      "缩量" if signal["scores"].get("volume", 50) <= 40 else "正常",
-            "valuation": "偏高" if signal["fusion_score"] >= 75 and signal["direction"] == "buy" else
-                         "合理" if 45 <= signal["fusion_score"] <= 75 else "偏低",
-            "industry_score": signal["scores"].get("boll", 50),
-            "recommendation": "买入" if signal["fusion_score"] >= 75 else
-                            "持有" if signal["fusion_score"] >= 55 else
-                            "观望" if signal["fusion_score"] >= 40 else "回避",
-            "top_signal": signal["top_signal"],
-            "risk_level": signal["risk_level"],
-        })
+        score = float(decision.get("ai_score") or 50)
+        confidence = float(decision.get("confidence") or 0)
+        direction = str(decision.get("direction") or "neutral")
+        scores = decision_scores(decision)
+        stocks.append(
+            {
+                "stock_code": decision.get("stock_code", code),
+                "stock_name": decision.get("stock_name", code),
+                "ai_score": round(score, 1),
+                "direction": direction,
+                "confidence": round(confidence, 3),
+                "stars": score_stars(score),
+                "macd": round(scores["macd"], 1),
+                "rsi": round(scores["rsi"], 1),
+                "ma": round(scores["ma"], 1),
+                "volume": round(scores["volume"], 1),
+                "valuation": "not_available",
+                "industry_score": round(float(decision.get("kdj_score") or 50), 1),
+                "recommendation": recommendation_from_score(score, direction),
+                "top_signal": top_signal(decision),
+                "risk_level": risk_level(confidence),
+                "decision_date": decision.get("decision_date", ""),
+                "data_source": "decision_journal",
+            }
+        )
 
-    return {"stocks": stocks}
+    return {
+        "stocks": stocks,
+        "missing": missing,
+        "data_source": "decision_journal (real AI pipeline)",
+        "data_note": "Only stocks with pipeline decisions are compared.",
+    }

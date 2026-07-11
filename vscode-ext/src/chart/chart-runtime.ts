@@ -92,7 +92,7 @@ class LiveFeed extends DataFeed {
         try {
             const resp = await fetch(this._baseUrl + '/detail/' + this._code + '?include=kline');
             const detail = await resp.json();
-            const klines = detail.live_klines || [];
+            const klines = detail.klines || detail.live_klines || [];
             if (klines.length > 0) {
                 this._data = klines;
                 for (const cb of this._callbacks) cb(this._data);

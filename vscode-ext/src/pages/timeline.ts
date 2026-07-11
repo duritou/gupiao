@@ -6,7 +6,7 @@ import { BASE_URL } from '../constants';
 export function buildTimelinePage(data: any): string {
     const result = data.timeline || {};
     const entries = result.entries || [];
-    const stockCode = result.stock_code || '600519.SH';
+    const stockCode = result.stock_code || '';
     const stockName = result.stock_name || '';
 
     // Build a mini ASCII-style chart using divs

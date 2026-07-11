@@ -1,168 +1,129 @@
-"""Trust API Routes — v5.0 AI accountability layer.
+"""Trust API Routes — v7.6: reads from real decision journal.
 
-Powers:
-  GET /trust/track-record    — AI performance stats (accuracy, returns, streaks)
-  GET /trust/strategies      — Accuracy breakdown by strategy/signal
-  GET /trust/score-ranges    — Accuracy breakdown by AI score range
-  GET /trust/journal         — Decision journal entries
-  GET /trust/journal/summary — Aggregate journal stats
-  GET /trust/model-evolution — AI version accuracy history
-  GET /trust/resume          — Cumulative AI trust profile
-  GET /trust/monthly         — Monthly accuracy trend data
+Trust metrics come from the decision_journal SQLite table.
+When decisions exist → real stats. When empty → honest "数据积累中".
+Trust is earned from real AI decisions.
 """
 
 from fastapi import APIRouter, Query
 
-from src.domain.models.trust import (
-    OutcomePoint,
-    RecommendationSnapshot,
-    SignalSnapshot,
-    MarketSnapshot,
-)
-from src.shared.mock_data import generate_trust_snapshots
-from src.trust.engine import get_trust_engine
+from src.infrastructure.storage.market_database import market_db
 
 router = APIRouter(tags=["trust"], prefix="/trust")
 
 
-def _load_snapshots(engine=None):
-    """Load mock snapshots into engine and return them."""
-    if engine is None:
-        engine = get_trust_engine()
-    if not engine._snapshots:
-        mock_data = generate_trust_snapshots(60)
-        snaps = []
-        for d in mock_data:
-            snaps.append(RecommendationSnapshot(
-                id=d["id"], created_at=d["created_at"],
-                stock_code=d["stock_code"], stock_name=d["stock_name"],
-                direction=d["direction"], price_at_rec=d["price_at_rec"],
-                ai_score=d["ai_score"], ai_confidence=d["ai_confidence"],
-                signals=[SignalSnapshot(**s) for s in d["signals"]],
-                market_snapshot=MarketSnapshot(**d["market_snapshot"]) if d.get("market_snapshot") else None,
-                knowledge_context=d.get("knowledge_context", ""),
-                recommendation_text=d.get("recommendation_text", ""),
-                source=d.get("source", ""), alert_id=d.get("alert_id", ""),
-                ai_version=d.get("ai_version", ""), model_info=d.get("model_info", ""),
-                user_action=d.get("user_action", ""),
-                user_action_at=d.get("user_action_at", ""),
-                user_action_price=d.get("user_action_price", 0),
-                user_notes=d.get("user_notes", ""),
-                outcome_7d=OutcomePoint(**d["outcome_7d"]) if d.get("outcome_7d") else None,
-                outcome_30d=OutcomePoint(**d["outcome_30d"]) if d.get("outcome_30d") else None,
-                outcome_90d=OutcomePoint(**d["outcome_90d"]) if d.get("outcome_90d") else None,
-                final_verdict=d.get("final_verdict", "pending"),
-                final_profit_pct=d.get("final_profit_pct", 0),
-                ai_reflection=d.get("ai_reflection", ""),
-                reflection_at=d.get("reflection_at", ""),
-            ))
-        engine.add_snapshots(snaps)
-    return engine
-
-
 @router.get("/track-record")
-async def get_track_record(days: int = Query(30, ge=7, le=365)):
-    """AI Track Record — accuracy, returns, streaks, user behavior.
-
-    This is the single most important trust metric.
-    """
-    engine = _load_snapshots()
-    record = engine.compute_track_record(days=days)
-    return record.to_dict()
+async def track_record(days: int = Query(30, ge=7, le=365)):
+    stats = market_db.get_decision_stats()
+    total = stats["total_decisions"]
+    if total == 0:
+        return _insufficient("track-record", days)
+    return {
+        "status": "live",
+        "period_days": days,
+        "total_decisions": total,
+        "verified_decisions": stats["verified_decisions"],
+        "correct_decisions": stats["correct_decisions"],
+        "accuracy": stats["accuracy"],
+        "by_direction": stats["by_direction"],
+        "message": f"AI 共产生 {total} 条决策，已验证 {stats['verified_decisions']} 条",
+    }
 
 
 @router.get("/ai-alpha")
-async def get_ai_alpha(days: int = Query(90, ge=30, le=365)):
-    """AI Alpha — value attribution.
-
-    Answers: did following AI actually make money?
-    Compares follow-AI returns vs self-directed returns.
-    """
-    engine = _load_snapshots()
-    alpha = engine.compute_ai_alpha(days=days)
-    return alpha.to_dict()
-
-
-@router.get("/strategies")
-async def get_strategy_breakdown():
-    """Accuracy breakdown by strategy/signal type.
-
-    e.g. MACD金叉 82%, 放量突破 78%, AI评分>90 91%
-    """
-    engine = _load_snapshots()
-    breakdowns = engine.compute_strategy_breakdown()
-    return {"strategies": [b.to_dict() for b in breakdowns]}
-
-
-@router.get("/score-ranges")
-async def get_score_range_breakdown():
-    """Accuracy by AI score range.
-
-    e.g. 90-100: 91%, 80-90: 73%, 70-80: 61%, <60: 41%
-    """
-    engine = _load_snapshots()
-    ranges = engine.compute_score_range_breakdown()
-    return {"ranges": [r.to_dict() for r in ranges]}
+async def ai_alpha(days: int = Query(90, ge=30, le=365)):
+    stats = market_db.get_decision_stats()
+    if stats["total_decisions"] == 0:
+        return _insufficient("ai-alpha", days)
+    return {
+        "status": "live",
+        "period_days": days,
+        "total_decisions": stats["total_decisions"],
+        "verified_decisions": stats["verified_decisions"],
+        "accuracy": stats["accuracy"],
+        "message": f"AI Alpha 将随验证结果积累而自动计算。当前已积累 {stats['total_decisions']} 条决策。",
+    }
 
 
 @router.get("/journal")
-async def get_decision_journal(
-    limit: int = Query(30, ge=1, le=100),
-    verdict: str = Query("", description="Filter: correct/wrong/pending"),
-    action: str = Query("", description="Filter: bought/sold/held/ignored/partial"),
-):
-    """Decision Journal — AI recommendations vs user actions vs outcomes."""
-    engine = _load_snapshots()
-    entries = engine.get_journal_entries(limit=limit, verdict=verdict, action=action)
+async def journal(limit: int = Query(30, ge=1, le=100)):
+    decisions = market_db.get_recent_decisions(limit)
     return {
-        "entries": [e.to_dict() for e in entries],
-        "total": len(engine._snapshots),
+        "status": "live" if decisions else "accumulating",
+        "total_entries": len(decisions),
+        "entries": [
+            {
+                "id": d["id"],
+                "date": d["decision_date"],
+                "stock_code": d["stock_code"],
+                "stock_name": d["stock_name"],
+                "ai_score": d["ai_score"],
+                "direction": d["direction"],
+                "recommendation": d["recommendation"],
+                "outcome_known": bool(d["outcome_known"]),
+                "was_correct": d["was_correct"],
+            }
+            for d in decisions
+        ],
     }
 
 
 @router.get("/journal/summary")
-async def get_journal_summary():
-    """Aggregate journal statistics with behavioral insights."""
-    engine = _load_snapshots()
-    summary = engine.get_journal_summary()
-    return summary.to_dict()
-
-
-@router.get("/model-evolution")
-async def get_model_evolution():
-    """AI version history with accuracy trends.
-
-    Shows how AI accuracy has improved across versions.
-    """
-    engine = _load_snapshots()
-    versions = engine.compute_model_evolution()
-    return {"versions": [v.to_dict() for v in versions]}
+async def journal_summary():
+    stats = market_db.get_decision_stats()
+    return {
+        "status": "live" if stats["total_decisions"] > 0 else "accumulating",
+        **stats,
+    }
 
 
 @router.get("/resume")
-async def get_ai_resume():
-    """Cumulative AI trust profile — the 'AI Resume'.
+async def resume():
+    stats = market_db.get_decision_stats()
+    total = stats["total_decisions"]
+    return {
+        "status": "live" if total > 0 else "accumulating",
+        "total_decisions": total,
+        "verified_decisions": stats["verified_decisions"],
+        "accuracy": stats["accuracy"],
+        "message": (
+            f"AI 已产生 {total} 条真实决策。"
+            f"随着验证结果积累，Resume 将自动更新。"
+            if total > 0 else "尚无决策记录。运行 AI Pipeline 后自动生成。"
+        ),
+    }
 
-    Total studies, recommendations, accuracy, streaks, best strategies.
-    """
-    engine = _load_snapshots()
-    resume = engine.compute_ai_resume()
-    return resume.to_dict()
+
+@router.get("/strategies")
+async def strategies():
+    return {"status": "pending", "message": "策略分解将在积累 30+ 条验证记录后自动生成"}
+
+
+@router.get("/score-ranges")
+async def score_ranges():
+    return {"status": "pending", "message": "评分区间分析将在积累 30+ 条验证记录后自动生成"}
+
+
+@router.get("/model-evolution")
+async def model_evolution():
+    return {"status": "pending", "message": "模型演进将在积累多个版本数据后自动生成"}
 
 
 @router.get("/monthly")
-async def get_monthly_accuracy():
-    """Monthly accuracy trend for sparkline charts."""
-    engine = _load_snapshots()
-    monthly = engine.compute_monthly_accuracy()
-    return {"monthly": monthly}
+async def monthly():
+    return {"status": "pending", "message": "月度趋势将在积累 3+ 个月数据后自动生成"}
 
 
 @router.get("/snapshot/{snapshot_id}")
-async def get_snapshot(snapshot_id: str):
-    """Get a single recommendation snapshot with full detail."""
-    engine = _load_snapshots()
-    for s in engine._snapshots:
-        if s.id == snapshot_id:
-            return s.to_dict()
-    return {"error": "snapshot not found", "id": snapshot_id}
+async def snapshot(snapshot_id: str):
+    return {"status": "not_found", "snapshot_id": snapshot_id}
+
+
+def _insufficient(endpoint: str, days: int) -> dict:
+    return {
+        "status": "insufficient_data",
+        "endpoint": endpoint,
+        "requested_days": days,
+        "message": "尚无 AI 决策记录。运行 AI Pipeline Runner 后自动生成。",
+        "next_step": "调用 /api/v1/ai-os/run-pipeline 启动 AI 决策流水线",
+    }

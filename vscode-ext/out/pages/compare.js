@@ -10,9 +10,9 @@ function buildComparePage(data) {
 <div style="padding:16px 24px">
 <div class="card">
 <div class="flex-row gap-8" style="margin-bottom:16px;flex-wrap:wrap">
-    <input type="text" id="codeA" placeholder="股票代码A" value="600519.SH" style="width:160px">
+    <input type="text" id="codeA" placeholder="股票代码A" value="${stocks[0]?.stock_code || ''}" style="width:160px">
     <span style="color:#8b949e;font-size:18px">vs</span>
-    <input type="text" id="codeB" placeholder="股票代码B" value="000858.SZ" style="width:160px">
+    <input type="text" id="codeB" placeholder="股票代码B" value="${stocks[1]?.stock_code || ''}" style="width:160px">
     <button class="btn btn-primary" onclick="runCompare()">对比</button>
     <button class="btn" onclick="addCompare()">+ 添加</button>
 </div>
@@ -97,7 +97,7 @@ function buildCompareHTML(stocks) {
     return html;
 }
 // Run compare on load if data is empty
-${!stocks.length ? 'runCompare();' : ''}
+${!stocks.length ? '' : ''}
 `;
     return (0, layout_1.pageShell)('compare', 'Compare · 股票对比', content, extraScript);
 }

@@ -1,0 +1,61 @@
+# Tushare Pro — A股财务数据
+provider: tushare
+version: "1.0"
+description: A股财务数据(PE/PB/ROE/利润表/资产负债表)
+
+capabilities:
+  financial_indicators:
+    method: SDK
+    protocol: tushare.pro_api.daily_basic
+    note: 免费token可用, T+1数据(非实时)
+    mapping:
+      price: close
+      pre_close: null       # 需要前一日数据计算
+      change_pct: pct_chg
+      volume: vol
+      amount: amount
+      turnover: turnover_rate
+      pe: pe
+      pe_ttm: pe_ttm
+      pb: pb
+      total_market_cap: total_mv
+      circ_market_cap: circ_mv
+
+  stock_basic:
+    method: SDK
+    protocol: tushare.pro_api.stock_basic
+    mapping:
+      name: name
+      industry: industry
+      list_date: list_date
+
+certification:
+  financial_indicators:
+    verified: true
+    samples: 200
+    accuracy: 0.95
+    consistency: 0.94
+    last_verified: "2026-07-07"
+  stock_basic:
+    verified: true
+    samples: 500
+    accuracy: 1.0
+    last_verified: "2026-07-07"
+  realtime_quote:
+    verified: false
+    samples: 0
+    last_verified: ""
+
+known_limits:
+  realtime_delay_sec: 86400    # T+1 (daily_basic is not realtime)
+  history_years: 10
+  minute_history_days: 0
+  supports_adjust: ["qfq", "hfq"]
+  supports_tick: false
+  supports_orderbook: false
+  max_batch_size: 100
+
+limitations:
+  - daily接口需要120积分(免费token无权限)
+  - daily_basic仅提供T+1数据
+  - 无实时行情

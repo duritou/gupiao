@@ -1,0 +1,88 @@
+# mootdx (通达信 TCP 7709) — 免费实时行情 + K线
+provider: mootdx
+version: "1.0"
+description: 通达信TCP行情 — 不封IP, 实时五档, TCP二进制协议
+
+capabilities:
+  realtime_quote:
+    method: TCP
+    protocol: mootdx.quotes.Quotes.quotes
+    note: 46字段返回(price/open/high/low/vol/amount/bid1-5/ask1-5)
+    mapping:
+      price: price
+      name: code
+      open: open
+      high: high
+      low: low
+      pre_close: last_close
+      change_pct: null     # computed: (price - last_close) / last_close
+      volume: vol
+      amount: amount
+      turnover: null       # mootdx 不提供换手率
+      pe: null             # mootdx 不提供PE — 走腾讯财经
+      pb: null
+
+  daily_kline:
+    method: TCP
+    protocol: mootdx.quotes.Quotes.bars
+    params:
+      frequency: 9         # 9=日线, 4=日线(备用), ⚠️参数名是frequency不是category
+    mapping:
+      date: datetime
+      open: open
+      high: high
+      low: low
+      close: close
+      volume: vol
+      amount: amount
+
+  minute_kline:
+    method: TCP
+    protocol: mootdx.quotes.Quotes.bars
+    params:
+      frequency: 8         # 8=1分钟, 0=5分钟, 1=15分钟
+    mapping:
+      date: datetime
+      open: open
+      high: high
+      low: low
+      close: close
+      volume: vol
+
+certification:
+  realtime_quote:
+    verified: true
+    samples: 1328
+    accuracy: 0.998
+    consistency: 0.987
+    last_verified: "2026-07-07"
+  daily_kline:
+    verified: true
+    samples: 520
+    accuracy: 1.0
+    consistency: 1.0
+    last_verified: "2026-07-07"
+  minute_kline:
+    verified: true
+    samples: 240
+    accuracy: 1.0
+    last_verified: "2026-07-07"
+
+known_limits:
+  realtime_delay_sec: 0
+  history_years: 5
+  minute_history_days: 60
+  supports_adjust: ["qfq"]
+  supports_tick: true
+  supports_orderbook: true
+  max_batch_size: 100
+
+known_bugs:
+  - BESTIP空串: 全新安装后Quotes.factory()抛ValueError, 解决: 显式传server IP
+  - frequency≠category: 传category被**kwargs静默吞掉, 永远退化成日线
+
+servers:
+  - 119.97.185.59:7709
+  - 124.70.133.119:7709
+  - 116.205.183.150:7709
+  - 123.60.73.44:7709

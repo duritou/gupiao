@@ -1,0 +1,64 @@
+# BaoStock — 免费A股日线兜底
+provider: baostock
+version: "1.0"
+description: A股日线K线 — 最稳定兜底, 免费无需认证
+
+code_format: "sz.000725"  # 不是 000725.SZ
+
+capabilities:
+  daily_kline:
+    method: SDK
+    protocol: baostock.query_history_k_data_plus
+    params:
+      frequency: d
+      adjustflag: 3        # 3=不复权
+    mapping:
+      date: date
+      open: open
+      high: high
+      low: low
+      close: close
+      pre_close: preclose
+      volume: volume
+      amount: amount
+      turnover: turn
+
+  stock_basic:
+    method: SDK
+    protocol: baostock.query_stock_basic
+    mapping:
+      name: name
+      code: code
+
+certification:
+  daily_kline:
+    verified: true
+    samples: 850
+    accuracy: 1.0
+    consistency: 0.94
+    last_verified: "2026-07-07"
+  stock_basic:
+    verified: true
+    samples: 100
+    accuracy: 1.0
+    last_verified: "2026-07-07"
+  realtime_quote:
+    verified: false
+    samples: 0
+    last_verified: ""
+
+known_limits:
+  realtime_delay_sec: 86400    # T+1 only
+  history_years: 10
+  minute_history_days: 0        # No minute data
+  supports_adjust: ["qfq"]
+  supports_tick: false
+  supports_orderbook: false
+  max_batch_size: 1
+
+limitations:
+  - 没有实时行情(只有日线收盘价)
+  - 不支持分钟线
+  - 不支持财务数据
+  - 速度较慢(~800ms/次)
+  - 需要login/logout

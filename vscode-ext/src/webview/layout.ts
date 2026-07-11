@@ -4,6 +4,7 @@ import * as vscode from 'vscode';
 import { PAGE_TITLES, NAV_ITEMS, TERMINAL_CSS } from '../constants';
 
 let currentPanel: vscode.WebviewPanel | null = null;
+let currentMessageDisposable: vscode.Disposable | null = null;
 
 export function getCurrentPanel(): vscode.WebviewPanel | null {
     return currentPanel;
@@ -15,16 +16,24 @@ export function createOrShowPanel(
     onMessage: (msg: any) => void,
 ): vscode.WebviewPanel {
     if (currentPanel) {
-        currentPanel.dispose();
+        currentPanel.title = title;
+        currentPanel.reveal(vscode.ViewColumn.One);
+    } else {
+        currentPanel = vscode.window.createWebviewPanel(
+            'quantaiTerminal', title,
+            vscode.ViewColumn.One,
+            { enableScripts: true, retainContextWhenHidden: true },
+        );
+        currentPanel.onDidDispose(() => {
+            currentPanel = null;
+            currentMessageDisposable?.dispose();
+            currentMessageDisposable = null;
+        });
     }
-    currentPanel = vscode.window.createWebviewPanel(
-        'quantaiTerminal', title,
-        vscode.ViewColumn.One,
-        { enableScripts: true, retainContextWhenHidden: true },
-    );
+
     currentPanel.webview.html = html;
-    currentPanel.webview.onDidReceiveMessage(onMessage);
-    currentPanel.onDidDispose(() => { currentPanel = null; });
+    currentMessageDisposable?.dispose();
+    currentMessageDisposable = currentPanel.webview.onDidReceiveMessage(onMessage);
     return currentPanel;
 }
 

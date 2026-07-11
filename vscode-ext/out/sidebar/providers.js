@@ -73,6 +73,8 @@ class TerminalNavProvider {
             navItem('', '', ''),
             navItem('分析股票...', 'quantai.research', 'search'),
             navItem('+ 添加自选', 'quantai.addWatch', 'add'),
+            navItem('', '', ''),
+            navItem('重启后端服务', 'quantai.restartServer', 'debug-restart'),
         ];
     }
 }
@@ -81,9 +83,13 @@ class StatusProvider {
     getTreeItem(el) { return el; }
     async getChildren() {
         const online = await (0, client_1.healthCheck)().catch(() => false);
+        const restartItem = new vscode.TreeItem('$(debug-restart) 重启后端服务', vscode.TreeItemCollapsibleState.None);
+        restartItem.command = { command: 'quantai.restartServer', title: '重启后端服务' };
+        restartItem.tooltip = '杀掉旧进程并重启后端服务';
         return [
             new vscode.TreeItem(online ? '$(check) 后端: 运行中' : '$(circle-outline) 后端: 未启动'),
             new vscode.TreeItem(`$(server) API: ${constants_1.BASE_URL}`),
+            restartItem,
         ];
     }
 }

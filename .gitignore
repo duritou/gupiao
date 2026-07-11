@@ -48,3 +48,12 @@ coverage.xml
 
 # Jupyter
 .ipynb_checkpoints/
+
+# SQLite databases (runtime data, not source)
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+# Local dev convenience scripts
+restart.ps1

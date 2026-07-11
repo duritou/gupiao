@@ -58,7 +58,7 @@ class DataValidator:
     # Price boundaries for different board types
     PRICE_MIN = 0.01
     PRICE_MAX_BY_BOARD = {
-        "SH": 3000,  # 贵州茅台 could be ~1800
+        "SH": 3000,
         "SZ": 500,   # Main board
         "BJ": 200,   # 北京所
     }
@@ -244,26 +244,28 @@ class DataValidator:
         return result
 
     def compare_providers(
-        self, akshare_data: dict | None, mock_data: dict
+        self, primary_data: dict | None, fallback_data: dict
     ) -> dict:
         """Compare data from different providers and flag discrepancies."""
-        if akshare_data is None:
+        if primary_data is None:
             return {
                 "provider_match": False,
-                "using": "mock",
-                "reason": "Live data unavailable",
+                "using": "fallback",
+                "reason": "Primary data unavailable",
                 "quality": "degraded",
             }
 
         # Compare key fields
-        price_live = akshare_data.get("price", 0)
-        price_mock = mock_data.get("latest_price", mock_data.get("price", 0))
+        price_live = primary_data.get("price", 0)
+        price_fallback = fallback_data.get("latest_price", fallback_data.get("price", 0))
 
         discrepancies = []
-        if price_live > 0 and price_mock > 0:
-            diff_pct = abs(price_live / price_mock - 1) * 100
+        if price_live > 0 and price_fallback > 0:
+            diff_pct = abs(price_live / price_fallback - 1) * 100
             if diff_pct > 10:
-                discrepancies.append(f"Price diff {diff_pct:.1f}%: live={price_live}, mock={price_mock}")
+                discrepancies.append(
+                    f"Price diff {diff_pct:.1f}%: primary={price_live}, fallback={price_fallback}"
+                )
 
         return {
             "provider_match": len(discrepancies) == 0,

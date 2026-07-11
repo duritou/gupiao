@@ -4,7 +4,7 @@ import { pageShell } from '../webview/layout';
 import { BASE_URL } from '../constants';
 
 export function buildWatchlistPage(data: any): string {
-    const stocks = data.stocks || ['000001.SZ', '600519.SH', '000858.SZ', '300750.SZ', '002475.SZ'];
+    const stocks = data.stocks || [];
     const initialScores = data.watchScores?.signals || [];
     const scoreMap: Record<string, any> = {};
     initialScores.forEach((s: any) => { scoreMap[s.stock_code] = s; });

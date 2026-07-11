@@ -27,6 +27,32 @@ let serverProcess: cp.ChildProcess | null = null;
 let statusBar: vscode.StatusBarItem;
 let watchlist: string[] = [];
 let extensionContext: vscode.ExtensionContext | null = null;
+type PageCacheEntry = {
+    data: any;
+    fetchedAt: number;
+    pending?: Promise<any>;
+};
+const pageCache = new Map<string, PageCacheEntry>();
+let navigationVersion = 0;
+
+const PAGE_CACHE_TTL_MS: Record<string, number> = {
+    dashboard: 60_000,
+    watchlist: 30_000,
+    alerts: 30_000,
+    marketmap: 300_000,
+    backtest: 300_000,
+    compare: 120_000,
+    timeline: 120_000,
+    portfolio: 60_000,
+    dailybrief: 120_000,
+    journal: 60_000,
+    resume: 300_000,
+    profile: 300_000,
+    aios: 60_000,
+    health: 60_000,
+    connectors: 300_000,
+    decisions: 60_000,
+};
 
 // ============================================================
 // ACTIVATION
@@ -34,7 +60,7 @@ let extensionContext: vscode.ExtensionContext | null = null;
 export function activate(context: vscode.ExtensionContext) {
     console.log('Adaptive Investment Intelligence Platform activated');
     extensionContext = context;
-    watchlist = context.globalState.get('watchlist', ['000001.SZ', '600519.SH', '000858.SZ', '300750.SZ', '002475.SZ']);
+    watchlist = context.globalState.get('watchlist', []);
 
     statusBar = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
     statusBar.text = '$(pulse) AIIP';
@@ -63,6 +89,7 @@ export function activate(context: vscode.ExtensionContext) {
         vscode.commands.registerCommand('quantai.decisions', () => showTerminal('decisions')),
         vscode.commands.registerCommand('quantai.startServer', startServer),
         vscode.commands.registerCommand('quantai.stopServer', stopServer),
+        vscode.commands.registerCommand('quantai.restartServer', restartServer),
         vscode.commands.registerCommand('quantai.addWatch', addToWatchlist),
         vscode.commands.registerCommand('quantai.scan', () => showTerminal('dashboard')),
         vscode.commands.registerCommand('quantai.analyze', () => showStockResearch()),
@@ -106,23 +133,94 @@ async function startServer() {
 
 function stopServer() { if (serverProcess) { serverProcess.kill(); serverProcess = null; } }
 
+async function restartServer() {
+    stopServer();
+    // Kill any orphaned process on port 8888 (from previous sessions)
+    try {
+        const { execSync } = require('child_process');
+        const out = execSync('netstat -ano | findstr :8888 | findstr LISTENING', { timeout: 5000, encoding: 'utf8' });
+        const pid = out.trim().split(/\s+/).pop();
+        if (pid) {
+            execSync(`taskkill /F /PID ${pid}`);
+            vscode.window.showInformationMessage(`Killed orphan server (PID ${pid}). Restarting...`);
+        }
+    } catch (e) { /* no orphan process, that's fine */ }
+    // Small delay to let OS release the port
+    await sleep(1000);
+    await startServer();
+    vscode.window.showInformationMessage('Server restarted. Reload VS Code window: Ctrl+Shift+P → Developer: Reload Window');
+}
+
 // ============================================================
 // NAVIGATION & DATA FETCHING
 // ============================================================
 async function showTerminal(page: string, extraData?: any) {
-    const data = await fetchPageData(page, extraData);
+    const version = ++navigationVersion;
+    const cacheKey = getPageCacheKey(page, extraData);
+    const cached = pageCache.get(cacheKey);
+    const ttlMs = PAGE_CACHE_TTL_MS[page] ?? 60_000;
+    const isFresh = cached ? Date.now() - cached.fetchedAt < ttlMs : false;
+
+    if (cached?.data) {
+        renderTerminalPage(page, cached.data, version);
+        if (!isFresh) {
+            void refreshPageData(page, extraData, cacheKey, version);
+        }
+        return;
+    }
+
+    const loading = '<div class="loading">Loading data</div>';
+    createOrShowPanel(getPageTitle(page), pageShell(page, getPageTitle(page), loading), (msg: any) => handleMessage(msg, page));
+    await refreshPageData(page, extraData, cacheKey, version);
+}
+
+function getPageCacheKey(page: string, extraData?: any): string {
+    return `${page}:${JSON.stringify(extraData || {})}`;
+}
+
+async function refreshPageData(page: string, extraData: any, cacheKey: string, version: number) {
+    const cached = pageCache.get(cacheKey);
+    const pending = cached?.pending || fetchPageData(page, extraData);
+    pageCache.set(cacheKey, {
+        data: cached?.data,
+        fetchedAt: cached?.fetchedAt || 0,
+        pending,
+    });
+
+    const data = await pending.catch(() => cached?.data || {});
+    pageCache.set(cacheKey, { data, fetchedAt: Date.now() });
+    if (version === navigationVersion) {
+        renderTerminalPage(page, data, version);
+    }
+}
+
+function renderTerminalPage(page: string, data: any, version: number) {
+    if (version !== navigationVersion) return;
     const html = buildPage(page, data);
     createOrShowPanel(getPageTitle(page), html, (msg: any) => handleMessage(msg, page));
+}
+
+function invalidatePageCache(...pages: string[]) {
+    for (const key of Array.from(pageCache.keys())) {
+        if (pages.some(page => key.startsWith(`${page}:`))) {
+            pageCache.delete(key);
+        }
+    }
 }
 
 async function fetchPageData(page: string, extraData?: any): Promise<any> {
     try {
         switch (page) {
             case 'dashboard': {
+                const journalForWatch = watchlist.length
+                    ? null
+                    : await httpGet('/trust/journal?limit=10').catch(() => null);
+                const suggestedWatch = (journalForWatch?.entries || []).map((e: any) => e.stock_code).filter(Boolean);
+                const watchCodes = watchlist.length ? watchlist : suggestedWatch;
                 const [market, scanner, watchScores, brief, alerts, trackRecord, aiAlpha, userProfile, dataQuality] = await Promise.all([
                     httpGet('/market/overview').catch(() => null),
                     httpPost('/scanner/run?pool_size=30&top_n=8').catch(() => null),
-                    httpPost('/signals/batch', { codes: watchlist }).catch(() => null),
+                    httpPost('/signals/batch', { codes: watchCodes }).catch(() => null),
                     httpGet('/morning-brief/today').catch(() => null),
                     httpGet('/alerts/today').catch(() => null),
                     httpGet('/trust/track-record?days=30').catch(() => null),
@@ -183,8 +281,11 @@ async function fetchPageData(page: string, extraData?: any): Promise<any> {
                 return { decisions };
             }
             case 'watchlist': {
-                const watchScores = await httpPost('/signals/batch', { codes: watchlist }).catch(() => null);
-                return { stocks: watchlist, watchScores };
+                const journal = await httpGet('/trust/journal?limit=20').catch(() => null);
+                const suggested = (journal?.entries || []).map((e: any) => e.stock_code).filter(Boolean);
+                const stocks = watchlist.length ? watchlist : suggested;
+                const watchScores = stocks.length ? await httpPost('/signals/batch', { codes: stocks }).catch(() => null) : null;
+                return { stocks, watchScores };
             }
             case 'marketmap': {
                 const sectors = await httpGet('/market/sectors').catch(() => null);
@@ -206,9 +307,19 @@ async function fetchPageData(page: string, extraData?: any): Promise<any> {
                 const portfolio = await httpGet('/portfolio/overview').catch(() => null);
                 return { portfolio };
             }
-            case 'compare': return {};
+            case 'compare': {
+                const journal = await httpGet('/trust/journal?limit=2').catch(() => null);
+                const codes = (journal?.entries || []).map((e: any) => e.stock_code).filter(Boolean);
+                const compare = codes.length >= 2 ? await httpPost('/compare', { codes }).catch(() => null) : null;
+                return compare || {};
+            }
             case 'timeline': {
-                const code = extraData?.code || '600519.SH';
+                let code = extraData?.code;
+                if (!code) {
+                    const journal = await httpGet('/trust/journal?limit=1').catch(() => null);
+                    code = journal?.entries?.[0]?.stock_code;
+                }
+                if (!code) return { timeline: {} };
                 const timeline = await httpGet(`/timeline/${code}?days=30`).catch(() => null);
                 return { timeline };
             }
@@ -272,6 +383,7 @@ async function addToWatchlist() {
     const code = await vscode.window.showInputBox({ prompt: '添加自选股', placeHolder: '000001.SZ' });
     if (!code) return;
     if (!watchlist.includes(code)) { watchlist.push(code); }
+    invalidatePageCache('dashboard', 'watchlist');
     if (extensionContext) {
         extensionContext.globalState.update('watchlist', watchlist);
     }

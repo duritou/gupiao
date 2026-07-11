@@ -368,7 +368,7 @@ class AIMemory:
             accuracy_trend=trend,
             user_trust_trend="improving",
             ai_version_jump="v5.0 → v6.0: 准确率 +6%",
-            best_recommendation="寒武纪 +26% (7月第2周)",
+            best_recommendation="No verified recommendation yet",
             worst_recommendation="机器人板块 -8% (7月第1周)",
             user_milestone="首次连续11次跟随AI建议",
         )

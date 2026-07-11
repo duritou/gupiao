@@ -46,7 +46,7 @@ export function buildDashboardPage(data: any): string {
 ${greeting ? '<div style="font-size:12px;color:#A78BFA;line-height:1.5">🤖 ' + greeting + '</div>' : '<div></div>'}
 <div style="font-size:11px;display:flex;align-items:center;gap:6px">
 <span>${healthIcon}</span>
-<span style="color:#8b949e">${dataHealth.provider || 'mock'}</span>
+<span style="color:#8b949e">${dataHealth.provider || 'unavailable'}</span>
 <span style="color:${qualityColor}">${qualityPct}</span>
 </div>
 </div>

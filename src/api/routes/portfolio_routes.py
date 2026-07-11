@@ -1,115 +1,94 @@
-"""Portfolio routes — position tracking + AI rescoring."""
+﻿"""Portfolio routes backed by real pipeline decisions."""
 
 from datetime import date
 
 from fastapi import APIRouter
 
+from src.api.routes.journal_utils import (
+    empty_journal_response,
+    get_journal_decisions,
+    latest_close,
+    recommendation_from_score,
+    risk_level,
+    top_signal,
+)
 from src.domain.models.portfolio import Portfolio, Position
-from src.shared.mock_data import mock_signal_result, generate_klines, get_stock_name
 
 router = APIRouter(tags=["portfolio"], prefix="/portfolio")
 
 
-# Demo portfolio data
-DEMO_POSITIONS = [
-    {"code": "688256.SH", "shares": 500, "cost": 220.0, "added": "2026-05-15"},
-    {"code": "002371.SZ", "shares": 1000, "cost": 180.0, "added": "2026-06-01"},
-    {"code": "300308.SZ", "shares": 800, "cost": 95.0, "added": "2026-06-20"},
-    {"code": "688981.SH", "shares": 1200, "cost": 55.0, "added": "2026-04-10"},
-    {"code": "600519.SH", "shares": 100, "cost": 1380.0, "added": "2026-03-01"},
-]
-
-
 @router.get("/overview")
 async def portfolio_overview():
-    """Get complete portfolio snapshot with AI rescoring."""
+    """Return the real pipeline watchlist in the Portfolio page shape.
+
+    There is no persisted user holdings table yet, so this endpoint does not
+    invent shares, costs, market value, or P/L. It exposes real decision
+    journal names and scores, with money fields intentionally zero.
+    """
     today = date.today().isoformat()
+    decisions = get_journal_decisions(limit=30)
+    if not decisions:
+        portfolio = Portfolio(date=today, ai_summary="No real pipeline decisions yet.")
+        return {**empty_journal_response(), **portfolio.to_dict()}
+
     positions: list[Position] = []
-    total_value = 0.0
-    total_cost = 0.0
+    for d in decisions[:12]:
+        code = str(d.get("stock_code") or "")
+        score = float(d.get("ai_score") or 50)
+        confidence = float(d.get("confidence") or 0)
+        current_price = await latest_close(code)
+        positions.append(
+            Position(
+                stock_code=code,
+                stock_name=str(d.get("stock_name") or code),
+                shares=0,
+                cost_price=0,
+                current_price=current_price,
+                market_value=0,
+                cost_value=0,
+                profit_loss=0,
+                profit_loss_pct=0,
+                weight_pct=0,
+                ai_score=score,
+                ai_direction=str(d.get("direction") or "neutral"),
+                ai_signal=top_signal(d),
+                risk_level=risk_level(confidence),
+                added_date=str(d.get("decision_date") or ""),
+                last_score_change=score - float(d.get("fusion_score") or score),
+            )
+        )
 
-    for dp in DEMO_POSITIONS:
-        code = dp["code"]
-        name = get_stock_name(code)
-        klines = generate_klines(code, 80, "up")
-        signal = mock_signal_result(code, klines)
-
-        current_price = signal["price"]
-        shares = dp["shares"]
-        cost_price = dp["cost"]
-        market_value = shares * current_price
-        cost_value = shares * cost_price
-        pl = market_value - cost_value
-        pl_pct = (current_price / cost_price - 1) * 100
-
-        total_value += market_value
-        total_cost += cost_value
-
-        positions.append(Position(
-            stock_code=code,
-            stock_name=name,
-            shares=shares,
-            cost_price=cost_price,
-            current_price=current_price,
-            market_value=market_value,
-            cost_value=cost_value,
-            profit_loss=pl,
-            profit_loss_pct=pl_pct,
-            ai_score=signal["fusion_score"],
-            ai_direction=signal["direction"],
-            ai_signal=signal["top_signal"],
-            risk_level=signal["risk_level"],
-            added_date=dp["added"],
-            last_score_change=signal["fusion_score"] - 75,
-        ))
-
-    # Calculate weights
-    for p in positions:
-        p.weight_pct = (p.market_value / total_value * 100) if total_value > 0 else 0
-
-    total_pl = total_value - total_cost
-    total_pl_pct = (total_value / total_cost - 1) * 100 if total_cost > 0 else 0
-    daily_pl = total_value * 0.01  # mock 1% daily change
-    daily_pl_pct = 1.0
-
-    # Sort by AI score
     positions.sort(key=lambda p: p.ai_score, reverse=True)
-
-    # AI Summary
-    buy_count = sum(1 for p in positions if p.ai_score >= 65)
-    sell_count = sum(1 for p in positions if p.ai_score <= 35)
-    avg_score = sum(p.ai_score * p.weight_pct for p in positions) / 100
-
-    if avg_score >= 70:
-        ai_summary = f"持仓整体评分{avg_score:.0f}，偏积极。{buy_count}只标的看多信号明显，建议维持现有仓位。"
-    elif avg_score >= 50:
-        ai_summary = f"持仓评分{avg_score:.0f}，中性偏稳。关注{buy_count}只强势标的，{sell_count}只标的信号偏弱需留意。"
-    else:
-        ai_summary = f"持仓评分{avg_score:.0f}，偏谨慎。{sell_count}只标的信号走弱，建议减仓或设置止损。"
-
-    risk_summary = (
-        f"仓位集中度{'偏高' if max(p.weight_pct for p in positions) > 30 else '适中'}，"
-        f"最大持仓{max(positions, key=lambda p: p.weight_pct).stock_name}"
-        f"({max(p.weight_pct for p in positions):.0f}%)"
+    avg_score = sum(p.ai_score for p in positions) / len(positions)
+    buy_count = sum(
+        1
+        for p in positions
+        if recommendation_from_score(p.ai_score, p.ai_direction) in {"buy", "strong_buy"}
     )
-
-    top = max(positions, key=lambda p: p.profit_loss_pct)
-    worst = min(positions, key=lambda p: p.profit_loss_pct)
+    sell_count = sum(1 for p in positions if p.ai_direction == "sell" or p.ai_score < 40)
+    top = positions[0]
+    worst = positions[-1]
 
     portfolio = Portfolio(
         date=today,
-        total_value=total_value,
-        total_cost=total_cost,
-        total_pl=total_pl,
-        total_pl_pct=total_pl_pct,
-        daily_pl=daily_pl,
-        daily_pl_pct=daily_pl_pct,
-        cash=total_value * 0.1,
+        total_value=0,
+        total_cost=0,
+        total_pl=0,
+        total_pl_pct=0,
+        daily_pl=0,
+        daily_pl_pct=0,
+        cash=0,
         positions=positions,
-        ai_summary=ai_summary,
-        risk_summary=risk_summary,
-        top_performer=f"{top.stock_name}(+{top.profit_loss_pct:.1f}%)",
-        worst_performer=f"{worst.stock_name}({worst.profit_loss_pct:.1f}%)",
+        ai_summary=(
+            f"Pipeline watchlist from decision journal: average score {avg_score:.0f}; "
+            f"{buy_count} buy-grade names, {sell_count} risk-off names."
+        ),
+        risk_summary="No real holdings table is configured; money and P/L fields are zero.",
+        top_performer=f"{top.stock_name}({top.ai_score:.0f})",
+        worst_performer=f"{worst.stock_name}({worst.ai_score:.0f})",
     )
-
-    return portfolio.to_dict()
+    result = portfolio.to_dict()
+    result["avg_ai_score"] = round(avg_score, 1)
+    result["data_source"] = "decision_journal (real AI pipeline)"
+    result["portfolio_mode"] = "pipeline_watchlist"
+    return result

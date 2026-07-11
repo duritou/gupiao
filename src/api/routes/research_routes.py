@@ -1,6 +1,8 @@
-"""Research Pipeline routes"""
+﻿"""Research routes backed by real scanner output and decision journal."""
 
 from fastapi import APIRouter, Query
+
+from src.api.routes.journal_utils import decision_scores, get_journal_decisions, top_signal
 
 router = APIRouter(tags=["research"], prefix="/research")
 
@@ -11,67 +13,65 @@ async def run_research(
     top_n: int = Query(3),
     mode: str = Query("pipeline", description="pipeline / lite"),
 ):
-    """运行完整研究管线 → 生成研究报告"""
-    import math
-    from src.scanner.engine import ScannerConfig
-    from src.pipeline.research_pipeline import ResearchPipeline
-    from src.agents.orchestrator import AgentOrchestrator
+    """Generate a research report from real scanner candidates or journal decisions."""
+    from src.api.routes.scanner_routes import run_scanner
 
-    # 构造模拟数据（使用真实股票名称）
-    from src.shared.mock_data import generate_stock_pool
-    pool = generate_stock_pool(pool_size)
+    candidates = []
+    source = "scanner"
+    try:
+        scan = await run_scanner(top_n=max(top_n, min(pool_size, 20)))
+        candidates = scan.get("candidates", [])[:top_n]
+    except Exception:
+        candidates = []
 
-    from src.shared.mock_data import generate_klines
-    klines = {}
-    for i in range(min(10, pool_size)):
-        code = pool[i]["code"]
-        klines[code] = generate_klines(code, 80, "up")
+    if not candidates:
+        source = "decision_journal"
+        for i, d in enumerate(get_journal_decisions(limit=top_n)):
+            scores = decision_scores(d)
+            candidates.append(
+                {
+                    "rank": i + 1,
+                    "stock_code": d.get("stock_code", ""),
+                    "stock_name": d.get("stock_name", ""),
+                    "fusion_score": float(d.get("ai_score") or 50),
+                    "direction": d.get("direction", "neutral"),
+                    "confidence": float(d.get("confidence") or 0),
+                    "score_breakdown": scores,
+                    "evidence": d.get("evidence") or d.get("recommendation") or "Pipeline decision",
+                }
+            )
 
-    # Pipeline
-    pipeline = ResearchPipeline(scanner_config=ScannerConfig(score_top_n=top_n))
-    report = await pipeline.run(pool, klines, title="API研究日报")
-
-    # Agent
-    orch = AgentOrchestrator()
-    candidates_for_agent = [
-        {
-            "stock_code": c.stock_code, "stock_name": c.stock_name,
-            "fusion_score": c.fusion_score, "direction": c.direction,
-            "confidence": c.confidence, "rank": c.rank,
-            "evidence": [
-                {"source": f"signal:{sig}", "description": f"{sig}评分{s:.0f}", "score_contribution": s - 50}
-                for sig, s in (c.score_breakdown or {}).items()
-            ],
-        }
-        for c in report.candidates
-    ]
-
-    if mode == "lite":
-        agent_result = await orch.run_lite(candidates_for_agent, title="API研究日报")
-    else:
-        agent_result = await orch.run_pipeline(candidates_for_agent, title="API研究日报",
-                                               summary=report.summary)
-
-    return {
-        "report_id": report.report_id,
-        "title": report.title,
-        "summary": report.summary,
-        "market_overview": report.market_overview,
-        "candidates_count": len(report.candidates),
-        "pipeline_duration_ms": report.pipeline_duration_ms,
-        "candidates": [
+    analyses = []
+    for i, c in enumerate(candidates[:top_n]):
+        score = float(c.get("fusion_score") or c.get("score") or 50)
+        evidence = c.get("evidence") or f"Top signal: {top_signal(c)}"
+        analyses.append(
             {
                 "rank": c.get("rank", i + 1),
                 "stock_code": c.get("stock_code", ""),
                 "stock_name": c.get("stock_name", ""),
-                "score": c.get("score", 0),
+                "score": round(score, 1),
                 "direction": c.get("direction", "neutral"),
-                "evidence_count": c.get("evidence_count", 0),
-                "reasoning": c.get("reasoning", ""),
-                "risks": c.get("risks", []),
+                "evidence_count": len(c.get("score_breakdown", {})),
+                "reasoning": evidence,
+                "risks": [] if score >= 65 else ["Score below buy-grade threshold"],
             }
-            for i, c in enumerate(agent_result.analyst_result.output.get("analyses", []))
-            if agent_result.analyst_result
-        ],
-        "final_report": agent_result.final_report[:2000] if agent_result.final_report else "",
+        )
+
+    if analyses:
+        summary = f"Real-data research found {len(analyses)} candidates; top score {analyses[0]['score']:.0f}."
+    else:
+        summary = "No real scanner candidates or journal decisions are available yet."
+
+    return {
+        "report_id": f"research-{source}",
+        "title": "Real Pipeline Research Report",
+        "summary": summary,
+        "market_overview": {"data_source": source},
+        "candidates_count": len(analyses),
+        "pipeline_duration_ms": 0,
+        "candidates": analyses,
+        "final_report": summary,
+        "data_source": source,
+        "mode": mode,
     }

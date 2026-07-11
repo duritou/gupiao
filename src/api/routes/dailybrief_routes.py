@@ -1,19 +1,19 @@
-"""Daily Brief routes — auto-generated morning report"""
+﻿"""Daily Brief routes backed by real pipeline decisions."""
 
 from fastapi import APIRouter
 
-from src.shared.mock_data import generate_daily_brief
+from src.api.routes.brief_utils import build_real_brief
 
 router = APIRouter(tags=["dailybrief"], prefix="/dailybrief")
 
 
 @router.get("/latest")
 async def latest_brief():
-    """Get the latest daily brief (today's if generated, otherwise generates now)."""
-    return generate_daily_brief()
+    """Get the latest generated brief from real journal data."""
+    return await build_real_brief()
 
 
 @router.post("/generate")
 async def generate_brief():
-    """Force-generate today's daily brief."""
-    return generate_daily_brief()
+    """Regenerate today's brief from real journal data."""
+    return await build_real_brief()

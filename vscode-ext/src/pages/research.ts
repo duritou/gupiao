@@ -37,10 +37,10 @@ export function buildResearchPage(code: string, detail: any): string {
     const amountYi = d.amount_yi || 0;
     const turnoverVal = d.turnover || 0;
 
-    // Use real kline data from API, fallback to empty
+    // Use real kline data from API; leave empty when unavailable.
     const klineData = (d.klines && d.klines.length > 0)
         ? d.klines.map((k: any) => ({ date: k.date, open: k.open, high: k.high, low: k.low, close: k.close, volume: k.volume }))
-        : generateMockKlineData(120, price || 100);
+        : [];
 
     return `<!DOCTYPE html><html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
 <style>
@@ -390,7 +390,7 @@ ${TIMELINE_JS}
                 try {
                     const s = await fetch('${BASE_URL}/market/live-status');
                     const st = await s.json();
-                    if (!st.live_available) btn.textContent = 'Mock';
+                    if (!st.live_available) btn.textContent = 'Unavailable';
                 } catch(e) {}
             } else {
                 // Switch back to static
@@ -496,36 +496,4 @@ function renderBreakdown(container, bd) {
 <script>
 const vscode = acquireVsCodeApi();
 </script></body></html>`;
-}
-
-/** Generate deterministic mock K-line data for chart display. */
-function generateMockKlineData(days: number, basePrice: number): Array<{date: string; open: number; high: number; low: number; close: number; volume: number}> {
-    const data = [];
-    let price = basePrice * 0.85;
-    const now = new Date();
-    for (let i = days - 1; i >= 0; i--) {
-        const d = new Date(now);
-        d.setDate(d.getDate() - i);
-        const dateStr = d.toISOString().slice(0, 10);
-
-        // Trend toward basePrice with noise
-        const target = basePrice + (basePrice - price) * 0.02;
-        const noise = (Math.random() - 0.48) * price * 0.03;
-        const close = price + (target - price) * 0.3 + noise;
-        const open = close * (1 + (Math.random() - 0.5) * 0.02);
-        const high = Math.max(open, close) * (1 + Math.random() * 0.02);
-        const low = Math.min(open, close) * (1 - Math.random() * 0.02);
-        const volume = Math.floor(Math.random() * 3000000 + 500000);
-
-        data.push({
-            date: dateStr,
-            open: Math.round(open * 100) / 100,
-            high: Math.round(high * 100) / 100,
-            low: Math.round(low * 100) / 100,
-            close: Math.round(close * 100) / 100,
-            volume: volume,
-        });
-        price = close;
-    }
-    return data;
 }
