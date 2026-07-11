@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import os
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from enum import Enum
@@ -34,28 +35,35 @@ from src.infrastructure.market_data.fusion import (
 )
 from src.infrastructure.market_data.provider_metrics import reliability_engine
 
-# Alpha Vantage API key — free tier: 25 requests/day
-ALPHA_VANTAGE_API_KEY = "Q9HXKN98BN60LGMQ"
+# API 凭据从环境变量读取(见 .env / .env.example),禁止硬编码入库
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
+
+# Alpha Vantage — free tier: 25 requests/day
+ALPHA_VANTAGE_API_KEY = os.getenv("ALPHA_VANTAGE_API_KEY", "")
 ALPHA_VANTAGE_BASE_URL = "https://www.alphavantage.co/query"
 
-# Finnhub API key — free tier: 60 requests/min, stocks/news/financials/ETF/AI
-FINNHUB_API_KEY = "d95c71hr01qihq3l2u50d95c71hr01qihq3l2u5g"
+# Finnhub — free tier: 60 requests/min
+FINNHUB_API_KEY = os.getenv("FINNHUB_API_KEY", "")
 FINNHUB_BASE_URL = "https://finnhub.io/api/v1"
 
-# Financial Modeling Prep API key — free tier: 250 req/day, financials/PE/ROE/DCF
-FMP_API_KEY = "EKxPCemh6B06YOehrGP1eTGuYeYfOJzk"
+# Financial Modeling Prep — free tier: 250 req/day
+FMP_API_KEY = os.getenv("FMP_API_KEY", "")
 FMP_BASE_URL = "https://financialmodelingprep.com/api/v3"
 
-# Twelve Data API key — free tier: 800 req/day, K-line/MACD/RSI/EMA
-TWELVEDATA_API_KEY = "e08fabdfc7fa41989812e2130999e301"
+# Twelve Data — free tier: 800 req/day
+TWELVEDATA_API_KEY = os.getenv("TWELVEDATA_API_KEY", "")
 TWELVEDATA_BASE_URL = "https://api.twelvedata.com"
 
-# Polygon.io API key — free tier limited, professional-grade, stocks/forex/crypto
-POLYGON_API_KEY = "Rci4ZvOYeKTYtQVTrpPWwgAiPppnHm_z"
+# Polygon.io — free tier limited
+POLYGON_API_KEY = os.getenv("POLYGON_API_KEY", "")
 POLYGON_BASE_URL = "https://api.polygon.io/v2"
 
-# Tushare API token — A-share financial data, daily K-line, fundamentals
-TUSHARE_TOKEN = "c92945ba03e15d1a02868226d82ae7333f84e6d80acd07c1b4327f99"
+# Tushare — A-share financial data
+TUSHARE_TOKEN = os.getenv("TUSHARE_TOKEN", "")
 
 # mootdx server pool (通达信 TCP 7709) — probed on first use
 _TDX_SERVERS = [
