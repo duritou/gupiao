@@ -12,3 +12,6 @@ $RECYCLE.BIN/
 
 # Node.js
 node_modules/
+
+# common 领域层副本（由 scripts/sync-common.js 生成，源头 cloudfunctions/common/，不入库）
+cloudfunctions/*/common/

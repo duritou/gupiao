@@ -3,6 +3,7 @@
 const cloud = require('wx-server-sdk')
 cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV })
 const db = cloud.database()
+const { calcPlayerDeltas, calcPoolScore, verifyConsistency, getDefaultBaseScore } = require('./common')
 
 // 全量拉取房间计分记录
 // 云函数 db.get() 默认上限 100 条，记录超过会静默截断导致求和漏数据，必须分页累加
@@ -52,62 +53,28 @@ exports.main = async (event) => {
     // 查询所有计分记录（分页全量拉取，避免 db.get() 默认 100 条上限漏数据）
     const records = await fetchAllScoreRecords(roomCode)
     console.log('[getRoomInfo] 记录数:', records.length)
-    const isMahjong = room.gameType === 'mahjong_scoring'
+    const gameType = room.gameType
 
-    // 计算每位玩家的净分数
-    const playerScores = {}
-    if (isMahjong) {
-      // 麻将：从 mj_round 记录的 playerDeltas 汇总每位玩家的净分变化
-      for (const r of records) {
-        if (r.type !== 'mj_round') continue
-        const deltas = r.playerDeltas || []
-        for (const d of deltas) {
-          if (!playerScores[d.openId]) playerScores[d.openId] = 0
-          playerScores[d.openId] += d.delta || 0
-        }
-      }
-    } else {
-      // 打牌：取分总和 - 上分总和，不包含 base 类型
-      for (const r of records) {
-        if (r.type === 'base') continue
-        if (!playerScores[r.playerOpenId]) playerScores[r.playerOpenId] = 0
-        if (r.type === 'down') {
-          playerScores[r.playerOpenId] += r.score
-        } else if (r.type === 'up') {
-          playerScores[r.playerOpenId] -= r.score
-        }
-      }
-    }
-
-    // 计算公共池分数（仅 walk_scoring，麻将无公共池）
-    let poolScore = 0
-    if (!isMahjong) {
-      for (const r of records) {
-        if (r.type === 'up') { poolScore += r.score }
-        else if (r.type === 'down') { poolScore -= r.score }
-      }
-    }
-
-    // 底分默认值：打牌 100，麻将 0
-    const DEFAULT_BASE_SCORE = isMahjong ? 0 : 100
+    // 计分核心统一走 common 领域层（与重构前内联逻辑逐行等价，由 __tests__/calculator.test.js 守护）
+    const deltas = calcPlayerDeltas(records, gameType)
+    const poolScore = calcPoolScore(records, gameType)
+    const defaultBase = getDefaultBaseScore(gameType)
 
     // 玩家列表附上净分数
     const players = playersRes.data.map(p => {
-      const baseScore = p.baseScore !== undefined ? p.baseScore : DEFAULT_BASE_SCORE
+      const baseScore = p.baseScore !== undefined ? p.baseScore : defaultBase
       return {
         openId: p.openId,
         nickName: p.nickName,
         avatarUrl: p.avatarUrl,
         joinTime: p.joinTime,
         baseScore: baseScore,
-        netScore: baseScore + (playerScores[p.openId] || 0)
+        netScore: baseScore + (deltas[p.openId] || 0)
       }
     })
 
-    // 验证 math（仅 walk_scoring 做此校验）
-    const totalNet = players.reduce((sum, p) => sum + p.netScore, 0)
-    const totalBase = players.reduce((sum, p) => sum + p.baseScore, 0)
-    const verify = isMahjong ? true : (totalNet + poolScore) === totalBase
+    // 守恒校验（仅 walk_scoring，麻将恒真）
+    const verify = verifyConsistency(players, poolScore, gameType)
 
     console.log('[getRoomInfo] 返回成功, poolScore:', poolScore, 'verify:', verify, 'players:', players.length)
     return {

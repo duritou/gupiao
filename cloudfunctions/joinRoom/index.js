@@ -3,6 +3,7 @@
 const cloud = require('wx-server-sdk')
 cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV })
 const db = cloud.database()
+const { calcPlayerDeltas, calcPoolScore, getDefaultBaseScore } = require('./common')
 
 // 确保集合存在（不存在则创建，已存在则跳过）
 async function ensureCollection(name) {
@@ -49,54 +50,20 @@ async function fetchRoomData(roomCode, gameType) {
 
   // 查询计分记录（分页全量拉取，避免 db.get() 默认 100 条上限漏数据）
   const records = await fetchAllScoreRecords(roomCode)
-  const isMahjong = gameType === 'mahjong_scoring'
-
-  // 计算每位玩家的净分数
-  const playerScores = {}
-  if (isMahjong) {
-    // 麻将：从 mj_round 记录的 playerDeltas 汇总每位玩家的净分变化
-    for (const r of records) {
-      if (r.type !== 'mj_round') continue
-      const deltas = r.playerDeltas || []
-      for (const d of deltas) {
-        if (!playerScores[d.openId]) playerScores[d.openId] = 0
-        playerScores[d.openId] += d.delta || 0
-      }
-    }
-  } else {
-    // 打牌：取分总和 - 上分总和，不包含 base 类型
-    for (const r of records) {
-      if (r.type === 'base') continue
-      if (!playerScores[r.playerOpenId]) playerScores[r.playerOpenId] = 0
-      if (r.type === 'down') {
-        playerScores[r.playerOpenId] += r.score
-      } else if (r.type === 'up') {
-        playerScores[r.playerOpenId] -= r.score
-      }
-    }
-  }
-
-  // 公共池分数（仅 walk_scoring）
-  let poolScore = 0
-  if (!isMahjong) {
-    for (const r of records) {
-      if (r.type === 'up') { poolScore += r.score }
-      else if (r.type === 'down') { poolScore -= r.score }
-    }
-  }
-
-  // 底分默认值：打牌 100，麻将 0
-  const DEFAULT_BASE_SCORE = isMahjong ? 0 : 100
+  // 计分核心统一走 common 领域层（与重构前内联逻辑逐行等价，由 __tests__/calculator.test.js 守护）
+  const deltas = calcPlayerDeltas(records, gameType)
+  const poolScore = calcPoolScore(records, gameType)
+  const defaultBase = getDefaultBaseScore(gameType)
 
   const players = playersRes.data.map(p => {
-    const baseScore = p.baseScore !== undefined ? p.baseScore : DEFAULT_BASE_SCORE
+    const baseScore = p.baseScore !== undefined ? p.baseScore : defaultBase
     return {
       openId: p.openId,
       nickName: p.nickName,
       avatarUrl: p.avatarUrl,
       joinTime: p.joinTime,
       baseScore: baseScore,
-      netScore: baseScore + (playerScores[p.openId] || 0)
+      netScore: baseScore + (deltas[p.openId] || 0)
     }
   })
 

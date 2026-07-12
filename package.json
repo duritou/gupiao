@@ -1,0 +1,19 @@
+{
+  "name": "weixinxiaochengxu-scoring",
+  "version": "1.0.0",
+  "private": true,
+  "description": "微信小程序计分平台 - 领域核心测试（jest），此文件被 project.config.json packOptions 忽略，不进小程序包",
+  "scripts": {
+    "test": "jest",
+    "test:watch": "jest --watch"
+  },
+  "devDependencies": {
+    "jest": "^29.7.0"
+  },
+  "jest": {
+    "testEnvironment": "node",
+    "testMatch": ["**/__tests__/**/*.test.js"],
+    "collectCoverageFrom": ["cloudfunctions/common/**/*.js"],
+    "moduleFileExtensions": ["js", "json"]
+  }
+}

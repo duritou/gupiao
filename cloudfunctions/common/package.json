@@ -1,0 +1,6 @@
+{
+  "name": "common",
+  "version": "1.0.0",
+  "description": "计分领域核心层（Domain Core）——纯函数，零 wx-server-sdk 依赖，可跨端复用（云函数/云托管/Node）",
+  "main": "index.js"
+}

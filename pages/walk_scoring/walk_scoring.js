@@ -62,6 +62,10 @@ Page({
         this.setData({ loading: false })
       }
     }, 6000)
+    // LocalStore：权威状态镜像（watch 喂 records + getRoomInfo 回填 room/players），M2 CAS/Undo/Reconnect 底座
+    this._store = { room: null, players: [], records: [] }
+    // watch 变更防抖计时器（多人连击只触发 1 次权威重载）
+    this._reloadTimer = null
     this._waitReady(query)
   },
 
@@ -454,6 +458,10 @@ Page({
         return
       }
       const { room, players, poolScore, records, verify } = res.result
+      // 回填 LocalStore 权威快照（M2 重连/CAS 底座；UI 仍走下方 setData，此处不影响展示）
+      this._store.room = room || null
+      this._store.players = players || []
+      this._store.records = records || []
       // 提取服务端分数锁定状态
       const fractionMode = room.fractionMode || ''
       const fractionAmount = room.fractionAmount || 0
@@ -543,10 +551,14 @@ Page({
     this._watcher = db.collection('score_records')
       .where({ roomId: this.data.roomId })
       .watch({
-        onChange: () => {
-          // 后台同步进行中 → 跳过，等最终同步完成后统一重载
+        onChange: (snapshot) => {
+          // 后台同步进行中 → 跳过，等最终同步完成后由 _backgroundSync 统一重载
           if (this.data._pendingSyncs > 0) return
-          this._loadRoomData()
+          // watch 只喂 LocalStore 的 records 镜像（纯镜像、前端不参与算分；
+          // 权威 netScore/poolScore/fraction* 仍由下方防抖 getRoomInfo 给出）
+          this._store.records = (snapshot && snapshot.docs) ? snapshot.docs.slice() : this._store.records
+          // 权威字段防抖拉取：300ms 内 N 次变更合并为 1 次 getRoomInfo
+          this._scheduleReload()
         },
         onError: err => {
           console.error('watch 异常:', err)
@@ -554,11 +566,23 @@ Page({
       })
   },
 
+  // 防抖权威重载：连击合并，避免每次 watch 变化都打一次 getRoomInfo
+  _scheduleReload() {
+    if (this._reloadTimer) clearTimeout(this._reloadTimer)
+    this._reloadTimer = setTimeout(() => {
+      this._reloadTimer = null
+      this._loadRoomData()
+    }, 300)
+  },
+
   _closeWatcher() {
+    if (this._reloadTimer) { clearTimeout(this._reloadTimer); this._reloadTimer = null }
     if (this._watcher) {
       try { this._watcher.close() } catch (e) { /* ignore */ }
       this._watcher = null
     }
+    // 重置 LocalStore（退出/重连时清空，待下次 load 回填）
+    this._store = { room: null, players: [], records: [] }
   },
 
   // ================================================================
@@ -1155,6 +1179,18 @@ Page({
 
   // 通用计分执行（上分/取分共用）
   _executeScoreAction(type, score, targetOpenId, targetName) {
+    // 防手抖双击：同一玩家+同一类型+同一金额在去重窗口内的重复点击直接忽略。
+    // acting 全局锁在乐观更新后即释放（见下方 setData），防不住人类双击节奏，
+    // 改用「按操作维度」的短时间窗精准去重 —— 只挡重复点击，不影响其它操作。
+    const now = Date.now()
+    const dedupKey = targetOpenId + ':' + type + ':' + score
+    const last = this._lastScoreAction
+    if (last && last.key === dedupKey && now - last.time < 800) {
+      console.log('[walk_scoring] _executeScoreAction 去重拦截:', dedupKey, (now - last.time) + 'ms')
+      return
+    }
+    this._lastScoreAction = { key: dedupKey, time: now }
+
     if (this.data.acting) {
       console.log('[walk_scoring] _executeScoreAction 防重复点击拦截')
       return

@@ -2,6 +2,7 @@
 const cloud = require('wx-server-sdk')
 cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV })
 const db = cloud.database()
+const { validateScoreInput, calcPoolScore, calcPlayerDeltas } = require('./common')
 
 // 全量拉取房间计分记录
 // 云函数 db.get() 默认上限 100 条，记录超过会静默截断导致求和漏数据，必须分页累加
@@ -31,12 +32,8 @@ exports.main = async (event) => {
 
   if (!openId) return { ok: false, message: '未获取到用户身份' }
   if (!roomCode) return { ok: false, message: '房间号不能为空' }
-  if (!type || (type !== 'up' && type !== 'down')) {
-    return { ok: false, message: '操作类型无效，必须是 up（上分）或 down（取分）' }
-  }
-  if (!score || !Number.isInteger(score) || score <= 0) {
-    return { ok: false, message: '分数必须为正整数' }
-  }
+  const typeCheck = validateScoreInput({ type, score })
+  if (!typeCheck.ok) return typeCheck
   if (!targetPlayerOpenId) return { ok: false, message: '未指定目标玩家' }
 
   console.log('[addScoreRecord] 入参:', { roomCode, type, score, targetPlayerOpenId, operatorOpenId: openId })
@@ -83,15 +80,10 @@ exports.main = async (event) => {
     let targetNetBefore = 0   // target 玩家写前净分（不含 base）
     if (type === 'down') {
       const allRecords = await fetchAllScoreRecords(roomCode)
-      for (const r of allRecords) {
-        if (r.type === 'up') {
-          poolScoreBefore += r.score
-          if (r.playerOpenId === targetPlayerOpenId) targetNetBefore -= r.score
-        } else if (r.type === 'down') {
-          poolScoreBefore -= r.score
-          if (r.playerOpenId === targetPlayerOpenId) targetNetBefore += r.score
-        }
-      }
+      // common 领域层计算（沿用 walk 公式，与重构前逐行等价；mahjong 房间差异留待 M2）
+      poolScoreBefore = calcPoolScore(allRecords, 'walk_scoring')
+      const deltas = calcPlayerDeltas(allRecords, 'walk_scoring')
+      targetNetBefore = deltas[targetPlayerOpenId] || 0
       if (poolScoreBefore < score) {
         return { ok: false, message: `公共池仅剩${poolScoreBefore}分，不足以取出${score}分` }
       }

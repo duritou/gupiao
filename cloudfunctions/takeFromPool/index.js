@@ -2,6 +2,7 @@
 const cloud = require('wx-server-sdk')
 cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV })
 const db = cloud.database()
+const { validateTakeMode, calcPoolScore } = require('./common')
 
 // 全量拉取房间计分记录
 // 云函数 db.get() 默认上限 100 条，记录超过会静默截断导致求和漏数据，必须分页累加
@@ -32,9 +33,8 @@ exports.main = async (event) => {
   if (!openId) return { ok: false, message: '未获取到用户身份' }
   if (!roomCode) return { ok: false, message: '房间号不能为空' }
   if (!targetPlayerOpenId) return { ok: false, message: '未指定目标玩家' }
-  if (!mode || (mode !== 'all' && mode !== 'half' && mode !== 'third')) {
-    return { ok: false, message: '取分模式无效，必须是 all/half/third' }
-  }
+  const modeCheck = validateTakeMode(mode)
+  if (!modeCheck.ok) return modeCheck
 
   console.log('[takeFromPool] 入参:', { roomCode, mode, targetPlayerOpenId, operatorOpenId: openId })
 
@@ -64,14 +64,9 @@ exports.main = async (event) => {
 
     const targetPlayer = targetRes.data[0]
 
-    // 计算当前公共池分数（从所有计分记录推算，分页全量拉取避免漏数据）
+    // 计算当前公共池分数（common 领域层，与重构前逐行等价）
     const records = await fetchAllScoreRecords(roomCode)
-    let poolScore = 0
-    for (const r of records) {
-      if (r.type === 'up') poolScore += r.score
-      else if (r.type === 'down') poolScore -= r.score
-      // base 类型不影响公共池
-    }
+    const poolScore = calcPoolScore(records, 'walk_scoring')
 
     console.log('[takeFromPool] 当前公共池分数:', poolScore)
 
