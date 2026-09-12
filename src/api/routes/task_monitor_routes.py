@@ -77,7 +77,12 @@ async def get_recent_executions(limit: int = 20):
 async def get_actionable_failures(hours: int = 24):
     """Return recent critical failures suitable for proactive notification."""
     safe_hours = max(1, min(hours, 168))
-    cutoff = datetime.now() - timedelta(hours=safe_hours)
+    # Execution history contains both legacy naive timestamps and newer
+    # timezone-aware timestamps.  Normalize both forms before comparing;
+    # otherwise Python raises ``TypeError`` and the monitoring endpoint returns
+    # HTTP 500 as soon as an aware execution is within the lookback window.
+    local_now = datetime.now().astimezone()
+    cutoff = local_now - timedelta(hours=safe_hours)
     # Scanner failures block the decision chain even though the schedule
     # marks only the downstream brief as critical.  Surface the root cause,
     # not every dependent task that was consequently skipped.
@@ -96,6 +101,10 @@ async def get_actionable_failures(hours: int = 24):
             completed = datetime.fromisoformat(completed_at)
         except ValueError:
             continue
+        if completed.tzinfo is None:
+            completed = completed.replace(tzinfo=local_now.tzinfo)
+        else:
+            completed = completed.astimezone(local_now.tzinfo)
         error = str(execution.get("error", ""))
         if completed < cutoff or execution.get("task_name") not in critical_tasks:
             continue
