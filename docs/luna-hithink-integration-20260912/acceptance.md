@@ -37,6 +37,7 @@
 | Tushare 补齐链路 | `test-reports/unit-20260906-tushare-completion.md`：746 passed；隔离补采与回放证据完整 | 不改变既有补齐语义 |
 | HiThink REST 能力 | `test-reports/unit-20260912-hithink-stability.md`：40/40 成功，P95 333–366ms | 可进入适配器与 shadow 阶段 |
 | HiThink 盘中实时 | 当前验证为非交易日，快照无可证明的逐笔成交时间 | 只能 shadow，不得进入执行报价 |
+| HiThink 接入后基础设施回归 | `test-reports/unit-20260912-hithink-infrastructure-regression.md`：269 passed | 未观察到 SourceManager、Tushare、provider resilience 或交易执行回归 |
 
 ## 分阶段状态
 
@@ -44,7 +45,7 @@
 | --- | --- | --- |
 | Phase 0 基线与备份 | `complete` | 备份分支、源码哈希、测试摘要已记录 |
 | Phase 1 能力分工与配置 | `complete` | provider manifest、设置项、主备矩阵已提交 |
-| Phase 2 REST 适配器 | `complete` | 独立 client/contracts/provider 三层已提交，尚未挂入路由 |
+| Phase 2 REST 适配器 | `complete` | 独立 client/contracts/provider 三层已提交，并由估值/龙虎榜、discovery 和 SourceManager 日线 fallback 使用 |
 | Phase 3 适配器契约测试 | `complete` | `test-reports/unit-20260912-hithink-provider.md`：16 passed；仅合成响应 |
 | Phase 4 低风险能力接入 | `in_progress` | 估值/龙虎榜 route 已支持 primary/shadow/fallback；涨停池、炸板池、龙虎榜 discovery 已接入 shadow，市场消歧和专用特色 API 仍待补齐 |
 | Phase 5 日线/财务校验 | `in_progress` | HiThink 日线 fallback 已提交；财务三表只补缺不覆盖的合并规则已实现并通过合成测试，跨源一致性仍待补齐 |
