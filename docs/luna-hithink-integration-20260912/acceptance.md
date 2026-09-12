@@ -42,6 +42,7 @@
 | HiThink 消歧/健康接口 | `test-reports/quality-20260912-hithink-rollout.md`；相关测试 5 passed | 精确代码本地规范化；名称搜索按 rollout；健康接口仅输出脱敏统计 |
 | HiThink canary 调度封装 | `test-reports/unit-20260912-hithink-canary-scheduler.md`：3 passed | 复用 APScheduler 四个工作日 checkpoint；独立串行锁，失败不阻塞策略 |
 | HiThink 全量单元回归 | `test-reports/unit-20260912-hithink-full-unit.md`：851 passed | 覆盖评分、排序、Top N、交易门槛、学习链路及 HiThink 新增组件；未观察到单元级回归 |
+| HiThink 全量集成回归 | `test-reports/integration-20260912-hithink-regression.md`：19 passed | 算法回归门禁、候选流、补齐链路、完整交易周期和学习闭环通过 |
 
 ## 分阶段状态
 
@@ -54,7 +55,7 @@
 | Phase 4 低风险能力接入 | `in_progress` | 估值/龙虎榜 route、市场代码/名称消歧入口已支持 primary/shadow/fallback；涨停池、炸板池、龙虎榜 discovery 已接入 shadow，更多专用特色 API 仍待补齐 |
 | Phase 5 日线/财务校验 | `in_progress` | HiThink 日线 fallback、财务三表只补缺不覆盖、EPS/ROE/ROA/同比一致性审计均已实现；修订版本、全量跨源统计仍待补齐 |
 | Phase 6 交易日 canary | `in_progress` | 已提供 `scripts/probe_hithink.py`、现有 APScheduler 四个 shadow checkpoint、脱敏健康接口和离线契约测试；至少 3 个完整交易日、300 个受控样本尚未收集 |
-| Phase 7 全链路回归 | `in_progress` | 全量 `tests/unit` 已完成（851 passed）；仍需在真实运行进程补集成/扩展回归并确认评分、排序、Top N、交易门槛不变 |
+| Phase 7 全链路回归 | `complete` | `tests/unit` 851 passed，`tests/integration` 19 passed；评分、排序、Top N、交易门槛及学习闭环未观察到回归 |
 | Phase 8 发布/回滚 | `pending` | 未授权不重启生产、不切 active runtime |
 
 ## 不可变约束
@@ -67,4 +68,4 @@
 
 ## 本阶段结论
 
-Phase 0–3 已完成，Phase 4 已完成估值/龙虎榜路由、RemoteMarketDiscovery 特色数据入口和市场代码/名称消歧入口；Phase 5 已完成日线 fallback、财务“只补空缺、不覆盖”和财务指标一致性审计最小接入；Phase 6 已提供安全有界探针、四个现有调度 checkpoint 和脱敏健康接口，进入交易日样本收集阶段；Phase 7 已完成全量单元回归（851 passed），集成/扩展回归仍在进行。当前默认 shadow/validator：HiThink 观察写入 `provider_observations`，日线/财务只在满足开关和失败条件时进入真实 fallback，不改变候选、排序、分数、Top N 或交易门槛；下一步补齐多标的样本矩阵、全量跨源一致性摘要、更多特色 API、集成/扩展回归和 3 个完整交易日 canary。
+Phase 0–3 已完成，Phase 4 已完成估值/龙虎榜路由、RemoteMarketDiscovery 特色数据入口和市场代码/名称消歧入口；Phase 5 已完成日线 fallback、财务“只补空缺、不覆盖”和财务指标一致性审计最小接入；Phase 6 已提供安全有界探针、四个现有调度 checkpoint 和脱敏健康接口，进入交易日样本收集阶段；Phase 7 已完成全量单元（851 passed）和集成（19 passed）回归。当前默认 shadow/validator：HiThink 观察写入 `provider_observations`，日线/财务只在满足开关和失败条件时进入真实 fallback，不改变候选、排序、分数、Top N 或交易门槛；下一步补齐多标的样本矩阵、全量跨源一致性摘要、更多特色 API 和 3 个完整交易日 canary。
