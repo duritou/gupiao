@@ -12,6 +12,8 @@ from pydantic import BaseModel, Field
 
 from config.settings import settings
 from src.ai_os.market_regime import classify_market_regime
+from src.infrastructure.market_data.hithink_contracts import normalize_thscode
+from src.infrastructure.market_data.hithink_provider import hithink_provider
 from src.infrastructure.market_data.manifest_loader import manifest_loader
 from src.infrastructure.market_data.provider_resilience import (
     parse_retry_after,
@@ -67,6 +69,48 @@ class MetadataSnapshotRequest(BaseModel):
     as_of_date: str = Field(description="快照对应的交易日，格式 YYYY-MM-DD")
     snapshots: list[dict] = Field(min_length=1, max_length=5000)
     source: str = Field(default="external_dated_source", min_length=1, max_length=80)
+
+
+def _symbol_search_view(payload: object, query: str, mode: str) -> dict:
+    rows = getattr(payload, "data", None)
+    results = [row for row in rows if isinstance(row, dict)] if isinstance(rows, list) else []
+    return {
+        "query": query,
+        "results": results,
+        "_meta": {
+            "provider": "hithink",
+            "source_name": "同花顺金融数据服务",
+            "source_layer": "hithink_rest",
+            "endpoint": getattr(payload, "endpoint", ""),
+            "request_id": getattr(payload, "request_id", ""),
+            "fetched_at": getattr(payload, "fetched_at", ""),
+            "data_date": getattr(payload, "data_date", ""),
+            "is_live": False,
+            "available": bool(results),
+            "rollout_mode": mode,
+            "result_count": len(results),
+        },
+    }
+
+
+def _exact_symbol_view(query: str) -> dict | None:
+    try:
+        thscode = normalize_thscode(query)
+    except ValueError:
+        return None
+    ticker = thscode.split(".", 1)[0]
+    return {
+        "query": query,
+        "results": [{"thscode": thscode, "ticker": ticker, "name": ""}],
+        "_meta": {
+            "provider": "local_normalization",
+            "source_layer": "local_contract",
+            "available": True,
+            "is_live": False,
+            "result_count": 1,
+            "note": "完整或可规范化代码不请求远程消歧服务",
+        },
+    }
 
 
 # 后台数据同步任务状态(单 worker,模块级即可)
@@ -201,6 +245,52 @@ async def market_quotes(req: QuoteBatchRequest):
     return {
         "quotes": quotes,
         "requested_at": datetime.now().isoformat(timespec="seconds"),
+    }
+
+
+@router.get("/symbol-search")
+async def symbol_search(
+    q: str = Query(..., min_length=1, max_length=80, description="股票代码或名称"),
+    limit: int = Query(default=10, ge=1, le=50),
+):
+    """Resolve an A-share code/name through HiThink without touching strategy data."""
+    query = q.strip()
+    exact = _exact_symbol_view(query)
+    if exact is not None:
+        return exact
+
+    mode = settings.HITHINK_SYMBOL_MODE
+    error = ""
+    if mode in {"primary", "shadow", "validator", "fallback"} and hithink_provider.configured:
+        try:
+            payload = await hithink_provider.fetch_symbol_search(query, limit)
+            view = _symbol_search_view(payload, query, mode)
+            if mode in {"primary", "fallback"} and view["results"]:
+                return view
+            if mode in {"shadow", "validator"}:
+                return {
+                    "query": query,
+                    "results": [],
+                    "_meta": {
+                        **view["_meta"],
+                        "available": False,
+                        "shadow_result_count": view["_meta"]["result_count"],
+                        "note": "HiThink 消歧结果仅 shadow/validator 观测，未进入默认返回",
+                    },
+                }
+        except Exception as exc:
+            error = str(getattr(exc, "category", type(exc).__name__))[:80]
+    return {
+        "query": query,
+        "results": [],
+        "_meta": {
+            "provider": "none",
+            "source_layer": "fallback",
+            "available": False,
+            "is_live": False,
+            "fallback_reason": error or "hithink_symbol_search_unavailable",
+            "rollout_mode": mode,
+        },
     }
 
 

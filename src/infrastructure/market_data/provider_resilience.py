@@ -111,6 +111,30 @@ def record_provider_success(provider: str) -> None:
         state.cooldown_reason = ""
 
 
+def get_provider_resilience_status(provider: str) -> dict[str, object]:
+    """Return a read-only, redacted circuit snapshot for health endpoints."""
+    key = _provider_key(provider)
+    now = time.monotonic()
+    with _STATE_LOCK:
+        state = _PROVIDER_STATES.get(key)
+        if state is None:
+            return {
+                "provider": key,
+                "state": "closed",
+                "cooldown_remaining_seconds": 0.0,
+                "consecutive_failures": 0,
+                "cooldown_reason": "",
+            }
+        remaining = max(0.0, state.cooldown_until - now)
+        return {
+            "provider": key,
+            "state": "open" if remaining > 0 else "closed",
+            "cooldown_remaining_seconds": round(remaining, 2),
+            "consecutive_failures": state.consecutive_failures,
+            "cooldown_reason": state.cooldown_reason[:120],
+        }
+
+
 def parse_retry_after(
     value: str | None,
     *,

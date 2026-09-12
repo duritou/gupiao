@@ -85,6 +85,7 @@ class HiThinkClient:
             "successes": 0,
             "failures": 0,
             "total_latency_ms": 0.0,
+            "latencies": [],
             "by_capability": {},
             "recent_request_ids": [],
             "recent_errors": [],
@@ -111,6 +112,7 @@ class HiThinkClient:
                 "avg_latency_ms": round(value["total_latency_ms"] / value["calls"], 2)
                 if value["calls"]
                 else 0.0,
+                "p95_latency_ms": round(self._p95(value.get("latencies", [])), 2),
             }
             for key, value in self._stats["by_capability"].items()
         }
@@ -119,10 +121,20 @@ class HiThinkClient:
         stats["avg_latency_ms"] = (
             round(stats["total_latency_ms"] / stats["calls"], 2) if stats["calls"] else 0.0
         )
+        stats["p95_latency_ms"] = round(self._p95(self._stats["latencies"]), 2)
         stats.pop("total_latency_ms", None)
+        stats.pop("latencies", None)
         for bucket in stats["by_capability"].values():
             bucket.pop("total_latency_ms", None)
+            bucket.pop("latencies", None)
         return stats
+
+    @staticmethod
+    def _p95(values: list[float]) -> float:
+        if not values:
+            return 0.0
+        ordered = sorted(float(value) for value in values)
+        return ordered[min(len(ordered) - 1, int(len(ordered) * 0.95))]
 
     def _record(
         self,
@@ -133,11 +145,14 @@ class HiThinkClient:
     ) -> None:
         self._stats["calls"] += 1
         self._stats["total_latency_ms"] += latency_ms
+        self._stats["latencies"] = [*self._stats["latencies"], latency_ms][-2000:]
         bucket = self._stats["by_capability"].setdefault(
             capability, {"calls": 0, "successes": 0, "failures": 0, "total_latency_ms": 0.0}
         )
         bucket["calls"] += 1
         bucket["total_latency_ms"] += latency_ms
+        bucket.setdefault("latencies", []).append(latency_ms)
+        bucket["latencies"] = bucket["latencies"][-500:]
         if success:
             self._stats["successes"] += 1
             bucket["successes"] += 1
