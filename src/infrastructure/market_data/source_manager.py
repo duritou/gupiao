@@ -37,6 +37,9 @@ from src.infrastructure.market_data.fusion import (
     STANDARD_FEEDS,
     SourceReading,
 )
+from src.infrastructure.market_data.hithink_consistency import (
+    compare_financial_indicators,
+)
 from src.infrastructure.market_data.hithink_financial import (
     missing_financial_rows,
     normalize_financial_statements,
@@ -1458,6 +1461,50 @@ class SourceManager:
         """International APIs only make sense for non-A-share codes."""
         return not self._is_a_share(code)
 
+    async def _validate_hithink_financial_indicators(
+        self,
+        code: str,
+        fundamental: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Compare indicator fields for audit only; never replace Tushare values."""
+        from config.settings import settings
+
+        mode = str(getattr(settings, "HITHINK_FINANCIAL_MODE", "disabled"))
+        if mode not in {"validator", "primary"} or not hithink_provider.configured:
+            return {"status": "skipped", "reason": "not_enabled_or_configured"}
+        target = str(
+            fundamental.get("end_date")
+            or fundamental.get("data_date")
+            or datetime.now().date().isoformat()
+        )[:10]
+        try:
+            year, month = int(target[:4]), int(target[5:7])
+            report = f"{year}-{(month - 1) // 3 + 1}"
+        except (TypeError, ValueError):
+            current = datetime.now()
+            report = f"{current.year}-{(current.month - 1) // 3 + 1}"
+        try:
+            payload = await asyncio.wait_for(
+                hithink_provider.fetch_financial_indicators(code, report),
+                timeout=float(settings.HITHINK_TIMEOUT_SECONDS),
+            )
+            result = compare_financial_indicators(fundamental, payload.data)
+            result.update(
+                {
+                    "provider": "hithink",
+                    "request_id": payload.request_id,
+                    "data_date": payload.data_date,
+                    "fetched_at": payload.fetched_at,
+                }
+            )
+            return result
+        except Exception as exc:
+            return {
+                "status": "failed",
+                "provider": "hithink",
+                "error_type": type(exc).__name__,
+            }
+
     async def get_stock_evidence(self, code: str, flow_days: int = 5) -> dict[str, Any]:
         """Return Tushare-first quote, fundamental and flow evidence."""
         code = _normalize_market_code(code)
@@ -1522,6 +1569,10 @@ class SourceManager:
         (quote, quote_prov), (fundamental, fundamental_prov), (flow, flow_prov) = await asyncio.gather(
             fetch_quote(), fetch_fundamental(), fetch_flow()
         )
+        hithink_validation = await self._validate_hithink_financial_indicators(
+            code,
+            fundamental,
+        )
 
         sources = [quote_prov.provider] if quote is not None else []
         if fundamental:
@@ -1535,7 +1586,10 @@ class SourceManager:
             "sources": sources,
             "provenance": {
                 "quote": quote_prov.to_dict(),
-                "fundamental": fundamental_prov.to_dict(),
+                "fundamental": {
+                    **fundamental_prov.to_dict(),
+                    "hithink_validation": hithink_validation,
+                },
                 "fund_flow": flow_prov.to_dict(),
             },
         }
