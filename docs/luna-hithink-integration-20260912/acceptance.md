@@ -6,8 +6,8 @@
 - 工作区：`adaptive-investment-intelligence`
 - 开工分支：`codex/pre-hithink-optimization-20260912`
 - 优化前备份提交：`75759e1`
-- 当前方案提交：`e8d1050`
-- 当前源码 HEAD：`e8d1050`（日线/财务 fallback、财务指标一致性审计、canary 探针/调度与多标的矩阵、最近完成财报期选择、消歧与健康接口及基础设施复跑已提交）
+- 当前方案提交：`78a03bc`
+- 当前源码 HEAD：`78a03bc`（日线/财务 fallback、财务指标一致性审计、canary 探针/调度与多标的矩阵、最近完成财报期选择、非交易日龙虎榜取最近交易日、消歧与健康接口及基础设施复跑已提交）
 - 远程备份：`origin/codex/pre-hithink-optimization-20260912`
 - 工作区状态：已有 197 项未跟踪运行产物/临时文件；本轮未删除、未纳入 HiThink 方案提交
 - 默认数据库路径：`data/sqlite/quant.db`（实际运行路径仍以用户级 `ADAPTIVE_DATABASE_URL` 为准）
