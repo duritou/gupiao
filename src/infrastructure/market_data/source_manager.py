@@ -38,6 +38,7 @@ from src.infrastructure.market_data.fusion import (
     SourceReading,
 )
 from src.infrastructure.market_data.provider_metrics import reliability_engine
+from src.infrastructure.market_data.hithink_provider import hithink_provider
 from src.infrastructure.market_data.tushare_provider import tushare_provider
 
 # P0 止血: akshare 实时接口对部分住宅 IP 有连接级风控(hang / RemoteDisconnected),
@@ -358,6 +359,20 @@ class SourceManager:
             requires_auth=True,
         )
 
+        # Optional authenticated HiThink Financial API.  It is a dated
+        # daily-data fallback only; realtime quotes remain on the existing
+        # TickFlow/Tencent/Sina chain until their canary gate passes.
+        self._sources["hithink"] = SourceStatus(
+            name="hithink",
+            is_available=hithink_provider.configured,
+        )
+        self._capabilities["hithink"] = SourceCapability(
+            max_kline_days=365 * 20,
+            kline_history=True,
+            rate_limited=True,
+            requires_auth=True,
+        )
+
         # Fallback: akshare (东方财富) — fast, comprehensive, but may be blocked
         self._sources["akshare"] = SourceStatus(
             name="akshare",
@@ -507,6 +522,15 @@ class SourceManager:
                 from src.infrastructure.market_data.tickflow_provider import is_configured
                 if not is_configured():
                     continue
+            if name == "hithink" and not hithink_provider.configured:
+                continue
+            if name == "hithink":
+                from config.settings import settings
+                if str(getattr(settings, "HITHINK_DAILY_MODE", "disabled")) in {
+                    "disabled",
+                    "shadow",
+                }:
+                    continue
             if not caps.supports_market(market):
                 continue
             if not caps.has(capability):
@@ -595,6 +619,7 @@ class SourceManager:
             "twelvedata": lambda c, n: self._try_twelvedata_kline(c, n),
             "polygon": lambda c, n: self._try_polygon_kline(c, n),
             "alphavantage": lambda c, n: self._try_alphavantage_kline(c, n),
+            "hithink": lambda c, n: self._try_hithink_kline(c, n),
         }
         handler = dispatcher.get(provider)
         if handler is None:
@@ -2011,6 +2036,91 @@ class SourceManager:
                 fetched_at=datetime.now().isoformat(), is_live=False,
                 trust_score=0.0, endpoint="daily",
                 error_message=f"Tushare K线获取失败: {str(exc)[:100]}",
+            )
+
+    async def _try_hithink_kline(
+        self, code: str, count: int
+    ) -> tuple[list[dict] | None, DataProvenance]:
+        """Fetch dated daily bars from HiThink as a bounded fallback."""
+        started = datetime.now()
+        source = self._sources["hithink"]
+        source.total_calls += 1
+        target_count = max(1, min(int(count), 2000))
+        if not hithink_provider.configured:
+            return None, DataProvenance(
+                provider="hithink",
+                source_name="同花顺金融数据服务(日K)",
+                fetched_at=datetime.now().isoformat(),
+                is_live=False,
+                trust_score=0.0,
+                error_message="HiThink API 未配置",
+            )
+
+        try:
+            window_days = max(45, target_count * 3)
+            end = datetime.now().date().isoformat()
+            start = (datetime.now() - timedelta(days=window_days)).date().isoformat()
+            from config.settings import settings
+
+            payload = await asyncio.wait_for(
+                hithink_provider.fetch_daily_history(
+                    code,
+                    start,
+                    end,
+                    adjust="none",
+                ),
+                timeout=float(settings.HITHINK_TIMEOUT_SECONDS),
+            )
+            bars = [row for row in (payload.data or []) if isinstance(row, dict)]
+            bars.sort(key=lambda row: str(row.get("date") or ""))
+            bars = bars[-target_count:]
+            if not bars:
+                raise ValueError("HiThink 日K返回空数据")
+            latency = (datetime.now() - started).total_seconds() * 1000
+            source.is_available = True
+            source.last_success_at = datetime.now().isoformat()
+            source.last_error = ""
+            source.latency_ms = latency
+            source.success_count += 1
+            source.consecutive_failures = 0
+            completeness = min(1.0, len(bars) / target_count)
+            trust = self._record_call(
+                "hithink",
+                "daily_kline",
+                True,
+                latency,
+                completeness=completeness,
+            )
+            return bars, DataProvenance(
+                provider="hithink",
+                source_name="同花顺金融数据服务(日K)",
+                fetched_at=payload.fetched_at or datetime.now().isoformat(),
+                is_live=False,
+                trust_score=trust,
+                data_date=payload.data_date,
+                endpoint=payload.endpoint,
+                coverage_ratio=completeness,
+            )
+        except Exception as exc:
+            latency = (datetime.now() - started).total_seconds() * 1000
+            source.is_available = False
+            source.last_error = str(exc)[:200]
+            source.consecutive_failures += 1
+            self._record_call(
+                "hithink",
+                "daily_kline",
+                False,
+                latency,
+                _exception_detail(exc, 100),
+            )
+            return None, DataProvenance(
+                provider="hithink",
+                source_name="同花顺金融数据服务(日K)",
+                fetched_at=datetime.now().isoformat(),
+                is_live=False,
+                trust_score=0.0,
+                endpoint="/api/a-share/prices/historical",
+                error_message=f"HiThink 日K获取失败: {_exception_detail(exc, 100)}",
             )
 
     async def _try_akshare_quote(self, code: str) -> tuple[dict | None, DataProvenance]:
