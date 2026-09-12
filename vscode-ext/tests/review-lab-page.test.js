@@ -12,7 +12,7 @@ Module._load = originalLoad;
 test('review lab renders latest result directly and keeps history in its own section', () => {
     const html = buildReviewLabPage({
         latest: { date: '2026-09-11', run_id: 'friday-' + 'a'.repeat(32), net_pnl: 54.63,
-            trades: [{ symbol: '600036.SH', buy_date: '2026-09-10', sell_date: '2026-09-11',
+            trades: [{ symbol: '600036.SH', name: '招商银行', buy_date: '2026-09-10', sell_date: '2026-09-11',
                 quantity: 100, entry_price: 41, exit_price: 42, net_pnl: 54.63 }],
             rejected: [], learning: ['仅供测试'], input_sha256: 'fixture', source: 'local',
             execution: 'assumed', fee_assumptions: 'fixture' },
@@ -21,6 +21,8 @@ test('review lab renders latest result directly and keeps history in its own sec
     assert.match(html, /测试复盘 · 最新结果/);
     assert.match(html, /54\.63 元/);
     assert.match(html, /模拟交易明细/);
+    assert.match(html, /招商银行/);
+    assert.match(html, /600036\.SH/);
     assert.match(html, /历史记录/);
     assert.match(html, /openReviewHistory/);
     assert.match(html, /function openReviewLatest/);

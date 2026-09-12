@@ -9,7 +9,8 @@ function escapeHtml(value) {
     }[char] || char));
 }
 function renderTrade(trade) {
-    return `<tr><td>${escapeHtml(trade.symbol)}</td><td>${escapeHtml(trade.buy_date)}</td>
+    const name = trade.name && trade.name !== trade.symbol ? `<div>${escapeHtml(trade.name)}</div><div class="text-sm text-muted">${escapeHtml(trade.symbol)}</div>` : escapeHtml(trade.symbol);
+    return `<tr><td>${name}</td><td>${escapeHtml(trade.buy_date)}</td>
 <td>${escapeHtml(trade.sell_date)}</td><td>${escapeHtml(trade.quantity)}</td>
 <td>${escapeHtml(trade.entry_price)}</td><td>${escapeHtml(trade.exit_price)}</td>
 <td class="${Number(trade.net_pnl) >= 0 ? 'up' : 'down'}">${escapeHtml(trade.net_pnl)}</td></tr>`;
