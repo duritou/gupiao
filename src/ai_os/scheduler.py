@@ -69,6 +69,16 @@ PHASE_RECOVERY_WINDOWS: dict[SchedulePhase, tuple[time, time]] = {
     SchedulePhase.EVENING: (time(20, 0), time(23, 59, 59)),
 }
 
+# Shadow-only HiThink observations share the existing application scheduler.
+# Keep these checkpoints outside the strategy task graph so a canary failure
+# cannot block scans, paper execution, or close reconciliation.
+HITHINK_CANARY_CHECKPOINTS: tuple[tuple[int, int, str], ...] = (
+    (9, 35, "09:35"),
+    (11, 30, "11:30"),
+    (14, 30, "14:30"),
+    (15, 10, "15:10"),
+)
+
 
 @dataclass
 class ScheduledTask:

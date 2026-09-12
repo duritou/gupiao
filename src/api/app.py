@@ -475,6 +475,7 @@ async def lifespan(app):
 
             # 注册AI OS调度器定时任务
             from src.ai_os.scheduler import (
+                HITHINK_CANARY_CHECKPOINTS,
                 SchedulePhase,
                 get_recoverable_phases,
                 get_schedule_for_phase,
@@ -486,6 +487,36 @@ async def lifespan(app):
             # with a restart watchdog or produce duplicate paper orders.
             phase_lock = asyncio.Lock()
             intraday_monitor_lock = asyncio.Lock()
+
+            async def _run_hithink_canary_checkpoint(checkpoint: str):
+                """Run an aggregate HiThink probe without entering strategy flow."""
+                if _deployment_validation_active():
+                    return
+                try:
+                    from src.ai_os.hithink_canary import run_hithink_canary
+
+                    result = await run_hithink_canary(checkpoint)
+                    if result["status"] == "failed":
+                        logger.warning(
+                            "[hithink-canary] checkpoint=%s failed: %s",
+                            checkpoint,
+                            result.get("error_type", "unknown"),
+                        )
+                    else:
+                        logger.info(
+                            "[hithink-canary] checkpoint=%s status=%s supported=%s/%s",
+                            checkpoint,
+                            result["status"],
+                            result.get("supported_count", 0),
+                            result.get("capability_count", 0),
+                        )
+                except Exception as exc:
+                    logger.warning(
+                        "[hithink-canary] checkpoint=%s isolated failure: %s: %s",
+                        checkpoint,
+                        type(exc).__name__,
+                        str(exc)[:160],
+                    )
 
             async def _monitor_intraday_paper_opportunities():
                 """Use local rules each minute; fills alone trigger notifications."""
@@ -632,6 +663,19 @@ async def lifespan(app):
                 max_instances=1,
                 misfire_grace_time=30,
             )
+            for hour, minute, checkpoint in HITHINK_CANARY_CHECKPOINTS:
+                scheduler.add_job(
+                    _run_hithink_canary_checkpoint,
+                    "cron",
+                    day_of_week="mon-fri",
+                    hour=hour,
+                    minute=minute,
+                    args=[checkpoint],
+                    id=f"hithink_canary_{hour:02d}{minute:02d}",
+                    coalesce=True,
+                    max_instances=1,
+                    misfire_grace_time=30,
+                )
             scheduler.add_job(_execute_phase_tasks, "cron", day_of_week="sat", hour=10,
                             args=[SchedulePhase.WEEKLY], id="weekly", coalesce=True,
                             max_instances=1, misfire_grace_time=30)
