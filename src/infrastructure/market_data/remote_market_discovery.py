@@ -29,6 +29,11 @@ from urllib.parse import urlparse
 
 import httpx
 
+from config.settings import settings
+from src.infrastructure.market_data.hithink_discovery import (
+    HiThinkDiscoveryResult,
+    fetch_hithink_special,
+)
 from src.infrastructure.market_data.provider_resilience import (
     ProviderCircuitOpenError,
     compute_retry_delay,
@@ -170,6 +175,7 @@ class DiscoverySnapshot:
     remote_available: bool = False
     degraded: bool = True
     stock_skill_fallback: dict[str, int | bool] = field(default_factory=dict)
+    provider_observations: dict[str, Any] = field(default_factory=dict)
     version: str = "remote-daily-market-v2-stock-skill"
 
     def to_dict(self) -> dict:
@@ -333,6 +339,7 @@ class RemoteMarketDiscovery:
 
             merged: dict[str, dict] = {}
             source_counts: dict[str, int] = {}
+            provider_observations: dict[str, Any] = {}
             source_names = ("ths_hot_reason", "ths_hot_list")
             for source, result in zip(source_names, source_results, strict=False):
                 if isinstance(result, Exception):
@@ -356,6 +363,41 @@ class RemoteMarketDiscovery:
                         continue
                 source_counts[source] = len(result)
                 self._merge_source(merged, source, result)
+
+            # HiThink special data is isolated behind a rollout switch.  In
+            # shadow/validator mode it is fetched only for audit comparison;
+            # primary/fallback modes may contribute rows but never alter the
+            # downstream score formula or filtering thresholds.
+            hithink_mode = str(getattr(settings, "HITHINK_SPECIAL_MODE", "disabled"))
+            if hithink_mode != "disabled":
+                try:
+                    hithink_result: HiThinkDiscoveryResult = await fetch_hithink_special(
+                        day,
+                        limit,
+                    )
+                    observation = dict(hithink_result.observation)
+                    observation["mode"] = hithink_mode
+                    observation["used"] = False
+                    provider_observations["hithink_special"] = observation
+                    if hithink_result.sources:
+                        can_use = hithink_mode == "primary" or (
+                            hithink_mode == "fallback" and not merged
+                        )
+                        if can_use:
+                            for source, rows in hithink_result.sources.items():
+                                source_counts[source] = len(rows)
+                                self._merge_source(merged, source, rows)
+                            observation["used"] = True
+                except Exception as exc:
+                    # A shadow probe must not turn an otherwise healthy
+                    # discovery run into a degraded result.  The exception is
+                    # reduced to a type-only observation to avoid leaking URLs.
+                    provider_observations["hithink_special"] = {
+                        "status": "failed",
+                        "mode": hithink_mode,
+                        "used": False,
+                        "error_type": type(exc).__name__,
+                    }
 
             source_counts["eastmoney_hot_rank"] = 0
             if source_counts.get("ths_hot_list", 0) == 0:
@@ -481,6 +523,7 @@ class RemoteMarketDiscovery:
             remote_available=bool(candidates),
             degraded=not candidates or bool(errors),
             stock_skill_fallback=stock_skill_fallback,
+            provider_observations=provider_observations,
         )
 
     async def fetch_live_quotes(self, codes: list[str]) -> dict[str, dict]:
