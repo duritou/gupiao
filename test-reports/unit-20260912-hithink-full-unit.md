@@ -8,7 +8,7 @@
 ## 结果
 
 - 命令：`.venv\\Scripts\\pytest.exe --no-cov -q tests/unit --tb=short`
-- 结果：`851 passed in 108.51s (0:01:48)`。
+- 结果：`853 passed in 65.73s (0:01:05)`。
 - 结论：未观察到 HiThink 接入导致的单元级回归。
 
 ## 限制

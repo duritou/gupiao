@@ -94,6 +94,11 @@ class Settings(BaseSettings):
     HITHINK_MIN_INTERVAL_SECONDS: float = 0.25
     HITHINK_FAILURE_THRESHOLD: int = 3
     HITHINK_COOLDOWN_SECONDS: float = 60.0
+    # Comma-separated bounded canary matrix; codes are only used by the
+    # shadow probe and never enter scoring or execution decisions.
+    HITHINK_CANARY_CODES: str = (
+        "600519.SH,000001.SZ,300750.SZ,688981.SH,002594.SZ,601318.SH,600000.SH,300015.SZ"
+    )
     HITHINK_SYMBOL_MODE: _HITHINK_MODE = "shadow"
     HITHINK_VALUATION_MODE: _HITHINK_MODE = "shadow"
     HITHINK_SPECIAL_MODE: _HITHINK_MODE = "shadow"

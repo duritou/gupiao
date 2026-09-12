@@ -2,15 +2,15 @@
 
 ## 范围
 
-- `src/ai_os/hithink_canary.py`：对现有探针做 scheduler-safe 封装。
+- `src/ai_os/hithink_canary.py`：对现有探针做 scheduler-safe 封装，并支持最多 20 个标的的串行矩阵。
 - `src/ai_os/scheduler.py`：声明 09:35、11:30、14:30、15:10 四个 shadow checkpoint。
 - `src/api/app.py`：复用现有 APScheduler 注册 checkpoint；部署验收期间跳过，失败隔离。
 
 ## 结果
 
 - 命令：`.venv\Scripts\pytest.exe --no-cov -q tests/unit/ai_os/test_hithink_canary.py --tb=short`
-- 结果：3 passed（串行锁、未配置、错误脱敏）。
-- 关键约束：canary 不加入策略任务依赖图；同一进程只允许一个 probe；日志仅输出状态、能力计数和错误类型。
+- 结果：5 passed（串行锁、未配置、错误脱敏、代码规范化、矩阵聚合）。
+- 关键约束：canary 不加入策略任务依赖图；同一进程只允许一个 probe；日志仅输出状态、代码/能力计数和错误类型。
 
 ## 限制
 
