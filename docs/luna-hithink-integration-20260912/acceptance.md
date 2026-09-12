@@ -46,7 +46,7 @@
 | Phase 1 能力分工与配置 | `complete` | provider manifest、设置项、主备矩阵已提交 |
 | Phase 2 REST 适配器 | `complete` | 独立 client/contracts/provider 三层已提交，尚未挂入路由 |
 | Phase 3 适配器契约测试 | `complete` | `test-reports/unit-20260912-hithink-provider.md`：16 passed；仅合成响应 |
-| Phase 4 低风险能力接入 | `pending` | 默认先 shadow；不改变生产返回 |
+| Phase 4 低风险能力接入 | `in_progress` | 估值/龙虎榜 route 已支持 primary/shadow/fallback；特色池和 discovery 待接入 |
 | Phase 5 日线/财务校验 | `pending` | Tushare 仍为 EOD 真值首选 |
 | Phase 6 交易日 canary | `pending` | 至少 3 个完整交易日、300 个受控样本 |
 | Phase 7 全链路回归 | `pending` | 重点验证评分、排序、Top N、交易门槛不变 |
@@ -62,4 +62,4 @@
 
 ## 本阶段结论
 
-Phase 0–3 已完成。适配器门禁通过，但当前仍未修改 SourceManager、API 路由或生产调度；下一步进入 Phase 4，先以逐能力 shadow 接入并保留现有降级链。
+Phase 0–3 已完成，Phase 4 已完成估值/龙虎榜路由的可切换入口。当前默认 shadow，未修改 SourceManager 或生产调度；下一步接入 RemoteMarketDiscovery 的特色数据 shadow，并补充跨来源比较摘要。
