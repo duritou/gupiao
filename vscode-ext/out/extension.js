@@ -588,8 +588,11 @@ async function fetchPageData(page, extraData, force = false) {
                 return { dates, history };
             }
             case 'health': {
-                const health = await (0, client_1.httpGet)('/market/system-health').catch(() => null);
-                return { health };
+                const [health, hithink] = await Promise.all([
+                    (0, client_1.httpGet)('/market/system-health').catch(() => null),
+                    (0, client_1.httpGet)('/system/providers/hithink').catch(() => null),
+                ]);
+                return { health, hithink };
             }
             case 'connectors': {
                 const [dataStatus, registry] = await Promise.all([

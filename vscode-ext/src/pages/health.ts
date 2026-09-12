@@ -6,6 +6,25 @@ export function buildHealthPage(data: any): string {
     const health = data.health || {};
     const subsystems = health.subsystems || [];
     const liveData = health.live_data || {};
+    const hithink = data.hithink || null;
+    const hithinkHealth = hithink?.health || {};
+    const hithinkStatus = hithink?.status || 'unknown';
+    const hithinkStatusColor: Record<string, string> = {
+        healthy: '#22C55E', degraded: '#F59E0B',
+        not_configured: '#8b949e', unknown: '#8b949e', down: '#EF4444',
+    };
+    const hithinkColor = hithinkStatusColor[hithinkStatus] || '#8b949e';
+    const escapeHtml = (value: any): string => String(value ?? '--')
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    const formatRate = (value: any): string => {
+        const numeric = Number(value);
+        return Number.isFinite(numeric) ? `${(numeric * 100).toFixed(2)}%` : '--';
+    };
+    const hithinkCapabilities = Object.entries(hithink?.by_capability || {})
+        .slice(0, 8) as Array<[string, any]>;
+    const hithinkRollout = Object.entries(hithink?.rollout || {})
+        .slice(0, 8) as Array<[string, any]>;
 
     const overallColor: Record<string, string> = {
         healthy: '#22C55E', degraded: '#F59E0B', down: '#EF4444',
@@ -27,6 +46,29 @@ export function buildHealthPage(data: any): string {
 </div>
 <div class="flex-between" style="padding:4px 0"><span class="text-sm text-muted">Provider</span><span>akshare</span></div>
 <div class="flex-between" style="padding:4px 0"><span class="text-sm text-muted">Indices</span><span>${liveData.indices_count || 0} loaded</span></div>
+</div></div>
+
+<!-- HiThink Provider Status -->
+<div style="padding:16px 24px 0"><div class="card" style="border-left:3px solid ${hithinkColor}">
+<div class="flex-between" style="margin-bottom:8px">
+<div><h3>HiThink · 同花顺金融数据服务</h3></div>
+<span style="color:${hithinkColor};font-weight:600">● ${escapeHtml(hithinkStatus.toUpperCase())}</span>
+</div>
+${hithink ? `
+<div class="flex-between" style="padding:4px 0"><span class="text-sm text-muted">Configured</span><span>${hithink.configured ? 'Yes' : 'No'}</span></div>
+<div class="grid2" style="margin-top:8px">
+<div><div class="text-sm text-muted">Calls</div><div style="font-size:18px;font-weight:600">${Number(hithinkHealth.calls || 0).toLocaleString()}</div></div>
+<div><div class="text-sm text-muted">Success rate</div><div style="font-size:18px;font-weight:600">${formatRate(hithinkHealth.success_rate)}</div></div>
+<div><div class="text-sm text-muted">P95 latency</div><div style="font-size:18px;font-weight:600">${escapeHtml(hithinkHealth.p95_latency_ms)} ms</div></div>
+<div><div class="text-sm text-muted">Circuit</div><div style="font-size:18px;font-weight:600">${escapeHtml(hithink.circuit?.state || '--')}</div></div>
+</div>
+${hithinkCapabilities.length ? `<div style="margin-top:12px;font-size:11px;color:#8b949e">按能力统计</div>${hithinkCapabilities.map(([name, stats]) => `
+<div class="flex-between" style="padding:4px 0;border-bottom:1px solid #21262d">
+<span>${escapeHtml(name)}</span><span>${Number(stats.calls || 0)} calls · ${Number(stats.successes || 0)} ok · P95 ${escapeHtml(stats.p95_latency_ms)} ms</span>
+</div>`).join('')}` : '<div class="text-sm text-muted" style="margin-top:10px">暂无 canary 样本</div>'}
+${hithinkRollout.length ? `<div style="margin-top:12px;font-size:11px;color:#8b949e">Rollout</div>${hithinkRollout.map(([name, mode]) => `
+<div class="flex-between" style="padding:3px 0"><span>${escapeHtml(name)}</span><span style="color:#c9d1d9">${escapeHtml(mode)}</span></div>`).join('')}` : ''}
+` : '<div class="text-sm text-muted">后端未返回 HiThink 健康接口；请确认前后端版本一致。</div>'}
 </div></div>
 
 <!-- Subsystem Grid -->

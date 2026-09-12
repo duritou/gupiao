@@ -620,8 +620,11 @@ async function fetchPageData(page: string, extraData?: any, force = false): Prom
                 return { dates, history };
             }
             case 'health': {
-                const health = await httpGet('/market/system-health').catch(() => null);
-                return { health };
+                const [health, hithink] = await Promise.all([
+                    httpGet('/market/system-health').catch(() => null),
+                    httpGet('/system/providers/hithink').catch(() => null),
+                ]);
+                return { health, hithink };
             }
             case 'connectors': {
                 const [dataStatus, registry] = await Promise.all([
