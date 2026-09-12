@@ -37,6 +37,10 @@ from src.infrastructure.market_data.fusion import (
     STANDARD_FEEDS,
     SourceReading,
 )
+from src.infrastructure.market_data.hithink_financial import (
+    missing_financial_rows,
+    normalize_financial_statements,
+)
 from src.infrastructure.market_data.provider_metrics import reliability_engine
 from src.infrastructure.market_data.hithink_provider import hithink_provider
 from src.infrastructure.market_data.tushare_provider import tushare_provider
@@ -1675,6 +1679,48 @@ class SourceManager:
                 error_message=f"Tushare 财务三表获取失败: {str(exc)[:100]}",
             )
 
+    async def _augment_financial_history_with_hithink(
+        self,
+        code: str,
+        target_periods: int,
+        local: dict[str, list[dict[str, Any]]],
+        database_module: Any,
+    ) -> tuple[dict[str, list[dict[str, Any]]], bool, str]:
+        """Fill only absent report periods from HiThink after Tushare fails."""
+        from config.settings import settings
+
+        mode = str(getattr(settings, "HITHINK_FINANCIAL_MODE", "disabled"))
+        if mode in {"disabled", "shadow"} or not hithink_provider.configured:
+            return local, False, ""
+        try:
+            payload = await asyncio.wait_for(
+                hithink_provider.fetch_financial_history(
+                    code,
+                    period="annual",
+                    limit=target_periods,
+                ),
+                timeout=float(settings.HITHINK_TIMEOUT_SECONDS) * 3,
+            )
+            incoming = normalize_financial_statements(payload.data, code)
+            additions = missing_financial_rows(local, incoming, target_periods)
+            if not additions:
+                return local, False, ""
+            await asyncio.to_thread(
+                database_module.market_db.upsert_financial_history,
+                code,
+                additions,
+                source="hithink",
+                fetched_at=payload.fetched_at,
+            )
+            refreshed = await asyncio.to_thread(
+                database_module.market_db.get_financial_history,
+                code,
+                target_periods,
+            )
+            return refreshed, True, ""
+        except Exception as exc:
+            return local, False, f"hithink:{_exception_detail(exc, 120)}"
+
     async def get_financial_history(
         self, code: str, periods: int = 8
     ) -> tuple[dict[str, Any], DataProvenance]:
@@ -1769,6 +1815,21 @@ class SourceManager:
                 (datetime.now() - started).total_seconds() * 1000, provider_error,
             )
 
+        local_before_hithink = bool(local)
+        local, hithink_used, hithink_error = (
+            await self._augment_financial_history_with_hithink(
+                code,
+                target_periods,
+                local,
+                database_module,
+            )
+        )
+        local_counts = {name: len(local.get(name) or []) for name in expected}
+        if hithink_error:
+            provider_error = ";".join(
+                item for item in (provider_error, hithink_error) if item
+            )
+
         if local:
             dates = [
                 str(row.get("ann_date") or row.get("end_date") or "")[:10]
@@ -1777,7 +1838,13 @@ class SourceManager:
             data_date = max((item for item in dates if item), default="")
             return {
                 "available": True,
-                "source": "tushare",
+                "source": (
+                    "tushare+hithink"
+                    if hithink_used and local_before_hithink
+                    else "hithink"
+                    if hithink_used
+                    else "tushare"
+                ),
                 "endpoint": "local.financial_statement_history",
                 "statements": local,
                 "period_counts": local_counts,
@@ -1787,10 +1854,29 @@ class SourceManager:
                 "data_date": data_date,
                 "fetched_at": datetime.now().isoformat(),
             }, DataProvenance(
-                provider="tushare", source_name="本地缓存(Tushare多期财报，部分)",
+                provider=(
+                    "tushare+hithink"
+                    if hithink_used and local_before_hithink
+                    else "hithink"
+                    if hithink_used
+                    else "tushare"
+                ),
+                source_name=(
+                    "本地缓存(Tushare+HiThink补缺)"
+                    if hithink_used and local_before_hithink
+                    else "HiThink多期财报"
+                    if hithink_used
+                    else "本地缓存(Tushare多期财报，部分)"
+                ),
                 fetched_at=datetime.now().isoformat(), data_date=data_date,
                 endpoint="local.financial_statement_history", is_live=False,
-                is_cached=True, trust_score=0.8, fallback_reason=provider_error,
+                is_cached=True,
+                trust_score=0.8,
+                fallback_reason=(
+                    provider_error
+                    if not hithink_used
+                    else "tushare_failed_hithink_filled"
+                ),
             )
         return {
             "available": False,
