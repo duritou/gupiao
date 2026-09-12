@@ -36,6 +36,7 @@ export const NAV_ITEMS: { id: string; label: string }[] = [
     { id: 'profile', label: 'My Profile' },
     { id: 'aios', label: 'AI OS' },
     { id: 'replay', label: 'Replay' },
+    { id: 'review_lab', label: '测试复盘' },
     { id: 'marketmap', label: 'Market Map' },
     { id: 'compare', label: 'Compare' },
     { id: 'timeline', label: 'Timeline' },
@@ -47,7 +48,7 @@ export const NAV_ITEMS: { id: string; label: string }[] = [
 export const PAGE_TITLES: Record<string, string> = {
     dashboard: 'Dashboard', portfolio: 'Portfolio', watchlist: 'Watchlist',
     journal: 'Decision Journal', resume: 'AI Resume', profile: 'AI Profile', aios: 'AI OS', replay: 'Replay Engine',
-    marketmap: 'Market Map', compare: 'Compare', timeline: 'Timeline',
+    marketmap: 'Market Map', compare: 'Compare', timeline: 'Timeline', review_lab: '测试复盘 · 最新结果',
     alerts: 'Alert Center', backtest: 'Backtest', dailybrief: 'Daily Brief',
 };
 

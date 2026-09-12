@@ -34,6 +34,7 @@ import { buildReplayPage } from './pages/replay';
 import { buildHealthPage } from './pages/health';
 import { buildConnectorsPage } from './pages/connectors';
 import { buildDecisionsPage } from './pages/decisions';
+import { buildReviewLabPage } from './pages/review_lab';
 import { showReviewLab, showReviewSimulation, showHistoricalReview } from './review-lab/view';
 
 let serverProcess: cp.ChildProcess | null = null;
@@ -68,6 +69,7 @@ const PAGE_CACHE_TTL_MS: Record<string, number> = {
     health: 60_000,
     connectors: 300_000,
     decisions: 60_000,
+    review_lab: 60_000,
 };
 const DAILY_BRIEF_TIMEOUT_MS = 10_000;
 
@@ -133,7 +135,7 @@ export function activate(context: vscode.ExtensionContext) {
         vscode.commands.registerCommand('quantai.aios', () => showTerminal('aios')),
         vscode.commands.registerCommand('quantai.taskmonitor', () => showTerminal('taskmonitor')),
         vscode.commands.registerCommand('quantai.replay', () => showTerminal('replay')),
-        vscode.commands.registerCommand('quantai.reviewLab', () => showReviewLab(context)),
+        vscode.commands.registerCommand('quantai.reviewLab', () => showTerminal('review_lab')),
         vscode.commands.registerCommand('quantai.reviewLabSimulate', () => showReviewSimulation(context)),
         vscode.commands.registerCommand('quantai.reviewLabHistorical', () => showHistoricalReview(context)),
         vscode.commands.registerCommand('quantai.health', () => showTerminal('health')),
@@ -631,6 +633,17 @@ async function fetchPageData(page: string, extraData?: any, force = false): Prom
                 ]);
                 return { dates, history };
             }
+            case 'review_lab': {
+                const index = await httpGet('/review-lab/runs').catch(() => ({ runs: [] }));
+                const runs = Array.isArray(index.runs)
+                    ? index.runs.filter((value: unknown) => typeof value === 'string' && /^friday-[a-f0-9]{32}$/.test(value)) : [];
+                const requested = String(extraData?.runId || '').trim();
+                const selectedRunId = /^friday-[a-f0-9]{32}$/.test(requested) ? requested : runs[0];
+                const latest = selectedRunId
+                    ? await httpGet(`/review-lab/runs/${encodeURIComponent(selectedRunId)}`, 5_000).catch(() => null)
+                    : null;
+                return { latest: latest ? { ...latest, run_id: selectedRunId } : null, runs, selectedRunId };
+            }
             case 'health': {
                 const [health, hithink] = await Promise.all([
                     httpGet('/market/system-health').catch(() => null),
@@ -824,6 +837,7 @@ function buildPage(page: string, data: any): string {
         case 'decisions': return buildDecisionsPage(data);
         case 'compare': return buildComparePage(data);
         case 'timeline': return buildTimelinePage(data);
+        case 'review_lab': return buildReviewLabPage(data);
         default: return pageShell('dashboard', 'Adaptive Investment Intelligence', '<div class="empty-state"><div class="icon">🤖</div><h2>Adaptive Investment Intelligence</h2><p>选择一个页面开始</p></div>');
     }
 }
@@ -857,6 +871,7 @@ function handleMessage(msg: any, currentPage: string) {
         case 'refreshBrief': void regenerateDailyBrief(); break;
         case 'openExternal': void openExternalUrl(msg.url); break;
         case 'executeTask': void executeTaskManually(msg.taskName); break;
+        case 'reviewLabHistory': void showTerminal('review_lab', { runId: msg.runId }); break;
     }
 }
 

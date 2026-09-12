@@ -70,6 +70,7 @@ const replay_1 = require("./pages/replay");
 const health_1 = require("./pages/health");
 const connectors_1 = require("./pages/connectors");
 const decisions_1 = require("./pages/decisions");
+const review_lab_1 = require("./pages/review_lab");
 const view_1 = require("./review-lab/view");
 let serverProcess = null;
 let serverRestartTimer = null;
@@ -102,6 +103,7 @@ const PAGE_CACHE_TTL_MS = {
     health: 60_000,
     connectors: 300_000,
     decisions: 60_000,
+    review_lab: 60_000,
 };
 const DAILY_BRIEF_TIMEOUT_MS = 10_000;
 // ============================================================
@@ -140,7 +142,7 @@ function activate(context) {
     void refreshRelease();
     const releaseTimer = setInterval(() => { void refreshRelease(); }, 30_000);
     context.subscriptions.push(releaseBar, { dispose: () => clearInterval(releaseTimer) });
-    context.subscriptions.push(vscode.commands.registerCommand('quantai.terminal', () => showTerminal('dashboard')), vscode.commands.registerCommand('quantai.dashboard', () => showTerminal('dashboard')), vscode.commands.registerCommand('quantai.watchlist', () => showTerminal('watchlist')), vscode.commands.registerCommand('quantai.research', () => showStockResearch()), vscode.commands.registerCommand('quantai.marketmap', () => showTerminal('marketmap')), vscode.commands.registerCommand('quantai.alerts', () => showTerminal('alerts')), vscode.commands.registerCommand('quantai.backtest', () => showTerminal('backtest')), vscode.commands.registerCommand('quantai.dailybrief', () => showTerminal('dailybrief')), vscode.commands.registerCommand('quantai.newsradar', () => showTerminal('newsradar')), vscode.commands.registerCommand('quantai.reports', () => showTerminal('reports')), vscode.commands.registerCommand('quantai.announcements', () => showTerminal('announcements')), vscode.commands.registerCommand('quantai.financials', () => showTerminal('financials')), vscode.commands.registerCommand('quantai.valuation', () => showTerminal('valuation')), vscode.commands.registerCommand('quantai.fundflow', () => showTerminal('fundflow')), vscode.commands.registerCommand('quantai.dragonTiger', () => showTerminal('dragon_tiger')), vscode.commands.registerCommand('quantai.compare', () => showTerminal('compare')), vscode.commands.registerCommand('quantai.timeline', () => showTerminal('timeline')), vscode.commands.registerCommand('quantai.portfolio', () => showTerminal('portfolio')), vscode.commands.registerCommand('quantai.journal', () => showTerminal('journal')), vscode.commands.registerCommand('quantai.resume', () => showTerminal('resume')), vscode.commands.registerCommand('quantai.profile', () => showTerminal('profile')), vscode.commands.registerCommand('quantai.aios', () => showTerminal('aios')), vscode.commands.registerCommand('quantai.taskmonitor', () => showTerminal('taskmonitor')), vscode.commands.registerCommand('quantai.replay', () => showTerminal('replay')), vscode.commands.registerCommand('quantai.reviewLab', () => (0, view_1.showReviewLab)(context)), vscode.commands.registerCommand('quantai.reviewLabSimulate', () => (0, view_1.showReviewSimulation)(context)), vscode.commands.registerCommand('quantai.reviewLabHistorical', () => (0, view_1.showHistoricalReview)(context)), vscode.commands.registerCommand('quantai.health', () => showTerminal('health')), vscode.commands.registerCommand('quantai.connectors', () => showTerminal('connectors')), vscode.commands.registerCommand('quantai.decisions', () => showTerminal('decisions')), vscode.commands.registerCommand('quantai.startServer', startServer), vscode.commands.registerCommand('quantai.stopServer', stopServer), vscode.commands.registerCommand('quantai.restartServer', restartServer), vscode.commands.registerCommand('quantai.configureBackend', configureBackend), vscode.commands.registerCommand('quantai.addWatch', addToWatchlist), vscode.commands.registerCommand('quantai.scan', () => showTerminal('dashboard')), vscode.commands.registerCommand('quantai.analyze', () => showStockResearch()), vscode.commands.registerCommand('quantai.knowledge', () => showTerminal('dashboard')), vscode.commands.registerCommand('quantai.status', async () => {
+    context.subscriptions.push(vscode.commands.registerCommand('quantai.terminal', () => showTerminal('dashboard')), vscode.commands.registerCommand('quantai.dashboard', () => showTerminal('dashboard')), vscode.commands.registerCommand('quantai.watchlist', () => showTerminal('watchlist')), vscode.commands.registerCommand('quantai.research', () => showStockResearch()), vscode.commands.registerCommand('quantai.marketmap', () => showTerminal('marketmap')), vscode.commands.registerCommand('quantai.alerts', () => showTerminal('alerts')), vscode.commands.registerCommand('quantai.backtest', () => showTerminal('backtest')), vscode.commands.registerCommand('quantai.dailybrief', () => showTerminal('dailybrief')), vscode.commands.registerCommand('quantai.newsradar', () => showTerminal('newsradar')), vscode.commands.registerCommand('quantai.reports', () => showTerminal('reports')), vscode.commands.registerCommand('quantai.announcements', () => showTerminal('announcements')), vscode.commands.registerCommand('quantai.financials', () => showTerminal('financials')), vscode.commands.registerCommand('quantai.valuation', () => showTerminal('valuation')), vscode.commands.registerCommand('quantai.fundflow', () => showTerminal('fundflow')), vscode.commands.registerCommand('quantai.dragonTiger', () => showTerminal('dragon_tiger')), vscode.commands.registerCommand('quantai.compare', () => showTerminal('compare')), vscode.commands.registerCommand('quantai.timeline', () => showTerminal('timeline')), vscode.commands.registerCommand('quantai.portfolio', () => showTerminal('portfolio')), vscode.commands.registerCommand('quantai.journal', () => showTerminal('journal')), vscode.commands.registerCommand('quantai.resume', () => showTerminal('resume')), vscode.commands.registerCommand('quantai.profile', () => showTerminal('profile')), vscode.commands.registerCommand('quantai.aios', () => showTerminal('aios')), vscode.commands.registerCommand('quantai.taskmonitor', () => showTerminal('taskmonitor')), vscode.commands.registerCommand('quantai.replay', () => showTerminal('replay')), vscode.commands.registerCommand('quantai.reviewLab', () => showTerminal('review_lab')), vscode.commands.registerCommand('quantai.reviewLabSimulate', () => (0, view_1.showReviewSimulation)(context)), vscode.commands.registerCommand('quantai.reviewLabHistorical', () => (0, view_1.showHistoricalReview)(context)), vscode.commands.registerCommand('quantai.health', () => showTerminal('health')), vscode.commands.registerCommand('quantai.connectors', () => showTerminal('connectors')), vscode.commands.registerCommand('quantai.decisions', () => showTerminal('decisions')), vscode.commands.registerCommand('quantai.startServer', startServer), vscode.commands.registerCommand('quantai.stopServer', stopServer), vscode.commands.registerCommand('quantai.restartServer', restartServer), vscode.commands.registerCommand('quantai.configureBackend', configureBackend), vscode.commands.registerCommand('quantai.addWatch', addToWatchlist), vscode.commands.registerCommand('quantai.scan', () => showTerminal('dashboard')), vscode.commands.registerCommand('quantai.analyze', () => showStockResearch()), vscode.commands.registerCommand('quantai.knowledge', () => showTerminal('dashboard')), vscode.commands.registerCommand('quantai.status', async () => {
         const ok = await backendIsOnline();
         vscode.window.showInformationMessage(ok ? 'AIIP: 后端运行中' : 'AIIP: 后端未启动');
     }));
@@ -598,6 +600,17 @@ async function fetchPageData(page, extraData, force = false) {
                 ]);
                 return { dates, history };
             }
+            case 'review_lab': {
+                const index = await (0, client_1.httpGet)('/review-lab/runs').catch(() => ({ runs: [] }));
+                const runs = Array.isArray(index.runs)
+                    ? index.runs.filter((value) => typeof value === 'string' && /^friday-[a-f0-9]{32}$/.test(value)) : [];
+                const requested = String(extraData?.runId || '').trim();
+                const selectedRunId = /^friday-[a-f0-9]{32}$/.test(requested) ? requested : runs[0];
+                const latest = selectedRunId
+                    ? await (0, client_1.httpGet)(`/review-lab/runs/${encodeURIComponent(selectedRunId)}`, 5_000).catch(() => null)
+                    : null;
+                return { latest: latest ? { ...latest, run_id: selectedRunId } : null, runs, selectedRunId };
+            }
             case 'health': {
                 const [health, hithink] = await Promise.all([
                     (0, client_1.httpGet)('/market/system-health').catch(() => null),
@@ -792,6 +805,7 @@ function buildPage(page, data) {
         case 'decisions': return (0, decisions_1.buildDecisionsPage)(data);
         case 'compare': return (0, compare_1.buildComparePage)(data);
         case 'timeline': return (0, timeline_1.buildTimelinePage)(data);
+        case 'review_lab': return (0, review_lab_1.buildReviewLabPage)(data);
         default: return (0, layout_1.pageShell)('dashboard', 'Adaptive Investment Intelligence', '<div class="empty-state"><div class="icon">🤖</div><h2>Adaptive Investment Intelligence</h2><p>选择一个页面开始</p></div>');
     }
 }
@@ -861,6 +875,9 @@ function handleMessage(msg, currentPage) {
             break;
         case 'executeTask':
             void executeTaskManually(msg.taskName);
+            break;
+        case 'reviewLabHistory':
+            void showTerminal('review_lab', { runId: msg.runId });
             break;
     }
 }
