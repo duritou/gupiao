@@ -70,6 +70,7 @@ const replay_1 = require("./pages/replay");
 const health_1 = require("./pages/health");
 const connectors_1 = require("./pages/connectors");
 const decisions_1 = require("./pages/decisions");
+const view_1 = require("./review-lab/view");
 let serverProcess = null;
 let serverRestartTimer = null;
 let serverRestartAttempts = 0;
@@ -139,7 +140,7 @@ function activate(context) {
     void refreshRelease();
     const releaseTimer = setInterval(() => { void refreshRelease(); }, 30_000);
     context.subscriptions.push(releaseBar, { dispose: () => clearInterval(releaseTimer) });
-    context.subscriptions.push(vscode.commands.registerCommand('quantai.terminal', () => showTerminal('dashboard')), vscode.commands.registerCommand('quantai.dashboard', () => showTerminal('dashboard')), vscode.commands.registerCommand('quantai.watchlist', () => showTerminal('watchlist')), vscode.commands.registerCommand('quantai.research', () => showStockResearch()), vscode.commands.registerCommand('quantai.marketmap', () => showTerminal('marketmap')), vscode.commands.registerCommand('quantai.alerts', () => showTerminal('alerts')), vscode.commands.registerCommand('quantai.backtest', () => showTerminal('backtest')), vscode.commands.registerCommand('quantai.dailybrief', () => showTerminal('dailybrief')), vscode.commands.registerCommand('quantai.newsradar', () => showTerminal('newsradar')), vscode.commands.registerCommand('quantai.reports', () => showTerminal('reports')), vscode.commands.registerCommand('quantai.announcements', () => showTerminal('announcements')), vscode.commands.registerCommand('quantai.financials', () => showTerminal('financials')), vscode.commands.registerCommand('quantai.valuation', () => showTerminal('valuation')), vscode.commands.registerCommand('quantai.fundflow', () => showTerminal('fundflow')), vscode.commands.registerCommand('quantai.dragonTiger', () => showTerminal('dragon_tiger')), vscode.commands.registerCommand('quantai.compare', () => showTerminal('compare')), vscode.commands.registerCommand('quantai.timeline', () => showTerminal('timeline')), vscode.commands.registerCommand('quantai.portfolio', () => showTerminal('portfolio')), vscode.commands.registerCommand('quantai.journal', () => showTerminal('journal')), vscode.commands.registerCommand('quantai.resume', () => showTerminal('resume')), vscode.commands.registerCommand('quantai.profile', () => showTerminal('profile')), vscode.commands.registerCommand('quantai.aios', () => showTerminal('aios')), vscode.commands.registerCommand('quantai.taskmonitor', () => showTerminal('taskmonitor')), vscode.commands.registerCommand('quantai.replay', () => showTerminal('replay')), vscode.commands.registerCommand('quantai.health', () => showTerminal('health')), vscode.commands.registerCommand('quantai.connectors', () => showTerminal('connectors')), vscode.commands.registerCommand('quantai.decisions', () => showTerminal('decisions')), vscode.commands.registerCommand('quantai.startServer', startServer), vscode.commands.registerCommand('quantai.stopServer', stopServer), vscode.commands.registerCommand('quantai.restartServer', restartServer), vscode.commands.registerCommand('quantai.configureBackend', configureBackend), vscode.commands.registerCommand('quantai.addWatch', addToWatchlist), vscode.commands.registerCommand('quantai.scan', () => showTerminal('dashboard')), vscode.commands.registerCommand('quantai.analyze', () => showStockResearch()), vscode.commands.registerCommand('quantai.knowledge', () => showTerminal('dashboard')), vscode.commands.registerCommand('quantai.status', async () => {
+    context.subscriptions.push(vscode.commands.registerCommand('quantai.terminal', () => showTerminal('dashboard')), vscode.commands.registerCommand('quantai.dashboard', () => showTerminal('dashboard')), vscode.commands.registerCommand('quantai.watchlist', () => showTerminal('watchlist')), vscode.commands.registerCommand('quantai.research', () => showStockResearch()), vscode.commands.registerCommand('quantai.marketmap', () => showTerminal('marketmap')), vscode.commands.registerCommand('quantai.alerts', () => showTerminal('alerts')), vscode.commands.registerCommand('quantai.backtest', () => showTerminal('backtest')), vscode.commands.registerCommand('quantai.dailybrief', () => showTerminal('dailybrief')), vscode.commands.registerCommand('quantai.newsradar', () => showTerminal('newsradar')), vscode.commands.registerCommand('quantai.reports', () => showTerminal('reports')), vscode.commands.registerCommand('quantai.announcements', () => showTerminal('announcements')), vscode.commands.registerCommand('quantai.financials', () => showTerminal('financials')), vscode.commands.registerCommand('quantai.valuation', () => showTerminal('valuation')), vscode.commands.registerCommand('quantai.fundflow', () => showTerminal('fundflow')), vscode.commands.registerCommand('quantai.dragonTiger', () => showTerminal('dragon_tiger')), vscode.commands.registerCommand('quantai.compare', () => showTerminal('compare')), vscode.commands.registerCommand('quantai.timeline', () => showTerminal('timeline')), vscode.commands.registerCommand('quantai.portfolio', () => showTerminal('portfolio')), vscode.commands.registerCommand('quantai.journal', () => showTerminal('journal')), vscode.commands.registerCommand('quantai.resume', () => showTerminal('resume')), vscode.commands.registerCommand('quantai.profile', () => showTerminal('profile')), vscode.commands.registerCommand('quantai.aios', () => showTerminal('aios')), vscode.commands.registerCommand('quantai.taskmonitor', () => showTerminal('taskmonitor')), vscode.commands.registerCommand('quantai.replay', () => showTerminal('replay')), vscode.commands.registerCommand('quantai.reviewLab', () => (0, view_1.showReviewLab)(context)), vscode.commands.registerCommand('quantai.reviewLabSimulate', () => (0, view_1.showReviewSimulation)(context)), vscode.commands.registerCommand('quantai.reviewLabHistorical', () => (0, view_1.showHistoricalReview)(context)), vscode.commands.registerCommand('quantai.health', () => showTerminal('health')), vscode.commands.registerCommand('quantai.connectors', () => showTerminal('connectors')), vscode.commands.registerCommand('quantai.decisions', () => showTerminal('decisions')), vscode.commands.registerCommand('quantai.startServer', startServer), vscode.commands.registerCommand('quantai.stopServer', stopServer), vscode.commands.registerCommand('quantai.restartServer', restartServer), vscode.commands.registerCommand('quantai.configureBackend', configureBackend), vscode.commands.registerCommand('quantai.addWatch', addToWatchlist), vscode.commands.registerCommand('quantai.scan', () => showTerminal('dashboard')), vscode.commands.registerCommand('quantai.analyze', () => showStockResearch()), vscode.commands.registerCommand('quantai.knowledge', () => showTerminal('dashboard')), vscode.commands.registerCommand('quantai.status', async () => {
         const ok = await backendIsOnline();
         vscode.window.showInformationMessage(ok ? 'AIIP: 后端运行中' : 'AIIP: 后端未启动');
     }));
@@ -198,10 +199,14 @@ async function startServer() {
     }
     if (!(await backendIsOnline()) && !serverProcess) {
         const launch = getBackendLaunchSpec(root);
+        const managed = process.platform === 'win32' && fs.existsSync(path.join(root, 'runtime', 'active-manifest.json'));
         const child = cp.spawn(launch.command, launch.args, {
-            cwd: root, shell: launch.shell, windowsHide: true, stdio: 'pipe',
+            cwd: root, shell: launch.shell, windowsHide: true,
+            stdio: managed ? 'ignore' : 'pipe', detached: managed,
         });
-        serverProcess = child;
+        if (managed)
+            child.unref();
+        serverProcess = managed ? null : child;
         child.stdout?.on('data', chunk => console.log(`[AIIP backend] ${String(chunk).trimEnd()}`));
         child.stderr?.on('data', chunk => console.error(`[AIIP backend] ${String(chunk).trimEnd()}`));
         child.once('error', error => {
@@ -296,6 +301,12 @@ function findBackendRoot(seeds) {
     return null;
 }
 function getBackendLaunchSpec(root) {
+    if (process.platform === 'win32' && fs.existsSync(path.join(root, 'runtime', 'active-manifest.json'))) {
+        const launcher = path.resolve(root, '../scripts/start_adaptive_learning_backend.ps1');
+        if (!fs.existsSync(launcher))
+            throw new Error('托管后端启动器缺失，拒绝降级启动源码');
+        return { command: 'powershell.exe', args: ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', launcher], shell: false };
+    }
     const venvPython = process.platform === 'win32'
         ? path.join(root, '.venv', 'Scripts', 'python.exe')
         : path.join(root, '.venv', 'bin', 'python');

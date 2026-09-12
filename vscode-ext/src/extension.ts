@@ -34,6 +34,7 @@ import { buildReplayPage } from './pages/replay';
 import { buildHealthPage } from './pages/health';
 import { buildConnectorsPage } from './pages/connectors';
 import { buildDecisionsPage } from './pages/decisions';
+import { showReviewLab, showReviewSimulation, showHistoricalReview } from './review-lab/view';
 
 let serverProcess: cp.ChildProcess | null = null;
 let serverRestartTimer: NodeJS.Timeout | null = null;
@@ -132,6 +133,9 @@ export function activate(context: vscode.ExtensionContext) {
         vscode.commands.registerCommand('quantai.aios', () => showTerminal('aios')),
         vscode.commands.registerCommand('quantai.taskmonitor', () => showTerminal('taskmonitor')),
         vscode.commands.registerCommand('quantai.replay', () => showTerminal('replay')),
+        vscode.commands.registerCommand('quantai.reviewLab', () => showReviewLab(context)),
+        vscode.commands.registerCommand('quantai.reviewLabSimulate', () => showReviewSimulation(context)),
+        vscode.commands.registerCommand('quantai.reviewLabHistorical', () => showHistoricalReview(context)),
         vscode.commands.registerCommand('quantai.health', () => showTerminal('health')),
         vscode.commands.registerCommand('quantai.connectors', () => showTerminal('connectors')),
         vscode.commands.registerCommand('quantai.decisions', () => showTerminal('decisions')),
@@ -214,10 +218,13 @@ async function startServer() {
     }
     if (!(await backendIsOnline()) && !serverProcess) {
         const launch = getBackendLaunchSpec(root);
+        const managed = process.platform === 'win32' && fs.existsSync(path.join(root, 'runtime', 'active-manifest.json'));
         const child = cp.spawn(launch.command, launch.args, {
-            cwd: root, shell: launch.shell, windowsHide: true, stdio: 'pipe',
+            cwd: root, shell: launch.shell, windowsHide: true,
+            stdio: managed ? 'ignore' : 'pipe', detached: managed,
         });
-        serverProcess = child;
+        if (managed) child.unref();
+        serverProcess = managed ? null : child;
         child.stdout?.on('data', chunk => console.log(`[AIIP backend] ${String(chunk).trimEnd()}`));
         child.stderr?.on('data', chunk => console.error(`[AIIP backend] ${String(chunk).trimEnd()}`));
         child.once('error', error => {
@@ -310,6 +317,11 @@ function getBackendLaunchSpec(root: string): {
     args: string[];
     shell: boolean;
 } {
+    if (process.platform === 'win32' && fs.existsSync(path.join(root, 'runtime', 'active-manifest.json'))) {
+        const launcher = path.resolve(root, '../scripts/start_adaptive_learning_backend.ps1');
+        if (!fs.existsSync(launcher)) throw new Error('托管后端启动器缺失，拒绝降级启动源码');
+        return { command: 'powershell.exe', args: ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', launcher], shell: false };
+    }
     const venvPython = process.platform === 'win32'
         ? path.join(root, '.venv', 'Scripts', 'python.exe')
         : path.join(root, '.venv', 'bin', 'python');

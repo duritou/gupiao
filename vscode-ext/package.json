@@ -15,6 +15,18 @@
   "contributes": {
     "commands": [
       {
+        "command": "quantai.reviewLabHistorical",
+        "title": "AIIP: 测试复盘 · 历史闭环结果"
+      },
+      {
+        "command": "quantai.reviewLabSimulate",
+        "title": "AIIP: 测试复盘 · 立即合成模拟（不调用生产）"
+      },
+      {
+        "command": "quantai.reviewLab",
+        "title": "AIIP: 测试复盘（仅供参考）"
+      },
+      {
         "command": "quantai.terminal",
         "title": "AIIP: 打开研究终端"
       },

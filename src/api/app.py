@@ -801,3 +801,7 @@ app.include_router(vibe_compat_routes.router, prefix="/api/v1")
 app.include_router(unified_research_routes.router, prefix="/api/v1")
 app.include_router(unified_research_routes.router, prefix="/api/v1/vibe")
 app.include_router(task_monitor_routes.router, prefix="/api/v1")
+
+from src.api.routes import review_lab_routes
+
+app.include_router(review_lab_routes.router, prefix="/api/v1")
