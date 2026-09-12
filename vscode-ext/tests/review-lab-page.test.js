@@ -32,3 +32,22 @@ test('review lab has a clear empty latest state without fabricated values', () =
     assert.doesNotMatch(html, /54\.63/);
     assert.match(html, /没有生成结果/);
 });
+
+test('review lab renders seven project-specific observations and escapes text', () => {
+    const reviews = Array.from({ length: 7 }, (_, index) => ({
+        project: `project-${index}<x>`, status: index === 6 ? 'partial' : 'completed',
+        title: `观察 ${index}`, findings: [`发现 ${index}<script>`],
+        metrics: { universe: 10 + index }, limitations: ['仅供参考'],
+    }));
+    const html = buildReviewLabPage({
+        latest: { date: '2026-09-11', run_id: 'friday-' + 'c'.repeat(32), net_pnl: 0,
+            trades: [], rejected: [], learning: [], input_sha256: 'fixture', source: 'local',
+            execution: 'assumed', fee_assumptions: 'fixture', project_reviews: reviews,
+            source_data: { target_rows: 3, rows_by_date: { '2026-09-11': 3 } } },
+        runs: [],
+    });
+    assert.match(html, /七种方法复盘/);
+    assert.equal((html.match(/观察 [0-6]/g) || []).length, 7);
+    assert.match(html, /发现 0&lt;script&gt;/);
+    assert.doesNotMatch(html, /发现 0<script>/);
+});

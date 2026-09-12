@@ -14,12 +14,31 @@ function renderTrade(trade) {
 <td>${escapeHtml(trade.entry_price)}</td><td>${escapeHtml(trade.exit_price)}</td>
 <td class="${Number(trade.net_pnl) >= 0 ? 'up' : 'down'}">${escapeHtml(trade.net_pnl)}</td></tr>`;
 }
+function renderMetric(key, value) {
+    if (value && typeof value === 'object')
+        return '';
+    return `<span style="display:inline-block;margin:3px 6px 3px 0;padding:3px 7px;border:1px solid #30363d;border-radius:999px;color:#c9d1d9;font-size:11px">${escapeHtml(key)}：${escapeHtml(value)}</span>`;
+}
+function renderProjectReview(item) {
+    const findings = Array.isArray(item?.findings) ? item.findings : [];
+    const limitations = Array.isArray(item?.limitations) ? item.limitations : [];
+    const metrics = item?.metrics && typeof item.metrics === 'object' ? item.metrics : {};
+    const metricHtml = Object.entries(metrics).map(([key, value]) => renderMetric(key, value)).join('');
+    const status = item?.status === 'completed' ? 'completed' : 'partial / data limited';
+    return `<section style="border-top:1px solid #30363d;padding:14px 0">
+<div class="flex-between" style="gap:12px;align-items:flex-start"><div><strong>${escapeHtml(item?.project)}</strong><div class="text-sm text-muted">${escapeHtml(item?.title)}</div></div>
+<span class="text-sm ${item?.status === 'completed' ? 'up' : 'text-muted'}">${escapeHtml(status)}</span></div>
+${metricHtml ? `<div style="margin:7px 0">${metricHtml}</div>` : ''}
+${findings.length ? `<ul class="text-sm" style="margin:7px 0;padding-left:20px">${findings.map((finding) => `<li style="margin:4px 0">${escapeHtml(finding)}</li>`).join('')}</ul>` : '<p class="text-sm text-muted">暂无观察结论。</p>'}
+${limitations.length ? `<p class="text-sm text-muted" style="margin:7px 0">边界：${limitations.map((value) => escapeHtml(value)).join('；')}</p>` : ''}</section>`;
+}
 function buildReviewLabPage(data) {
     const latest = data.latest || null;
     const runs = Array.isArray(data.runs) ? data.runs : [];
     const trades = Array.isArray(latest?.trades) ? latest.trades : [];
     const rejected = Array.isArray(latest?.rejected) ? latest.rejected : [];
     const learning = Array.isArray(latest?.learning) ? latest.learning : [];
+    const projectReviews = Array.isArray(latest?.project_reviews) ? latest.project_reviews : [];
     const latestBlock = latest ? `
 <div class="grid4" style="padding:16px 24px 0">
 <div class="card"><h3>复盘日期</h3><div class="metric-value" style="font-size:22px">${escapeHtml(latest.date)}</div></div>
@@ -30,7 +49,11 @@ function buildReviewLabPage(data) {
 <div class="card" style="margin:16px 24px"><h3>本次闭环</h3>
 <p class="text-sm">使用历史数据先决策、下一交易日模拟买入、再下一交易日模拟卖出；周五收盘没有倒推买点。</p>
 <p class="text-sm text-muted">数据指纹：${escapeHtml(latest.input_sha256)} · 来源：${escapeHtml(latest.source)}</p>
-<p class="text-sm text-muted">执行：${escapeHtml(latest.execution)} · 费用：${escapeHtml(latest.fee_assumptions)}</p></div>
+<p class="text-sm text-muted">执行：${escapeHtml(latest.execution)} · 费用：${escapeHtml(latest.fee_assumptions)}</p>
+${latest.source_data ? `<p class="text-sm text-muted">数据快照：${escapeHtml(latest.source_data.target_rows)} 行 · 三日覆盖：${escapeHtml(JSON.stringify(latest.source_data.rows_by_date || {}))}</p>` : ''}</div>
+<div class="card" style="margin:0 24px 16px"><h3>七种方法复盘</h3>
+<p class="text-sm text-muted">同一份周五日线快照按你提供的七个项目方向分别观察；这是本地方法映射，不是上游仓库代码实际运行。</p>
+${projectReviews.length ? projectReviews.map(renderProjectReview).join('') : '<p class="text-muted">这条历史结果尚未包含七项目分析，请刷新生成最新复盘。</p>'}</div>
 <div class="card" style="margin:0 24px 16px"><h3>模拟交易明细</h3>
 ${trades.length ? `<table><thead><tr><th>标的</th><th>买入日</th><th>卖出日</th><th>数量</th><th>买价</th><th>卖价</th><th>净结果</th></tr></thead><tbody>${trades.map(renderTrade).join('')}</tbody></table>` : '<p class="text-muted">没有符合条件的模拟成交。</p>'}
 ${rejected.length ? `<p class="text-sm text-muted" style="margin-top:12px">未入场：${rejected.map(item => `${escapeHtml(item.symbol)}（${escapeHtml(item.reason)}）`).join('、')}</p>` : ''}</div>
