@@ -37,7 +37,7 @@
 | Tushare 补齐链路 | `test-reports/unit-20260906-tushare-completion.md`：746 passed；隔离补采与回放证据完整 | 不改变既有补齐语义 |
 | HiThink REST 能力 | `test-reports/unit-20260912-hithink-stability.md`：40/40 成功，P95 333–366ms | 可进入适配器与 shadow 阶段 |
 | HiThink 盘中实时 | 当前验证为非交易日，快照无可证明的逐笔成交时间 | 只能 shadow，不得进入执行报价 |
-| HiThink 接入后基础设施回归 | `test-reports/unit-20260912-hithink-infrastructure-regression.md`：269 passed | 未观察到 SourceManager、Tushare、provider resilience 或交易执行回归 |
+| HiThink 接入后基础设施回归 | `test-reports/unit-20260912-hithink-regression-rerun.md`：272 passed | 未观察到 SourceManager、Tushare、provider resilience 或交易执行回归 |
 | HiThink canary 探针契约 | `test-reports/unit-20260912-hithink-probe.md`：3 passed | 只读串行、结果脱敏、未配置安全退出；尚无交易日稳定性结论 |
 | HiThink 消歧/健康接口 | `test-reports/quality-20260912-hithink-rollout.md`；相关测试 5 passed | 精确代码本地规范化；名称搜索按 rollout；健康接口仅输出脱敏统计 |
 
