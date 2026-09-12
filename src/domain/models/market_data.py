@@ -163,6 +163,10 @@ class ProviderCapability:
     shareholder_data: bool = False
 
     # Other
+    symbol_search: bool = False
+    valuation: bool = False
+    special_data: bool = False
+    dragon_tiger: bool = False
     index_data: bool = False
     sector_data: bool = False
     news: bool = False
@@ -272,6 +276,24 @@ PROVIDER_CAPABILITIES: dict[str, ProviderCapability] = {
         requires_auth=True,
         rate_limited=True,
         data_quality="excellent",
+    ),
+    "hithink": ProviderCapability(
+        provider="hithink",
+        markets=["CN"],
+        # HiThink REST is deliberately not declared as an intraday source.
+        # Its snapshot timestamp is insufficient for execution freshness until
+        # the three-trading-day canary gate passes.
+        daily_kline=True,
+        financial_statements=True,
+        financial_indicators=True,
+        index_data=True,
+        symbol_search=True,
+        valuation=True,
+        special_data=True,
+        dragon_tiger=True,
+        requires_auth=True,
+        rate_limited=True,
+        data_quality="good",
     ),
     "akshare": ProviderCapability(
         provider="akshare",

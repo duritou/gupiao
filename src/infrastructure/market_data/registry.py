@@ -164,6 +164,22 @@ DATA_SOURCE_REGISTRY: dict[str, DataSource] = {
         integration_status="active",
         notes="2000积分账户已接入盘后日线、每日指标、财务、个股资金流和指数；盘中/分钟数据另行授权。",
     ),
+    "hithink": DataSource(
+        id="hithink", name="同花顺金融数据服务", name_en="HiThink Financial API",
+        url="https://fuyao.aicubes.cn", layer="market", tier=TrustTier.COMMERCIAL,
+        access=AccessMethod.API, category="quote",
+        provides=[
+            "标的消歧", "行情快照", "日K", "前复权", "财务三表", "财务指标",
+            "当前估值", "涨跌停/炸板/连板", "异动/热榜", "龙虎榜",
+        ],
+        update_frequency="daily", rate_limit="按套餐和接口限制",
+        requires_auth=True, is_free=False, base_trust=0.86,
+        integration_status="active",
+        notes=(
+            "官方 REST 服务；当前作为标的消歧、估值和特色数据的候选首选，"
+            "日线/财务先 validator/fallback，盘中执行报价保持 shadow。"
+        ),
+    ),
     "baostock": DataSource(
         id="baostock", name="BaoStock", name_en="BaoStock",
         url="http://baostock.com", layer="market", tier=TrustTier.COMMUNITY,

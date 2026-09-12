@@ -1,0 +1,85 @@
+# HiThink Financial API — 同花顺官方 A 股金融数据服务
+provider: hithink
+version: "1.0"
+description: >-
+  fuyao.aicubes.cn REST API。用于标的消歧、当前估值、特色榜单和有限的
+  日线/财务交叉验证；盘中执行报价保持现有 TickFlow→腾讯→新浪链路。
+url: https://fuyao.aicubes.cn
+authentication:
+  type: api_key
+  header: X-api-key
+  environment_variable: HITHINK_FINANCE_API_KEY
+
+time_semantics:
+  snapshot: provider_timestamp_or_previous_session_eod
+  historical: bar_date_and_provider_timestamp
+  financials: report_period_and_report_date
+  special_data: trade_date_and_provider_timestamp
+
+capabilities:
+  symbol_search:
+    method: REST
+    protocol: GET /api/meta/tickers/search
+    note: 中文名/纯代码/thscode 消歧；返回完整 SH/SZ/BJ 标识
+  snapshot:
+    method: REST
+    protocol: GET /api/a-share/prices/snapshot
+    note: 单只或批量快照；不返回中文名，不能直接标记为盘中实时
+  daily_kline:
+    method: REST
+    protocol: GET /api/a-share/prices/historical
+    note: 单只、日线、每次窗口不超过 10 年；volume 为股，turnover 为原始货币
+  adjustment_factors:
+    method: REST
+    protocol: GET /api/a-share/corporate-actions/adjustment-factors
+    note: 原始除权除息事件流，不把事件流误当成已计算复权因子
+  financial_statements:
+    method: REST
+    protocol: GET /api/a-share/financials/{income-statements,balance-sheets,cash-flow-statements}
+    note: 单只、多报告期合并口径；null 保留，按 period_end_ms/report_date_ms 对齐
+  financial_indicators:
+    method: REST
+    protocol: GET /api/a-share/financials/indicators
+    note: 指定报告期的五类指标，abilities 是数组
+  valuation:
+    method: REST
+    protocol: GET /api/a-share/valuations/snapshot
+    note: 当前估值快照；负值和 null 保留，不自行补算
+  index_data:
+    method: REST
+    protocol: GET /api/a-share/index/snapshot
+    note: 指数行情能力，按官方能力列表核验后使用
+  special_data:
+    method: REST
+    protocol: GET /api/a-share/special-data/*
+    note: 涨停/跌停/炸板/连板/异动/热榜等特色数据
+  dragon_tiger:
+    method: REST
+    protocol: GET /api/a-share/special-data/dragon-tiger-list
+    note: all/org/hot_money；省略日期时取最新可用交易日
+
+known_limits:
+  supports_minute_kline: false
+  supports_tick: false
+  supports_level2: false
+  supports_orderbook: false
+  supports_announcement_fulltext: false
+  supports_news_fulltext: false
+  single_stock_history_window_years: 10
+  max_symbol_search_limit: 50
+  max_special_data_page_size: 200
+
+rollout:
+  initial_symbol_search: shadow
+  initial_valuation: shadow
+  initial_special_data: shadow
+  initial_dragon_tiger: shadow
+  initial_daily_kline: validator
+  initial_financials: validator
+  initial_realtime_quote: shadow
+
+limitations:
+  - API Key 只能通过 X-api-key header 传递，不得进入 URL、日志或数据库
+  - 周末/节假日快照可能代表上一交易日，必须保留 provider timestamp 和 EOD 语义
+  - 盘中执行报价必须证明数据时间晚于最终信号，否则继续使用现有实时源
+  - HiThink 失败、空数组和业务 code 非 0 都必须进入既有降级链

@@ -83,6 +83,21 @@ class Settings(BaseSettings):
     DATA_COMPLETION_FLOW_BATCH_DEADLINE_SECONDS: float = 180.0
     DEFAULT_DATA_SOURCE: str = "akshare"
     DATA_SYNC_INTERVAL_MINUTES: int = 5
+    # HiThink Financial API (fuyao.aicubes.cn).  Credentials are read only
+    # from the user environment; never persist them in application state.
+    HITHINK_FINANCE_API_KEY: str | None = None
+    HITHINK_BASE_URL: str = "https://fuyao.aicubes.cn"
+    HITHINK_TIMEOUT_SECONDS: float = 8.0
+    HITHINK_RETRY_ATTEMPTS: int = 2
+    HITHINK_MIN_INTERVAL_SECONDS: float = 0.25
+    HITHINK_FAILURE_THRESHOLD: int = 3
+    HITHINK_COOLDOWN_SECONDS: float = 60.0
+    HITHINK_SYMBOL_MODE: Literal["disabled", "shadow", "fallback", "validator", "primary"] = "shadow"
+    HITHINK_VALUATION_MODE: Literal["disabled", "shadow", "fallback", "validator", "primary"] = "shadow"
+    HITHINK_SPECIAL_MODE: Literal["disabled", "shadow", "fallback", "validator", "primary"] = "shadow"
+    HITHINK_DAILY_MODE: Literal["disabled", "shadow", "fallback", "validator", "primary"] = "validator"
+    HITHINK_FINANCIAL_MODE: Literal["disabled", "shadow", "fallback", "validator", "primary"] = "validator"
+    HITHINK_REALTIME_MODE: Literal["disabled", "shadow", "fallback", "validator", "primary"] = "shadow"
     # Optional authenticated primary for real-time quotes and daily K-lines.
     # The key remains local in .env and is never persisted in decisions.
     TICKFLOW_API_KEY: str | None = None
