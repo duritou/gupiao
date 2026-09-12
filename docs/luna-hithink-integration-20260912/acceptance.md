@@ -45,6 +45,7 @@
 | HiThink 全量集成回归 | `test-reports/integration-20260912-hithink-regression.md`：19 passed | 算法回归门禁、候选流、补齐链路、完整交易周期和学习闭环通过 |
 | HiThink 在线多标的矩阵 | `test-reports/canary-20260912-hithink-live-matrix.md`：32/32 成功 | 8 标的 × 4 capability 单次验证；最近已完成财报期修正后无失败 |
 | HiThink 特色能力周末补测 | `test-reports/canary-20260912-hithink-live-matrix.md`：3/3 成功 | 涨停池/炸板池允许合法空集；龙虎榜省略日期取最近交易日，避免周末误报 |
+| HiThink 短周期重复稳定性 | `test-reports/canary-20260912-hithink-repeat.md`：99/99 成功 | 3 轮核心矩阵（96）+ 特色能力（3），未出现间歇性失败 |
 
 ## 分阶段状态
 
@@ -56,7 +57,7 @@
 | Phase 3 适配器契约测试 | `complete` | `test-reports/unit-20260912-hithink-provider.md`：16 passed；仅合成响应 |
 | Phase 4 低风险能力接入 | `in_progress` | 估值/龙虎榜 route、市场代码/名称消歧入口已支持 primary/shadow/fallback；涨停池、炸板池、龙虎榜 discovery 已接入 shadow，更多专用特色 API 仍待补齐 |
 | Phase 5 日线/财务校验 | `in_progress` | HiThink 日线 fallback、财务三表只补缺不覆盖、EPS/ROE/ROA/同比一致性审计均已实现；修订版本、全量跨源统计仍待补齐 |
-| Phase 6 交易日 canary | `in_progress` | 已提供 `scripts/probe_hithink.py`、现有 APScheduler 四个 shadow checkpoint、最多 20 标的串行矩阵、脱敏健康接口和离线契约测试；至少 3 个完整交易日、300 个受控样本尚未收集 |
+| Phase 6 交易日 canary | `in_progress` | 已提供 `scripts/probe_hithink.py`、现有 APScheduler 四个 shadow checkpoint、最多 20 标的串行矩阵、脱敏健康接口和离线契约测试；短周期在线重复 99/99 成功，但至少 3 个完整交易日、300 个受控样本尚未收集 |
 | Phase 7 全链路回归 | `complete` | `tests/unit` 853 passed，`tests/integration` 19 passed；评分、排序、Top N、交易门槛及学习闭环未观察到回归 |
 | Phase 8 发布/回滚 | `pending` | 未授权不重启生产、不切 active runtime |
 
@@ -70,4 +71,4 @@
 
 ## 本阶段结论
 
-Phase 0–3 已完成，Phase 4 已完成估值/龙虎榜路由、RemoteMarketDiscovery 特色数据入口和市场代码/名称消歧入口；Phase 5 已完成日线 fallback、财务“只补空缺、不覆盖”和财务指标一致性审计最小接入；Phase 6 已提供安全有界探针、四个现有调度 checkpoint、最多 20 标的串行矩阵和脱敏健康接口，并完成一次 8 标的在线矩阵（32/32），进入交易日样本收集阶段；Phase 7 已完成全量单元（854 passed）和集成（19 passed）回归。当前默认 shadow/validator：HiThink 观察写入 `provider_observations`，日线/财务只在满足开关和失败条件时进入真实 fallback，不改变候选、排序、分数、Top N 或交易门槛；下一步补齐全量跨源一致性摘要、更多特色 API 和 3 个完整交易日 canary。
+Phase 0–3 已完成，Phase 4 已完成估值/龙虎榜路由、RemoteMarketDiscovery 特色数据入口和市场代码/名称消歧入口；Phase 5 已完成日线 fallback、财务“只补空缺、不覆盖”和财务指标一致性审计最小接入；Phase 6 已提供安全有界探针、四个现有调度 checkpoint、最多 20 标的串行矩阵和脱敏健康接口，并完成一次 8 标的在线矩阵（32/32）及短周期重复（99/99），进入交易日样本收集阶段；Phase 7 已完成全量单元（854 passed）和集成（19 passed）回归。当前默认 shadow/validator：HiThink 观察写入 `provider_observations`，日线/财务只在满足开关和失败条件时进入真实 fallback，不改变候选、排序、分数、Top N 或交易门槛；下一步补齐全量跨源一致性摘要、更多特色 API 和 3 个完整交易日 canary。
