@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 from collections.abc import Iterable
 
 import httpx
@@ -9,8 +8,8 @@ import pytest
 from src.infrastructure.market_data import hithink_client as client_module
 from src.infrastructure.market_data.hithink_client import HiThinkError
 from src.infrastructure.market_data.hithink_provider import HiThinkProvider
-from src.infrastructure.market_data.provider_resilience import reset_provider_resilience_state
 from src.infrastructure.market_data.provider_metrics import reliability_engine
+from src.infrastructure.market_data.provider_resilience import reset_provider_resilience_state
 from tests.fixtures.hithink.responses import (
     DAILY_HISTORY,
     DRAGON_TIGER,
@@ -36,7 +35,9 @@ class FakeClient:
         return response
 
 
-def response(body: dict, status: int = 200, headers: dict[str, str] | None = None) -> httpx.Response:
+def response(
+    body: dict, status: int = 200, headers: dict[str, str] | None = None
+) -> httpx.Response:
     return httpx.Response(status, json=body, headers=headers or {})
 
 
@@ -89,13 +90,18 @@ async def test_nontrading_empty_pool_is_valid_empty_result() -> None:
 @pytest.mark.asyncio
 async def test_daily_history_maps_dates_and_uses_millisecond_window() -> None:
     fake = FakeClient([response(DAILY_HISTORY)])
-    result = await provider(fake).fetch_daily_history("600519.SH", "2026-09-01", "2026-09-12", "forward")
+    result = await provider(fake).fetch_daily_history(
+        "600519.SH", "2026-09-01", "2026-09-12", "forward"
+    )
 
     assert result.data[0]["date"] == "2026-09-11"
     assert result.data[0]["close"] == 10.5
     assert fake.calls[0]["params"] == {
-        "thscode": "600519.SH", "interval": "1d", "start": 1788192000000,
-        "end": 1789142400000, "adjust": "forward",
+        "thscode": "600519.SH",
+        "interval": "1d",
+        "start": 1788192000000,
+        "end": 1789142400000,
+        "adjust": "forward",
     }
 
 
@@ -107,7 +113,10 @@ async def test_financial_history_keeps_period_null_and_calls_three_statements() 
     assert set(result.data["statements"]) == {"income", "balance", "cashflow"}
     assert result.data["statements"]["income"][0]["net_profit"] is None
     assert len(fake.calls) == 3
-    assert all(call["params"] == {"thscode": "600519.SH", "period": "annual", "limit": 1} for call in fake.calls)
+    assert all(
+        call["params"] == {"thscode": "600519.SH", "period": "annual", "limit": 1}
+        for call in fake.calls
+    )
 
 
 @pytest.mark.asyncio
@@ -123,7 +132,13 @@ async def test_dragon_tiger_preserves_empty_hot_money_rows() -> None:
 
 @pytest.mark.asyncio
 async def test_business_error_http_200_is_validation_and_not_retried() -> None:
-    fake = FakeClient([response({"code": 1003, "message": "bad parameter", "request_id": "req-bad", "data": None})])
+    fake = FakeClient(
+        [
+            response(
+                {"code": 1003, "message": "bad parameter", "request_id": "req-bad", "data": None}
+            )
+        ]
+    )
     with pytest.raises(HiThinkError) as exc_info:
         await provider(fake, retry_attempts=3).fetch_snapshot("600519")
 
@@ -144,11 +159,15 @@ async def test_auth_failure_is_not_retried_and_error_is_redacted() -> None:
 
 
 @pytest.mark.asyncio
-async def test_rate_limit_honors_retry_after_and_then_succeeds(monkeypatch: pytest.MonkeyPatch) -> None:
-    fake = FakeClient([
-        response({"code": 0, "data": None}, status=429, headers={"Retry-After": "2"}),
-        response(SNAPSHOT),
-    ])
+async def test_rate_limit_honors_retry_after_and_then_succeeds(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fake = FakeClient(
+        [
+            response({"code": 0, "data": None}, status=429, headers={"Retry-After": "2"}),
+            response(SNAPSHOT),
+        ]
+    )
     sleeps: list[float] = []
 
     async def fake_sleep(seconds: float) -> None:
@@ -165,6 +184,7 @@ async def test_rate_limit_honors_retry_after_and_then_succeeds(monkeypatch: pyte
 @pytest.mark.asyncio
 async def test_server_failure_has_bounded_retry(monkeypatch: pytest.MonkeyPatch) -> None:
     fake = FakeClient([response({}, status=503), response(SNAPSHOT)])
+
     async def fake_sleep(seconds: float) -> None:
         return None
 
@@ -178,6 +198,7 @@ async def test_server_failure_has_bounded_retry(monkeypatch: pytest.MonkeyPatch)
 @pytest.mark.asyncio
 async def test_timeout_is_classified_and_bounded(monkeypatch: pytest.MonkeyPatch) -> None:
     fake = FakeClient([httpx.TimeoutException("timeout"), httpx.TimeoutException("timeout")])
+
     async def fake_sleep(seconds: float) -> None:
         return None
 

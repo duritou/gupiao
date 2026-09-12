@@ -45,7 +45,9 @@ def iso_now() -> str:
 
 def timestamp_iso(value: Any) -> str:
     try:
-        return datetime.fromtimestamp(float(value) / 1000.0, tz=_SHANGHAI).isoformat(timespec="seconds")
+        return datetime.fromtimestamp(float(value) / 1000.0, tz=_SHANGHAI).isoformat(
+            timespec="seconds"
+        )
     except (TypeError, ValueError, OverflowError, OSError):
         return ""
 
@@ -65,13 +67,15 @@ def date_text(value: Any) -> str:
 def to_ms(value: Any) -> int:
     if isinstance(value, bool):
         raise ValueError("invalid_date")
-    if isinstance(value, (int, float)):
+    if isinstance(value, int | float):
         return int(value)
     if isinstance(value, datetime):
         current = value if value.tzinfo else value.replace(tzinfo=_SHANGHAI)
         return int(current.timestamp() * 1000)
     if isinstance(value, date):
-        return int(datetime.combine(value, datetime.min.time(), tzinfo=_SHANGHAI).timestamp() * 1000)
+        return int(
+            datetime.combine(value, datetime.min.time(), tzinfo=_SHANGHAI).timestamp() * 1000
+        )
     text = str(value or "").strip()
     if not text:
         raise ValueError("invalid_date")
@@ -111,26 +115,128 @@ def normalize_codes(codes: str | list[str] | tuple[str, ...], max_items: int = 1
 
 
 def map_symbol(row: dict[str, Any]) -> dict[str, Any]:
-    return {key: row.get(key) for key in ("thscode", "ticker", "name", "exchange", "asset_type", "list_date", "end_date", "last_trade_date", "currency")}
+    return {
+        key: row.get(key)
+        for key in (
+            "thscode",
+            "ticker",
+            "name",
+            "exchange",
+            "asset_type",
+            "list_date",
+            "end_date",
+            "last_trade_date",
+            "currency",
+        )
+    }
 
 
 def map_snapshot(row: dict[str, Any], timestamp_ms: Any) -> dict[str, Any]:
-    return {"thscode": row.get("thscode"), "ticker": row.get("ticker"), "last_price": row.get("last_price", row.get("price")), "price_change": row.get("price_change"), "price_change_ratio_pct": row.get("price_change_ratio_pct"), "open_price": row.get("open_price"), "high_price": row.get("high_price"), "low_price": row.get("low_price"), "prev_price": row.get("prev_price"), "volume": row.get("volume"), "turnover": row.get("turnover"), "data_timestamp_ms": timestamp_ms}
+    return {
+        "thscode": row.get("thscode"),
+        "ticker": row.get("ticker"),
+        "last_price": row.get("last_price", row.get("price")),
+        "price_change": row.get("price_change"),
+        "price_change_ratio_pct": row.get("price_change_ratio_pct"),
+        "open_price": row.get("open_price"),
+        "high_price": row.get("high_price"),
+        "low_price": row.get("low_price"),
+        "prev_price": row.get("prev_price"),
+        "volume": row.get("volume"),
+        "turnover": row.get("turnover"),
+        "data_timestamp_ms": timestamp_ms,
+    }
 
 
 def map_bar(row: dict[str, Any]) -> dict[str, Any]:
-    return {"date_ms": row.get("date_ms"), "date": timestamp_iso(row.get("date_ms"))[:10], "open": row.get("open_price"), "high": row.get("high_price"), "low": row.get("low_price"), "close": row.get("close_price"), "volume": row.get("volume"), "amount": row.get("turnover")}
+    return {
+        "date_ms": row.get("date_ms"),
+        "date": timestamp_iso(row.get("date_ms"))[:10],
+        "open": row.get("open_price"),
+        "high": row.get("high_price"),
+        "low": row.get("low_price"),
+        "close": row.get("close_price"),
+        "volume": row.get("volume"),
+        "amount": row.get("turnover"),
+    }
 
 
 def map_financial_row(row: dict[str, Any]) -> dict[str, Any]:
-    keys = ("thscode", "ticker", "period", "period_end_ms", "report_date_ms", "fiscal_year", "fiscal_period", "currency", "basic_eps", "operating_income", "operating_costs", "operating_expenses", "operating_profit", "profit_total", "net_profit", "parent_holder_net_profit", "income_tax_expense", "interest_expenses", "manage_fee", "sales_fee", "research_and_development_expenses", "total_current_assets", "non_current_nets_total", "assets_total", "total_debt", "holder_equity_total", "cash", "accounts_receivable", "act_cash_flow_net", "invest_cash_flow_net", "financing_cash_flow_net", "cash_equivalents_net_addition", "pay_dividends_profits_interest_cash", "pay_fixed_assets_etc_cash")
+    keys = (
+        "thscode",
+        "ticker",
+        "period",
+        "period_end_ms",
+        "report_date_ms",
+        "fiscal_year",
+        "fiscal_period",
+        "currency",
+        "basic_eps",
+        "operating_income",
+        "operating_costs",
+        "operating_expenses",
+        "operating_profit",
+        "profit_total",
+        "net_profit",
+        "parent_holder_net_profit",
+        "income_tax_expense",
+        "interest_expenses",
+        "manage_fee",
+        "sales_fee",
+        "research_and_development_expenses",
+        "total_current_assets",
+        "non_current_nets_total",
+        "assets_total",
+        "total_debt",
+        "holder_equity_total",
+        "cash",
+        "accounts_receivable",
+        "act_cash_flow_net",
+        "invest_cash_flow_net",
+        "financing_cash_flow_net",
+        "cash_equivalents_net_addition",
+        "pay_dividends_profits_interest_cash",
+        "pay_fixed_assets_etc_cash",
+    )
     return {key: row.get(key) for key in keys}
 
 
 def map_valuation(row: dict[str, Any]) -> dict[str, Any]:
-    return {key: row.get(key) for key in ("thscode", "ticker", "name", "pe_ttm", "pe_mrq", "pb_mrq", "ps_ttm", "pcf_ttm")}
+    return {
+        key: row.get(key)
+        for key in ("thscode", "ticker", "name", "pe_ttm", "pe_mrq", "pb_mrq", "ps_ttm", "pcf_ttm")
+    }
 
 
 def map_pool_row(row: dict[str, Any]) -> dict[str, Any]:
-    keys = ("thscode", "ticker", "name", "is_st", "is_new", "last_price", "price_change_ratio_pct", "limit_up_time", "first_limit_time", "last_limit_time", "limit_up_reason", "continue_day_text", "continue_day_cnt", "seal_money", "max_seal_money", "open_times", "turnover_ratio_pct", "turnover", "concept_list", "change", "buy_value", "sell_value", "net_value", "net_rate", "org_net_value", "hot_money_net_value", "hot_rank", "range_days")
+    keys = (
+        "thscode",
+        "ticker",
+        "name",
+        "is_st",
+        "is_new",
+        "last_price",
+        "price_change_ratio_pct",
+        "limit_up_time",
+        "first_limit_time",
+        "last_limit_time",
+        "limit_up_reason",
+        "continue_day_text",
+        "continue_day_cnt",
+        "seal_money",
+        "max_seal_money",
+        "open_times",
+        "turnover_ratio_pct",
+        "turnover",
+        "concept_list",
+        "change",
+        "buy_value",
+        "sell_value",
+        "net_value",
+        "net_rate",
+        "org_net_value",
+        "hot_money_net_value",
+        "hot_rank",
+        "range_days",
+    )
     return {key: row.get(key) for key in keys if key in row}

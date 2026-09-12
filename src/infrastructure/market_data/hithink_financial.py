@@ -4,7 +4,11 @@ from __future__ import annotations
 
 from typing import Any
 
-from src.infrastructure.market_data.hithink_contracts import date_text, normalize_thscode, timestamp_iso
+from src.infrastructure.market_data.hithink_contracts import (
+    date_text,
+    normalize_thscode,
+    timestamp_iso,
+)
 
 _STATEMENT_NAMES = {
     "income": "income",
@@ -15,7 +19,7 @@ _STATEMENT_NAMES = {
 
 
 def _date(value: Any) -> str:
-    if isinstance(value, (int, float)) and not isinstance(value, bool):
+    if isinstance(value, int | float) and not isinstance(value, bool):
         return timestamp_iso(value)[:10]
     return date_text(value)
 
@@ -56,7 +60,9 @@ def normalize_financial_statements(
                 }
             )
             normalized.append(row)
-        normalized.sort(key=lambda row: (row.get("end_date", ""), row.get("ann_date", "")), reverse=True)
+        normalized.sort(
+            key=lambda row: (row.get("end_date", ""), row.get("ann_date", "")), reverse=True
+        )
         result[statement_name] = normalized
     return result
 
@@ -81,9 +87,8 @@ def missing_financial_rows(
                 continue
             selected.append(row)
             known.add(period)
-            if len((existing.get(statement_name) or [])) + len(selected) >= target:
+            if len(existing.get(statement_name) or []) + len(selected) >= target:
                 break
         if selected:
             additions[statement_name] = selected
     return additions
-

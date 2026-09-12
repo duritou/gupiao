@@ -6,8 +6,8 @@ from config.settings import settings
 from src.infrastructure.market_data.eastmoney_billboard import (
     fetch_eastmoney_dragon_tiger,
 )
-from src.infrastructure.market_data.hithink_provider import hithink_provider
 from src.infrastructure.market_data.hithink_contracts import normalize_thscode
+from src.infrastructure.market_data.hithink_provider import hithink_provider
 from src.infrastructure.market_data.source_manager import source_manager
 from src.infrastructure.market_data.vibe_provider import get_vibe_provider
 

@@ -18,9 +18,7 @@ def test_normalize_financial_statements_preserves_period_and_nulls():
                         "net_profit": None,
                     }
                 ],
-                "balance": [
-                    {"period_end_ms": 1767139200000, "assets_total": 100}
-                ],
+                "balance": [{"period_end_ms": 1767139200000, "assets_total": 100}],
             }
         },
         "600519.SH",

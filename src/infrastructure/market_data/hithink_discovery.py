@@ -47,7 +47,7 @@ def _row(item: dict[str, Any], *, rank: int, kind: str) -> dict[str, Any] | None
         }.get(kind, "HiThink特色数据")
     raw_rank = item.get("hot_rank") or item.get("rank")
     try:
-        normalized_rank = int(float(raw_rank)) if raw_rank not in (None, "") else rank
+        normalized_rank = int(float(str(raw_rank))) if raw_rank not in (None, "") else rank
     except (TypeError, ValueError):
         normalized_rank = rank
     return {
@@ -102,7 +102,11 @@ async def fetch_hithink_special(
         except Exception as exc:
             failures.append({"source": source_name, "error_type": type(exc).__name__})
             continue
-        rows = payload.data.get("item", []) if kind != "dragon_tiger" else payload.data.get("stock_items", [])
+        rows = (
+            payload.data.get("item", [])
+            if kind != "dragon_tiger"
+            else payload.data.get("stock_items", [])
+        )
         normalized = _rows(rows, kind=kind)
         sources[source_name] = normalized
         successes.append(

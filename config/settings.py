@@ -15,6 +15,8 @@ from investment_common import load_runtime_env, runtime_value  # noqa: E402
 
 load_runtime_env(_PROJECT_ROOT)
 
+_HITHINK_MODE = Literal["disabled", "shadow", "fallback", "validator", "primary"]
+
 
 class Settings(BaseSettings):
     """应用全局配置 — 所有配置项有类型注解 + 默认值 + 描述"""
@@ -92,12 +94,12 @@ class Settings(BaseSettings):
     HITHINK_MIN_INTERVAL_SECONDS: float = 0.25
     HITHINK_FAILURE_THRESHOLD: int = 3
     HITHINK_COOLDOWN_SECONDS: float = 60.0
-    HITHINK_SYMBOL_MODE: Literal["disabled", "shadow", "fallback", "validator", "primary"] = "shadow"
-    HITHINK_VALUATION_MODE: Literal["disabled", "shadow", "fallback", "validator", "primary"] = "shadow"
-    HITHINK_SPECIAL_MODE: Literal["disabled", "shadow", "fallback", "validator", "primary"] = "shadow"
-    HITHINK_DAILY_MODE: Literal["disabled", "shadow", "fallback", "validator", "primary"] = "validator"
-    HITHINK_FINANCIAL_MODE: Literal["disabled", "shadow", "fallback", "validator", "primary"] = "validator"
-    HITHINK_REALTIME_MODE: Literal["disabled", "shadow", "fallback", "validator", "primary"] = "shadow"
+    HITHINK_SYMBOL_MODE: _HITHINK_MODE = "shadow"
+    HITHINK_VALUATION_MODE: _HITHINK_MODE = "shadow"
+    HITHINK_SPECIAL_MODE: _HITHINK_MODE = "shadow"
+    HITHINK_DAILY_MODE: _HITHINK_MODE = "validator"
+    HITHINK_FINANCIAL_MODE: _HITHINK_MODE = "validator"
+    HITHINK_REALTIME_MODE: _HITHINK_MODE = "shadow"
     # Optional authenticated primary for real-time quotes and daily K-lines.
     # The key remains local in .env and is never persisted in decisions.
     TICKFLOW_API_KEY: str | None = None

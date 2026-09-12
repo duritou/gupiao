@@ -73,9 +73,7 @@ async def test_hithink_kline_dispatch_returns_dated_non_live_bars(monkeypatch):
     monkeypatch.setattr(source_manager_module, "hithink_provider", _FakeHiThink())
     monkeypatch.setattr(settings, "HITHINK_DAILY_MODE", "validator")
 
-    bars, provenance = await source_manager._dispatch_kline(
-        "hithink", "600519.SH", 2
-    )
+    bars, provenance = await source_manager._dispatch_kline("hithink", "600519.SH", 2)
 
     assert bars is not None
     assert [bar["date"] for bar in bars] == ["2026-09-10", "2026-09-11"]
@@ -89,9 +87,7 @@ def test_hithink_is_not_ranked_when_daily_mode_is_shadow_or_disabled(monkeypatch
     monkeypatch.setattr(source_manager_module, "hithink_provider", _FakeHiThink())
     for mode in ("shadow", "disabled"):
         monkeypatch.setattr(settings, "HITHINK_DAILY_MODE", mode)
-        assert "hithink" not in source_manager._get_ranked_providers(
-            "600519.SH", "daily_kline"
-        )
+        assert "hithink" not in source_manager._get_ranked_providers("600519.SH", "daily_kline")
 
 
 @pytest.mark.asyncio

@@ -105,11 +105,7 @@ async def test_shadow_observation_does_not_change_candidates_or_scores(monkeypat
 
     async def shadow(day, limit):
         return HiThinkDiscoveryResult(
-            sources={
-                "hithink_limit_up": [
-                    {"code": "000001.SZ", "name": "额外样本", "rank": 1}
-                ]
-            },
+            sources={"hithink_limit_up": [{"code": "000001.SZ", "name": "额外样本", "rank": 1}]},
             observation={"status": "ok", "row_count": 1},
         )
 

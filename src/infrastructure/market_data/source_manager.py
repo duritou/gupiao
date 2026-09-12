@@ -529,6 +529,8 @@ class SourceManager:
             if name == "hithink" and not hithink_provider.configured:
                 continue
             if name == "hithink":
+                if capability != "daily_kline":
+                    continue
                 from config.settings import settings
                 if str(getattr(settings, "HITHINK_DAILY_MODE", "disabled")) in {
                     "disabled",
