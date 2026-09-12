@@ -6,8 +6,8 @@
 - 工作区：`adaptive-investment-intelligence`
 - 开工分支：`codex/pre-hithink-optimization-20260912`
 - 优化前备份提交：`75759e1`
-- 当前方案提交：`78a03bc`
-- 当前源码 HEAD：`78a03bc`（日线/财务 fallback、财务指标一致性审计、canary 探针/调度与多标的矩阵、最近完成财报期选择、非交易日龙虎榜取最近交易日、消歧与健康接口及基础设施复跑已提交）
+- 当前方案提交：`173dddb`
+- 当前源码 HEAD：`173dddb`（后端 HiThink 路由/探针/调度与多标的矩阵、最近完成财报期选择、非交易日龙虎榜取最近交易日，以及 VS Code 健康页展示已提交）
 - 远程备份：`origin/codex/pre-hithink-optimization-20260912`
 - 工作区状态：已有 197 项未跟踪运行产物/临时文件；本轮未删除、未纳入 HiThink 方案提交
 - 默认数据库路径：`data/sqlite/quant.db`（实际运行路径仍以用户级 `ADAPTIVE_DATABASE_URL` 为准）
@@ -46,6 +46,7 @@
 | HiThink 在线多标的矩阵 | `test-reports/canary-20260912-hithink-live-matrix.md`：32/32 成功 | 8 标的 × 4 capability 单次验证；最近已完成财报期修正后无失败 |
 | HiThink 特色能力周末补测 | `test-reports/canary-20260912-hithink-live-matrix.md`：3/3 成功 | 涨停池/炸板池允许合法空集；龙虎榜省略日期取最近交易日，避免周末误报 |
 | HiThink 短周期重复稳定性 | `test-reports/canary-20260912-hithink-repeat.md`：99/99 成功 | 3 轮核心矩阵（96）+ 特色能力（3），未出现间歇性失败 |
+| VS Code 前端健康页编译 | `test-reports/unit-20260912-hithink-frontend.md`：编译通过 | 展示 HiThink 脱敏健康、按能力统计和 rollout；旧后端缺接口时兼容降级 |
 
 ## 分阶段状态
 
