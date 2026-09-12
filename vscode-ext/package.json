@@ -2,9 +2,8 @@
   "name": "quantai-research-terminal",
   "displayName": "Adaptive Investment Intelligence",
   "description": "Adaptive Investment Intelligence Platform — AI learns markets, proves itself, and learns YOU.",
-  "version": "1.0.0",
+  "version": "1.1.6",
   "publisher": "quantai",
-  "icon": "icon.png",
   "engines": {
     "vscode": "^1.85.0"
   },
@@ -15,6 +14,14 @@
   "main": "./out/extension.js",
   "contributes": {
     "commands": [
+      {
+        "command": "quantai.terminal",
+        "title": "AIIP: 打开研究终端"
+      },
+      {
+        "command": "quantai.addWatch",
+        "title": "AIIP: 添加自选股"
+      },
       {
         "command": "quantai.journal",
         "title": "AIIP: 决策日志"
@@ -64,6 +71,58 @@
         "title": "AIIP: 每日简报"
       },
       {
+        "command": "quantai.newsradar",
+        "title": "AIIP: 新闻雷达"
+      },
+      {
+        "command": "quantai.reports",
+        "title": "AIIP: 研报管理"
+      },
+      {
+        "command": "quantai.announcements",
+        "title": "AIIP: 公告中心"
+      },
+      {
+        "command": "quantai.financials",
+        "title": "AIIP: 财务数据"
+      },
+      {
+        "command": "quantai.valuation",
+        "title": "AIIP: 估值数据"
+      },
+      {
+        "command": "quantai.fundflow",
+        "title": "AIIP: 资金流向"
+      },
+      {
+        "command": "quantai.dragonTiger",
+        "title": "AIIP: 龙虎榜"
+      },
+      {
+        "command": "quantai.aios",
+        "title": "AIIP: AI OS"
+      },
+      {
+        "command": "quantai.taskmonitor",
+        "title": "AIIP: 任务监控"
+      },
+      {
+        "command": "quantai.replay",
+        "title": "AIIP: 决策回放"
+      },
+      {
+        "command": "quantai.health",
+        "title": "AIIP: 系统健康"
+      },
+      {
+        "command": "quantai.connectors",
+        "title": "AIIP: 数据连接器"
+      },
+      {
+        "command": "quantai.decisions",
+        "title": "AIIP: 决策中心"
+      },
+      {
         "command": "quantai.scan",
         "title": "AIIP: 全市场扫描"
       },
@@ -94,6 +153,10 @@
       {
         "command": "quantai.restartServer",
         "title": "AIIP: 重启后端服务（杀旧进程）"
+      },
+      {
+        "command": "quantai.configureBackend",
+        "title": "AIIP: 选择后端目录"
       }
     ],
     "viewsContainers": {
@@ -101,7 +164,7 @@
         {
           "id": "quantai-sidebar",
           "title": "Adaptive Investment Intelligence",
-          "icon": "$(graph-line)"
+          "icon": "resources/adaptive-investment.svg"
         }
       ]
     },

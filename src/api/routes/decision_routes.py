@@ -4,21 +4,110 @@ v7.5 data migration: /today now uses real baostock data.
 """
 
 from datetime import date
+
+# This module also exposes the auditable next-session market-learning status.
 from fastapi import APIRouter, Query
 
+from src.api.routes.journal_utils import (
+    latest_per_stock,
+    recommended_codes,
+    stock_name_from_journal,
+)
+from src.explain.calibration import calibration_engine
+from src.explain.case_retrieval import case_retriever
+from src.explain.committee import committee
 from src.explain.decision_center import decision_center
 from src.explain.evidence_quality import (
-    grader, archive_case, get_case, get_case_library_stats, get_research_coverage,
+    archive_case,
+    get_case,
+    get_case_library_stats,
+    get_research_coverage,
+    grader,
 )
-from src.explain.portfolio_intelligence import portfolio_intelligence
-from src.explain.committee import committee
-from src.explain.calibration import calibration_engine
 from src.explain.governance import governance_engine
+from src.explain.portfolio_intelligence import portfolio_intelligence
 from src.explain.premortem import premortem_engine
-from src.explain.case_retrieval import case_retriever
-from src.api.routes.journal_utils import recommended_codes, stock_name_from_journal
 
 router = APIRouter(tags=["decision"], prefix="/decision")
+
+
+@router.post("/backfill")
+async def backfill_decisions(
+    min_calendar_days: int = Query(9, ge=1, le=60, description="决策距今最少 N 个日历天(默认 9 ≈ 5 交易日 + 缓冲)"),
+):
+    """手动触发决策结果回填(后台执行,立即返回)。
+
+    对到期未验证决策(outcome_known=0 且 decision_date 距今 >= min_calendar_days),
+    对比决策后 5 个交易日真实收益(个股 vs 沪深300 基准),回填 was_correct/actual_return,
+    并喂给 Calibration。幂等,可重复执行。
+    """
+    import asyncio
+
+    from src.explain.outcome_backfiller import _backfill_state, backfill_async, get_backfill_status
+
+    if _backfill_state["running"]:
+        return {"status": "already_running", **get_backfill_status()}
+
+    asyncio.create_task(backfill_async(min_calendar_days))
+    return {
+        "status": "started",
+        "min_calendar_days": min_calendar_days,
+        "n_trading_days": 5,
+        "benchmark": "沪深300 (sh.000300)",
+        "note": "后台回填中,用 GET /decision/backfill/status 查进度",
+    }
+
+
+@router.get("/backfill/status")
+async def backfill_status():
+    """查询决策回填进度 + 当前决策统计。"""
+    from src.explain.outcome_backfiller import get_backfill_status
+    from src.infrastructure.storage.market_database import market_db
+    profiles = {
+        str(horizon): market_db.get_market_learning_profile(horizon_days=horizon)
+        for horizon in (1, 5, 20)
+    }
+    return {
+        **get_backfill_status(),
+        "decision_stats": market_db.get_decision_stats(),
+        "market_learning": profiles["1"],
+        "market_learning_horizons": profiles,
+    }
+
+
+@router.get("/market-learning")
+async def market_learning_status():
+    """Show what the real next-session feedback loop has actually learned."""
+    from src.infrastructure.storage.market_database import market_db
+
+    profiles = {
+        horizon: market_db.get_market_learning_profile(horizon_days=horizon)
+        for horizon in (1, 5, 20)
+    }
+    profile = profiles[1]
+    recent = [
+        item for item in market_db.get_learning_log(limit=20)
+        if item.get("category") in {"remote_market_snapshot", "market_feedback"}
+    ]
+    return {
+        "status": "learning" if profile["total_observations"] else "collecting_samples",
+        "data_policy": "remote daily discovery; SQLite audit cache/fallback",
+        "learning_policy": {
+            "horizon": "next trading session vs CSI 300",
+            "decisive_directions": ["buy", "sell"],
+            "symbol_min_observations": 2,
+            "symbol_adjustment_cap": 8,
+            "source_min_observations": 3,
+            "source_adjustment_cap": 3,
+        },
+        "profile": profile,
+        "horizon_profiles": {str(horizon): value for horizon, value in profiles.items()},
+        "active_horizons": [
+            horizon for horizon, value in profiles.items()
+            if value.get("decisive_observations", 0) >= {1: 2, 5: 20, 20: 40}[horizon]
+        ],
+        "recent_daily_records": recent[:6],
+    }
 
 # Configurable watchlist 鈥?user's tracked stocks
 # In future, this comes from user settings / CSV import
@@ -30,27 +119,52 @@ async def daily_decisions():
     Run the pipeline first to populate the journal, then this endpoint
     returns the latest decisions ranked by AI score.
     """
+    from src.ai_os.recommendation_quality import (
+        apply_decision_display_fields,
+        is_publishable_recommendation,
+        sort_decisions,
+    )
     from src.infrastructure.storage.market_database import market_db
 
-    # Read latest decisions from the journal (persisted by pipeline runner)
-    decisions = market_db.get_recent_decisions(limit=20)
+    today = date.today().isoformat()
+    all_decisions = latest_per_stock(
+        market_db.get_decisions_for_date(today, limit=5000)
+    )
+    for item in all_decisions:
+        apply_decision_display_fields(item)
+    decisions = sort_decisions(
+        [item for item in all_decisions if is_publishable_recommendation(item)]
+    )
     journal_stats = market_db.get_decision_stats()
 
     if not decisions:
         return {
-            "date": date.today().isoformat(),
+            "date": today,
             "total_items": 0,
             "urgent_count": 0,
+            "blocked_count": len(all_decisions),
+            "recommendation_available": False,
             "data_source": "decision_journal (SQLite)",
-            "data_note": "No decision journal records. Run POST /ai-os/run-pipeline first.",
+            "data_note": (
+                "今天没有通过深度分析和证据门槛的有效推荐；"
+                "数据不足的候选仅保留在审计记录中。"
+                if all_decisions else
+                "No decisions were produced today. Run POST /ai-os/run-pipeline to refresh."
+            ),
             "decisions": [],
-            "summary": "The AI decision pipeline has not produced recommendations yet.",
+            "summary": (
+                "今天没有可发布的可靠推荐。"
+                if all_decisions else
+                "The AI decision pipeline has not produced recommendations yet."
+            ),
         }
 
     # Format for frontend consumption
     items = []
     for d in decisions:
-        score = d.get("ai_score", 50)
+        score = d.get("primary_score")
+        if score is None:
+            score = d.get("action_score", d.get("ai_score", 50))
         if score >= 80:
             urgency = "today"
             emoji = "馃煝"
@@ -69,10 +183,55 @@ async def daily_decisions():
             "stock_code": d.get("stock_code", ""),
             "stock_name": d.get("stock_name", ""),
             "ai_score": round(score, 1),
+            "primary_score": d.get("primary_score", score),
+            "primary_score_label": d.get("primary_score_label", "研究评分"),
+            "research_score": d.get("research_score"),
+            "ranking_score_label": d.get("ranking_score_label", "机会排名分"),
+            "scanner_score": d.get("scanner_score"),
+            "ranking_score": round(
+                float(d.get("ranking_score") or d.get("raw_ai_score") or score), 1
+            ),
+            "action_score": round(float(d.get("action_score") or score), 1),
+            "score_display": d.get("score_display") or {},
+            "preselection_base_score": d.get("preselection_base_score"),
+            "preselection_adjusted_score": d.get("preselection_adjusted_score"),
+            "deep_base_score": d.get("deep_base_score"),
+            "deep_score": d.get("deep_score"),
+            "deep_kline_evidence": d.get("deep_kline_evidence") or {},
+            "score_lineage": d.get("score_lineage") or {},
             "recommendation": d.get("recommendation", ""),
+            "display_state": d.get("display_state", "research_pending"),
+            "display_state_label": d.get("display_state_label", "分析待完成"),
             "recommendation_emoji": emoji,
             "urgency": urgency,
             "direction": d.get("direction", "neutral"),
+            "decision_status": d.get("decision_status", "unknown"),
+            "recommendation_tier": d.get("recommendation_tier", "research_complete"),
+            "score_guarded": bool(d.get("score_guarded")),
+            "score_guard_reasons": d.get("score_guard_reasons") or [],
+            "deep_rating": d.get("deep_rating") or "",
+            "deep_analysis_available": bool(d.get("deep_analysis_available")),
+            "final_review_available": bool(d.get("final_review_available")),
+            "final_review_verdict": d.get("final_review_verdict") or "",
+            "final_buy_approved": d.get("final_buy_approved"),
+            "pre_gate_direction": d.get("pre_gate_direction", ""),
+            "flow_state": d.get("flow_state", d.get("flow_status", "")),
+            "flow_sources": d.get("flow_sources") or [],
+            "fallback_attempted": bool(d.get("fallback_attempted")),
+            "fallback_status": d.get("fallback_status", ""),
+            "gate_reasons": d.get("gate_reasons") or [],
+            "non_flow_gates_passed": bool(d.get("non_flow_gates_passed")),
+            "execution_disposition": d.get("execution_disposition", "blocked"),
+            "execution_block_reason": d.get("execution_block_reason", ""),
+            "execution_status_label": d.get(
+                "execution_status_label", "等待执行确认"
+            ),
+            "execution_quote_verified": bool(d.get("execution_quote_verified")),
+            "market_evidence_sources": d.get("market_evidence_sources") or [],
+            "market_evidence_reasons": d.get("market_evidence_reasons") or [],
+            "evidence_enrichment": d.get("evidence_enrichment") or {},
+            "quote_enrichment_status": d.get("quote_enrichment_status"),
+            "quote_enrichment_reason": d.get("quote_enrichment_reason"),
             "confidence": round(d.get("confidence", 0), 2),
             "primary_reason": d.get("recommendation", ""),
             "evidence_count": sum(1 for s in [
@@ -85,16 +244,21 @@ async def daily_decisions():
             "net_score": score - 50,
         })
 
-    items.sort(key=lambda x: -x["ai_score"])
     for i, item in enumerate(items):
         item["rank"] = i + 1
 
     return {
-        "date": date.today().isoformat(),
+        "date": today,
         "total_items": len(items),
+        "blocked_count": len(all_decisions) - len(decisions),
+        "recommendation_available": bool(items),
         "urgent_count": sum(1 for d in items if d["urgency"] == "today"),
         "data_source": "decision_journal (SQLite, real AI pipeline)",
-        "data_note": f"AI pipeline journal: {journal_stats['total_decisions']} decisions, {journal_stats['verified_decisions']} verified.",
+        "data_note": (
+            f"Today's AI pipeline produced {len(items)} publishable decisions; "
+            f"Journal total: {journal_stats['total_decisions']}, "
+            f"verified: {journal_stats['verified_decisions']}."
+        ),
         "decisions": items,
         "summary": (
             f"AI pipeline has produced {journal_stats['total_decisions']} real decisions. "
@@ -441,4 +605,3 @@ async def similar_cases(
         limit=top_n,
     )
     return report.to_dict()
-

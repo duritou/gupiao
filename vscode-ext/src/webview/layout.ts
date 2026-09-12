@@ -43,7 +43,7 @@ export function getPageTitle(page: string): string {
 
 export function buildNav(active: string): string {
     return `<div class="nav">${NAV_ITEMS.map(i =>
-        `<span class="nav-item${i.id === active ? ' active' : ''}" onclick="navigate('${i.id}')">${i.label}</span>`
+        `<button type="button" class="nav-item${i.id === active ? ' active' : ''}" onclick="navigate('${i.id}')">${i.label}</button>`
     ).join('')}</div>`;
 }
 
@@ -58,8 +58,10 @@ const vscode = acquireVsCodeApi();
 function navigate(page) { vscode.postMessage({command:'navigate',page}); }
 function analyzeStock(code) { vscode.postMessage({command:'analyze',code}); }
 function addToWatchlist() { vscode.postMessage({command:'addWatch'}); }
+function removeFromWatchlist(code) { vscode.postMessage({command:'removeWatch',code}); }
 function compareStocks() { vscode.postMessage({command:'compare'}); }
 function showTimeline() { vscode.postMessage({command:'timeline'}); }
-${extraScript}
-</script></body></html>`;
+</script>
+<script>${extraScript}</script>
+</body></html>`;
 }

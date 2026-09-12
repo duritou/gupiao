@@ -1,0 +1,59 @@
+{
+  "metadata": {
+    "fixture_type": "anonymized_contract_sample",
+    "performance_evidence": false,
+    "lookahead_safe": true,
+    "expected_historical_gate": "insufficient_history"
+  },
+  "snapshots": [
+    {
+      "trade_date": "2026-08-21",
+      "baseline": [
+        {"stock_code": "000001.SZ", "direction": "buy", "actionable": true}
+      ],
+      "candidate": [
+        {"stock_code": "000001.SZ", "direction": "buy", "actionable": true}
+      ],
+      "outcomes": {"000001.SZ": 1.0},
+      "lookahead_safe": true
+    },
+    {
+      "trade_date": "2026-08-24",
+      "baseline": [],
+      "candidate": [
+        {"stock_code": "000002.SZ", "direction": "buy", "actionable": true}
+      ],
+      "outcomes": {"000002.SZ": -1.0},
+      "lookahead_safe": true
+    },
+    {
+      "trade_date": "2026-08-25",
+      "baseline": [
+        {"stock_code": "000003.SZ", "direction": "sell", "actionable": true}
+      ],
+      "candidate": [
+        {"stock_code": "000003.SZ", "direction": "sell", "actionable": true}
+      ],
+      "outcomes": {"000003.SZ": 0.5},
+      "lookahead_safe": true
+    },
+    {
+      "trade_date": "2026-08-31",
+      "baseline": [],
+      "candidate": [],
+      "outcomes": {},
+      "lookahead_safe": true
+    },
+    {
+      "trade_date": "2026-09-01",
+      "baseline": [
+        {"stock_code": "000004.SZ", "direction": "buy", "actionable": true}
+      ],
+      "candidate": [
+        {"stock_code": "000004.SZ", "direction": "buy", "actionable": true}
+      ],
+      "outcomes": {"000004.SZ": 0.8},
+      "lookahead_safe": true
+    }
+  ]
+}

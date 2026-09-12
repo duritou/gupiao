@@ -212,6 +212,7 @@ class ResearchSnapshotBuilder:
                         "macd": sig.macd_score, "rsi": sig.rsi_score,
                         "kdj": sig.kdj_score, "ma": sig.ma_score,
                         "volume": sig.volume_score,
+                        "boll": sig.boll_score,
                     }
                     fm = sig.fusion_score
                     snap.recommendation = (
@@ -220,7 +221,7 @@ class ResearchSnapshotBuilder:
                         else "卖出"
                     )
                     sl = [sig.macd_score, sig.rsi_score, sig.kdj_score,
-                          sig.ma_score, sig.volume_score]
+                          sig.ma_score, sig.volume_score, sig.boll_score]
                     snap.buy_signals = sum(1 for s in sl if s >= 65)
                     snap.sell_signals = sum(1 for s in sl if s <= 35)
                     snap.stars = (
@@ -231,7 +232,7 @@ class ResearchSnapshotBuilder:
                         "type": "technical",
                         "source": sig.data_source,
                         "description": (
-                            f"MACD/RSI/KDJ/MA/Volume 信号从 "
+                            f"MACD/RSI/KDJ/MA/Volume/BOLL 信号从 "
                             f"{sig.data_days} 根真实日线计算"
                         ),
                         "confidence": sig.confidence,

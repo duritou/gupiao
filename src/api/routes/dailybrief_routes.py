@@ -16,4 +16,4 @@ async def latest_brief():
 @router.post("/generate")
 async def generate_brief():
     """Regenerate today's brief from real journal data."""
-    return await build_real_brief()
+    return await build_real_brief(force_refresh=True)

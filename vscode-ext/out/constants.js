@@ -1,8 +1,66 @@
 "use strict";
 /** Shared constants for the Adaptive Investment Intelligence Platform extension. */
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.TERMINAL_CSS = exports.PAGE_TITLES = exports.NAV_ITEMS = exports.BASE_URL = void 0;
-exports.BASE_URL = 'http://127.0.0.1:8888/api/v1';
+exports.TERMINAL_CSS = exports.PAGE_TITLES = exports.NAV_ITEMS = exports.BASE_URL = exports.ADAPTIVE_API_PORT = exports.ADAPTIVE_API_HOST = void 0;
+const fs = __importStar(require("fs"));
+const path = __importStar(require("path"));
+function readRuntimeEnv() {
+    const candidates = [
+        process.env.INVESTMENT_RUNTIME_CONFIG,
+        path.resolve(__dirname, '../../../config/runtime.env'),
+    ].filter((candidate) => Boolean(candidate));
+    for (const file of candidates) {
+        if (!fs.existsSync(file))
+            continue;
+        const values = {};
+        for (const raw of fs.readFileSync(file, 'utf8').split(/\r?\n/)) {
+            const line = raw.trim();
+            if (!line || line.startsWith('#') || !line.includes('='))
+                continue;
+            const index = line.indexOf('=');
+            values[line.slice(0, index).trim()] = line.slice(index + 1).trim();
+        }
+        return values;
+    }
+    return {};
+}
+const runtime = readRuntimeEnv();
+exports.ADAPTIVE_API_HOST = process.env.ADAPTIVE_API_HOST || runtime.ADAPTIVE_API_HOST || '127.0.0.1';
+exports.ADAPTIVE_API_PORT = Number(process.env.ADAPTIVE_API_PORT || runtime.ADAPTIVE_API_PORT || 8888);
+exports.BASE_URL = `http://${exports.ADAPTIVE_API_HOST}:${exports.ADAPTIVE_API_PORT}/api/v1`;
 exports.NAV_ITEMS = [
     { id: 'dashboard', label: 'Dashboard' },
     { id: 'portfolio', label: 'Portfolio' },
@@ -44,6 +102,9 @@ body{font-family:'Segoe UI',system-ui,-apple-system,sans-serif;background:#0d111
 .tag{display:inline-block;padding:2px 10px;margin:2px;border-radius:12px;font-size:12px;white-space:nowrap}
 .tag-up{background:#1b3a1b;color:#3fb950} .tag-down{background:#3a1b1b;color:#f85149}
 .tag-info{background:#1b2d3a;color:#58a6ff} .tag-warn{background:#3a351b;color:#d2991d}
+.tag-muted{background:#21262d;color:#8b949e}
+.alert{padding:12px 16px;border-radius:6px;border:1px solid;margin:8px 0;font-size:13px}
+.alert-warn{background:#3a351b;border-color:#d2991d;color:#d2991d}
 .stock-row{display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid #21262d;cursor:pointer}
 .stock-row:hover{background:#1c2128}
 .stock-name{font-weight:600}.stock-code{color:#8b949e;font-size:12px}
@@ -54,7 +115,7 @@ body{font-family:'Segoe UI',system-ui,-apple-system,sans-serif;background:#0d111
 .btn-sm{padding:4px 10px;font-size:11px}
 .pulse{animation:pulse 2s infinite}@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.5}}
 .nav{display:flex;gap:4px;padding:8px 24px;background:#0d1117;border-bottom:1px solid #30363d;overflow-x:auto}
-.nav-item{padding:8px 16px;border-radius:6px 6px 0 0;cursor:pointer;color:#8b949e;font-size:13px;white-space:nowrap;border:1px solid transparent}
+.nav-item{padding:8px 16px;border-radius:6px 6px 0 0;cursor:pointer;color:#8b949e;font:inherit;font-size:13px;white-space:nowrap;border:1px solid transparent;background:transparent}
 .nav-item:hover{color:#c9d1d9;background:#161b22}
 .nav-item.active{color:#58a6ff;border-color:#30363d;border-bottom-color:#0d1117;background:#161b22}
 table{width:100%;border-collapse:collapse}th,td{padding:8px 12px;text-align:left;border-bottom:1px solid #21262d;font-size:13px}

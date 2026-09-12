@@ -1,7 +1,6 @@
 /** Data Connectors v7.4 — manage all data sources at a glance. */
 
 import { pageShell } from '../webview/layout';
-import { BASE_URL } from '../constants';
 
 export function buildConnectorsPage(data: any): string {
     const status = data.dataStatus || {};
@@ -64,8 +63,8 @@ ${ranking.length > 0 ? ranking.map((p: any) => `
 <div style="font-size:10px;color:#8b949e;text-align:center">${(p.reliability * 100).toFixed(1)}%</div>
 </div>
 <div style="width:60px;text-align:right">
-<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${p.status ? '#22C55E' : '#EF4444'}"></span>
-<span style="font-size:11px;color:${p.status ? '#22C55E' : '#EF4444'};margin-left:4px">${p.status ? 'UP' : 'DOWN'}</span>
+<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${p.state === 'untested' ? '#6B7280' : p.status ? '#22C55E' : '#EF4444'}"></span>
+<span style="font-size:11px;color:${p.state === 'untested' ? '#8b949e' : p.status ? '#22C55E' : '#EF4444'};margin-left:4px">${p.state === 'untested' ? 'UNTESTED' : p.status ? 'UP' : 'DOWN'}</span>
 </div>
 </div>`).join('') : '<div class="empty-state"><p>No provider data yet</p></div>'}
 </div></div>
@@ -103,11 +102,7 @@ ${(layer.sources || []).map((s: any) => {
     const extraScript = `
 let connInterval;
 async function refreshConnectors() {
-    try {
-        await fetch('${BASE_URL}/market/data-status');
-        await fetch('${BASE_URL}/market/registry');
-        document.getElementById('lastUpdate').textContent = new Date().toLocaleTimeString('zh-CN');
-    } catch(e) {}
+    vscode.postMessage({command:'refreshPage'});
 }
 function startAutoRefresh() { refreshConnectors(); connInterval = setInterval(refreshConnectors, 60000); }
 function stopAutoRefresh() { clearInterval(connInterval); }

@@ -1,156 +1,240 @@
-"""Replay & Simulation Engine Routes — v7.1.
+"""Point-in-time Replay, policy comparison, and observed-path simulation routes."""
 
-  POST /replay/freeze       — Freeze world state at a date
-  POST /replay/rerun        — Deterministic rerun
-  POST /replay/compare      — Compare model versions
-  POST /replay/simulate     — Scenario simulation
-  GET  /replay/history      — Past replay runs
-  GET  /replay/report/{date} — Replay report for a date
-"""
+from datetime import date
 
-from fastapi import APIRouter, Query
-from pydantic import BaseModel
+from fastapi import APIRouter, HTTPException, Query
+from pydantic import BaseModel, Field
 
 from src.replay.engine import get_replay_engine
 
 router = APIRouter(tags=["replay"], prefix="/replay")
 
 
+def _today() -> str:
+    return date.today().isoformat()
+
+
+def _validated_date(value: str) -> str:
+    try:
+        return date.fromisoformat(value).isoformat()
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail="target_date must be YYYY-MM-DD") from exc
+
+
 class FreezeRequest(BaseModel):
-    target_date: str = "2024-09-10"
-    pool_size: int = 30
-    knowledge_version: str = "v12"
-    prompt_version: str = "v5.1"
-    model_version: str = "v6.0"
+    target_date: str = Field(default_factory=_today)
+    pool_size: int = Field(default=200, ge=1, le=500)
+    knowledge_version: str = "journal"
+    prompt_version: str = "journal"
+    model_version: str = "balanced-v2"
+    horizon_days: int = Field(default=5, ge=1, le=20)
+    metadata_policy: str = "auto"
 
 
 class CompareRequest(BaseModel):
-    target_date: str = "2024-09-10"
-    versions: list[str] = ["v4.0", "v4.2", "v5.0", "v6.0"]
+    target_date: str = Field(default_factory=_today)
+    versions: list[str] = Field(
+        default_factory=lambda: ["technical-v1", "balanced-v2", "defensive-v2"]
+    )
+    pool_size: int = Field(default=200, ge=1, le=500)
+    horizon_days: int = Field(default=5, ge=1, le=20)
+    metadata_policy: str = "auto"
 
 
 class SimulateRequest(BaseModel):
-    target_date: str = "2024-09-10"
-    scenarios: list[dict] = []
+    target_date: str = Field(default_factory=_today)
+    scenarios: list[dict] = Field(default_factory=list)
+    pool_size: int = Field(default=200, ge=1, le=500)
+    metadata_policy: str = "auto"
+
+
+@router.get("/dates")
+async def replay_dates(limit: int = Query(60, ge=1, le=365)):
+    """Dates with exact journal snapshots and local bar availability."""
+    from src.infrastructure.storage.market_database import market_db
+
+    engine = get_replay_engine()
+    dates = market_db.get_replay_dates(limit=limit)
+    return {
+        "dates": dates,
+        "default_date": next(
+            (item["date"] for item in dates if item["evaluation_ready"]),
+            dates[0]["date"] if dates else "",
+        ),
+        "models": engine.available_models(),
+        "data_source": "decision_journal + market_daily",
+    }
 
 
 @router.post("/freeze")
 async def freeze_world(req: FreezeRequest):
-    """Layer 1: Freeze entire world state at a point in time."""
+    """Freeze exact-date decisions and point-in-time market breadth."""
     engine = get_replay_engine()
     ctx = engine.freeze_world(
-        target_date=req.target_date,
+        target_date=_validated_date(req.target_date),
+        pool_size=req.pool_size,
         knowledge_version=req.knowledge_version,
         prompt_version=req.prompt_version,
         model_version=req.model_version,
+        metadata_policy=req.metadata_policy,
     )
     return {"context": ctx.to_dict()}
 
 
 @router.post("/rerun")
 async def rerun(req: FreezeRequest):
-    """Layer 2: Deterministic rerun of the AI pipeline."""
+    """Recompute signals using only bars observable at the selected date."""
     engine = get_replay_engine()
     ctx = engine.freeze_world(
-        target_date=req.target_date,
+        target_date=_validated_date(req.target_date),
+        pool_size=req.pool_size,
         knowledge_version=req.knowledge_version,
         prompt_version=req.prompt_version,
         model_version=req.model_version,
+        metadata_policy=req.metadata_policy,
     )
-    result = await engine.rerun(ctx)
+    result = await engine.rerun(ctx, horizon_days=req.horizon_days)
     return result.to_dict()
 
 
 @router.post("/compare")
 async def compare_models(req: CompareRequest):
-    """Layer 3: Compare AI model versions on same historical data."""
+    """Compare real scoring policies on one frozen universe and future path."""
     engine = get_replay_engine()
-    result = await engine.compare_models(req.target_date, req.versions)
+    result = await engine.compare_models(
+        _validated_date(req.target_date),
+        req.versions,
+        pool_size=req.pool_size,
+        horizon_days=req.horizon_days,
+        metadata_policy=req.metadata_policy,
+    )
     return result.to_dict()
 
 
 @router.post("/simulate")
 async def simulate(req: SimulateRequest):
-    """Layer 4: Run what-if scenarios."""
+    """Evaluate threshold/position/holding scenarios on observed future bars."""
     engine = get_replay_engine()
-    result = await engine.simulate(req.target_date, req.scenarios or None)
+    result = await engine.simulate(
+        _validated_date(req.target_date),
+        req.scenarios or None,
+        pool_size=req.pool_size,
+        metadata_policy=req.metadata_policy,
+    )
     return result.to_dict()
 
 
 @router.get("/history")
-async def replay_history():
-    """Past replay runs."""
-    engine = get_replay_engine()
-    history = {}
-    for date_str, runs in engine._replay_runs.items():
-        history[date_str] = [r.to_dict() for r in runs]
-    return {"history": history, "total_dates": len(history)}
+async def replay_history(limit: int = Query(50, ge=1, le=200)):
+    """Persisted replay history; survives backend and extension restarts."""
+    from src.infrastructure.storage.market_database import market_db
+
+    runs = market_db.get_replay_runs(limit=limit)
+    return {
+        "runs": runs,
+        "total_runs": len(runs),
+        "data_source": "replay_run",
+    }
 
 
 @router.get("/report/{target_date}")
-async def replay_report(target_date: str):
-    """Generate a complete replay report for a date."""
+async def replay_report(
+    target_date: str,
+    pool_size: int = Query(200, ge=1, le=500),
+    horizon_days: int = Query(5, ge=1, le=20),
+    model_version: str = Query("balanced-v2"),
+    metadata_policy: str = Query("auto"),
+):
+    """Generate one complete, lookahead-safe replay report."""
+    target_date = _validated_date(target_date)
     engine = get_replay_engine()
+    ctx = engine.freeze_world(
+        target_date,
+        pool_size=pool_size,
+        model_version=model_version,
+        metadata_policy=metadata_policy,
+    )
+    rerun_result = await engine.rerun(ctx, horizon_days=horizon_days)
+    compare_result = await engine.compare_models(
+        target_date,
+        pool_size=pool_size,
+        horizon_days=horizon_days,
+        metadata_policy=metadata_policy,
+    )
+    simulation_result = await engine.simulate(
+        target_date, pool_size=pool_size, metadata_policy=metadata_policy
+    )
 
-    # Run all four layers
-    ctx = engine.freeze_world(target_date)
-    rerun_result = await engine.rerun(ctx)
-    compare_result = await engine.compare_models(target_date)
-    sim_result = await engine.simulate(target_date)
-
-    # Generate human-readable report
     report = {
+        "status": ctx.status if ctx.status != "ok" else rerun_result.status,
+        "message": ctx.message or rerun_result.message,
         "date": target_date,
+        "market_data_date": ctx.market_data_date,
+        "lookahead_safe": ctx.lookahead_safe,
+        "market_regime": ctx.market_regime,
         "context": ctx.to_dict(),
         "pipeline_result": {
+            "status": rerun_result.status,
             "scanned": rerun_result.total_scanned,
             "candidates": rerun_result.candidates_found,
+            "candidate_rows": rerun_result.to_dict()["candidates"],
             "top_pick": rerun_result.candidates[0] if rerun_result.candidates else None,
             "is_deterministic": rerun_result.is_deterministic,
             "result_hash": rerun_result.current_hash,
+            "model_version": rerun_result.model_version,
+            "model_label": rerun_result.model_label,
+            "evaluated_count": rerun_result.evaluated_count,
+            "correct_count": rerun_result.correct_count,
+            "accuracy": rerun_result.accuracy,
+            "avg_forward_return_pct": rerun_result.avg_forward_return_pct,
+            "horizon_days": rerun_result.horizon_days,
         },
         "model_comparison": {
+            "status": compare_result.status,
             "improvement": compare_result.improvement_summary,
             "best_version": compare_result.best_version,
-            "accuracy_by_version": compare_result.accuracy_change,
+            "best_accuracy": compare_result.best_accuracy,
+            "accuracy_by_version": compare_result.accuracy_by_version,
+            "metrics": compare_result.metrics,
         },
         "simulation": {
-            "best_scenario": sim_result.best_scenario,
-            "best_alpha": sim_result.best_alpha_pct,
-            "insights": sim_result.insights,
-            "scenario_results": sim_result.results,
+            "status": simulation_result.status,
+            "best_scenario": simulation_result.best_scenario,
+            "best_alpha": simulation_result.best_alpha_pct,
+            "insights": simulation_result.insights,
+            "scenario_results": simulation_result.results,
         },
         "summary": _generate_report_summary(
-            target_date, rerun_result, compare_result, sim_result
+            target_date, rerun_result, compare_result, simulation_result
         ),
     }
     return report
 
 
-def _generate_report_summary(
-    date: str, rerun, compare, sim
-) -> str:
-    """Generate human-readable report summary."""
-    parts = [f"## Replay Report — {date}\n"]
+def _generate_report_summary(target_date: str, rerun, compare, simulation) -> str:
+    """Generate a concise Chinese audit summary for the Replay page."""
+    if rerun.status not in ("ok", "insufficient_history"):
+        return f"## Replay Report — {target_date}\n\n{rerun.message}"
 
-    parts.append("### 市场环境")
-    parts.append(f"- 指数: {rerun.context.index_level:.0f} ({rerun.context.index_change_pct:+.1f}%)")
-    parts.append(f"- 涨跌比: {rerun.context.market_breadth_up}/{rerun.context.market_breadth_down}")
-    parts.append(f"- 北向资金: {rerun.context.northbound_flow:+.0f}亿")
-    parts.append("")
-
-    parts.append("### AI 推荐")
-    parts.append(f"- 扫描{rerun.total_scanned}只, 发现{rerun.candidates_found}只候选")
-    parts.append(f"- 买入信号: {rerun.buy_signals}个")
-    parts.append(f"- 确定性: {'✓ 已验证' if rerun.is_deterministic else '⏳ 首次运行' if rerun.is_deterministic is None else '✗ 不一致'}")
-    parts.append("")
-
-    parts.append("### 模型对比")
-    parts.append(f"- {compare.improvement_summary}")
-    parts.append("")
-
-    parts.append("### 策略实验")
-    for insight in sim.insights:
-        parts.append(f"- {insight}")
-
+    context = rerun.context
+    parts = [f"## Replay Report — {target_date}", ""]
+    parts.extend([
+        "### 冻结环境",
+        f"- 决策日: {target_date}；行情截点: {context.market_data_date}",
+        f"- 涨跌家数: {context.market_breadth_up}/{context.market_breadth_down}",
+        f"- 市场覆盖: {context.market_coverage}只；未来数据未进入信号计算",
+        "",
+        "### 历史重算",
+        f"- 成功重算 {rerun.total_scanned} 只，方向信号 {rerun.candidates_found} 个",
+        f"- 使用策略: {rerun.model_label} ({rerun.model_version})",
+    ])
+    if rerun.accuracy is None:
+        parts.append(f"- {rerun.horizon_days}日结果尚不可验证")
+    else:
+        parts.append(
+            f"- {rerun.horizon_days}日方向准确率: {rerun.accuracy:.1%} "
+            f"({rerun.correct_count}/{rerun.evaluated_count})"
+        )
+    parts.extend(["", "### 策略对比", f"- {compare.improvement_summary}", "", "### 场景实验"])
+    parts.extend(f"- {insight}" for insight in simulation.insights)
     return "\n".join(parts)

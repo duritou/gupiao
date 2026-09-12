@@ -12,17 +12,181 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.buildDashboardPage = buildDashboardPage;
 const layout_1 = require("../webview/layout");
-const constants_1 = require("../constants");
+const score_display_1 = require("../webview/score-display");
+const REASON_LABELS = {
+    fundamental_evidence_missing: '基本面证据待补充',
+    fundamental_loss_risk: '基本面存在亏损风险',
+    market_context_missing: '市场环境数据缺失',
+    market_data_degraded: '行情数据质量降级',
+    market_data_unavailable: '行情数据暂不可用',
+    technical_data_stale: '技术数据已过期',
+    technical_scan_incomplete: '技术扫描未完成',
+    trading_calendar_unverified: '交易日历待确认',
+    universe_metadata_incomplete: '股票基础信息不完整',
+    deep_analysis_error: '深度分析未完成',
+    final_review_blocked: '最终复核暂未通过',
+};
+const TECHNICAL_REASON_LABELS = {
+    macd: { high: 'MACD走强', low: 'MACD偏弱' },
+    rsi: { high: 'RSI状态健康', low: 'RSI偏弱' },
+    kdj: { high: 'KDJ偏强', low: 'KDJ偏弱' },
+    ma: { high: '均线趋势向上', low: '均线趋势偏弱' },
+    volume: { high: '量能配合', low: '量能偏弱' },
+};
+function _escapeHtml(value) {
+    return String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+function _text(value) {
+    return typeof value === 'string' ? value.replace(/\r\n?/g, '\n').trim() : '';
+}
+function _reasonList(value) {
+    if (Array.isArray(value)) {
+        return value.map(item => String(item || '').trim()).filter(Boolean);
+    }
+    const text = String(value || '').trim();
+    return text ? [text] : [];
+}
+function _unique(values) {
+    return values.filter((value, index) => value && values.indexOf(value) === index);
+}
+function _reasonLabel(value) {
+    return REASON_LABELS[value] || value.replace(/_/g, ' ');
+}
+function _guardReasons(candidate) {
+    return _unique([
+        ..._reasonList(candidate.blocked_reasons),
+        ..._reasonList(candidate.score_guard_reasons),
+    ]).map(_reasonLabel);
+}
+function _shortReason(value) {
+    const compact = value.replace(/\s+/g, ' ');
+    return compact.length > 54 ? `${compact.slice(0, 54)}…` : compact;
+}
+function _technicalReasons(candidate) {
+    const breakdown = candidate.score_breakdown || {};
+    const direction = String(candidate.direction || '').toLowerCase();
+    return Object.entries(TECHNICAL_REASON_LABELS)
+        .map(([key, labels]) => {
+        const score = Number(breakdown[key]);
+        if (!Number.isFinite(score))
+            return '';
+        if (score >= 60 && direction !== 'sell')
+            return labels.high;
+        if (score <= 40 && direction === 'sell')
+            return labels.low;
+        return '';
+    })
+        .filter(Boolean)
+        .slice(0, 3);
+}
+function _recommendationReasons(candidate, blocked) {
+    const deepThesis = _shortReason(_text(candidate.deep_thesis));
+    const guardReasons = _guardReasons(candidate);
+    const reasons = blocked
+        ? [candidate.deep_rating ? `深度评级：${candidate.deep_rating}` : '', ...guardReasons, deepThesis]
+        : [deepThesis, ..._technicalReasons(candidate)];
+    return _unique(reasons).filter(Boolean).slice(0, 3);
+}
+function _technicalDetail(candidate) {
+    const breakdown = candidate.score_breakdown || {};
+    const labels = {
+        macd: 'MACD', rsi: 'RSI', kdj: 'KDJ', ma: '均线', volume: '量能',
+    };
+    return Object.keys(labels)
+        .map(key => {
+        const score = Number(breakdown[key]);
+        return Number.isFinite(score) ? `${labels[key]}：${score.toFixed(1)}分` : '';
+    })
+        .filter(Boolean)
+        .join(' · ');
+}
+function _renderRecommendationReasons(candidate, id, blocked) {
+    const reasons = _recommendationReasons(candidate, blocked);
+    const details = [];
+    const thesis = _text(candidate.deep_thesis);
+    const analysis = _text(candidate.deep_analysis);
+    const plan = _text(candidate.deep_trader_plan);
+    const review = _unique([
+        _text(candidate.final_review_reason),
+        _text(candidate.final_review_risk),
+    ]);
+    const evidenceReasons = _reasonList(candidate.market_evidence_reasons).map(_reasonLabel);
+    if (thesis)
+        details.push({ label: 'AI投资主线', value: thesis });
+    if (analysis && analysis !== thesis)
+        details.push({ label: '完整分析', value: analysis });
+    if (plan)
+        details.push({ label: '交易计划', value: plan });
+    if (review.length)
+        details.push({ label: '最终复核', value: review.join('\n') });
+    const readableGuardReasons = _guardReasons(candidate);
+    if (readableGuardReasons.length) {
+        details.push({ label: '当前限制', value: readableGuardReasons.join('、') });
+    }
+    if (evidenceReasons.length)
+        details.push({ label: '数据说明', value: evidenceReasons.join('、') });
+    const technicalDetail = _technicalDetail(candidate);
+    if (technicalDetail)
+        details.push({ label: '量化信号', value: technicalDetail });
+    if (_text(candidate.deep_analysis_error)) {
+        details.push({ label: '分析状态', value: _text(candidate.deep_analysis_error) });
+    }
+    return `
+<div class="recommendation-reasons" onclick="event.stopPropagation()">
+<div class="reason-label">理由</div>
+<div class="reason-tags">${(reasons.length ? reasons : ['综合信号待进一步确认']).map(reason => `<span class="reason-tag">${_escapeHtml(reason)}</span>`).join('')}</div>
+${details.length ? `<details class="recommendation-details" id="${id}" onclick="event.stopPropagation()">
+<summary>查看完整理由</summary>
+<div class="recommendation-detail-body">${details.map(detail => `
+<div class="recommendation-detail-item"><div class="recommendation-detail-label">${_escapeHtml(detail.label)}</div><div class="recommendation-detail-text">${_escapeHtml(detail.value)}</div></div>`).join('')}</div>
+</details>` : ''}
+</div>`;
+}
 function buildDashboardPage(data) {
     const market = data.market || {};
     const m = market.market_breadth || {};
     const nb = market.northbound || {};
-    const hotSectors = (market.hot_sectors || []).slice(0, 5);
-    const risks = market.risk_summary || [];
+    const regime = market.market_regime || {};
+    const regimeState = String(regime.state || 'unknown');
+    const regimeLabels = {
+        strong: '强势',
+        lean_strong: '偏强',
+        range: '震荡',
+        lean_weak: '偏弱',
+        weak: '弱势',
+        unknown: '未知',
+    };
+    const regimeLabel = regimeLabels[regimeState] || '未知';
+    const regimeScore = Number(regime.score);
+    const regimeConfidence = Number(regime.confidence);
+    const regimeAvailable = regimeState !== 'unknown' && Number.isFinite(regimeScore);
+    const regimeColor = regimeState === 'strong' || regimeState === 'lean_strong'
+        ? '#22C55E'
+        : regimeState === 'weak' || regimeState === 'lean_weak' ? '#EF4444' : '#F59E0B';
+    const breadthAvailable = market._data?.breadth?.available === true;
     const scanner = data.scanner || {};
     const candidates = (scanner.candidates || []).slice(0, 6);
+    const blockedCandidates = (scanner.blocked_candidates || []).slice(0, 6);
+    const continuityWatchlist = (scanner.continuity_watchlist || []).slice(0, 6);
+    const scannedCount = Number(scanner.total_scanned || 0);
+    const requestedPool = Number(scanner.universe_count || scanner.pool_size || 0);
+    const coverageComplete = scanner.coverage_complete === true;
+    const coverageLabel = requestedPool > 0
+        ? `${scannedCount}/${requestedPool} 只`
+        : `${scannedCount} 只`;
+    const rankingNote = scanner.data_note || '仅代表已扫描样本的技术指标排序';
     const watchScores = data.watchScores?.signals || [];
+    const liveQuotes = data.liveQuotes?.quotes || [];
+    const watchQuoteMap = {};
+    liveQuotes.forEach((q) => { watchQuoteMap[q.stock_code] = q; });
     const brief = data.brief || {};
+    const hotSectors = (market.hot_sectors?.length ? market.hot_sectors : brief.hot_sectors || []).slice(0, 5);
+    const risks = market.risk_summary?.length ? market.risk_summary : brief.risk_warnings || [];
     const pf = brief.portfolio || {};
     const alertFeed = data.alerts || {};
     const todayFocus = alertFeed.today_focus || {};
@@ -33,29 +197,49 @@ function buildDashboardPage(data) {
     const userProfile = data.userProfile || {};
     const greeting = userProfile.greeting || '';
     const dataHealth = data.dataQuality || {};
-    const healthStatus = dataHealth.status || 'unknown';
+    const healthStatus = dataHealth.live_available
+        ? dataHealth.degraded ? 'degraded' : 'healthy'
+        : 'down';
     const healthIcon = healthStatus === 'healthy' ? '🟢' : healthStatus === 'degraded' ? '🟡' : '🔴';
-    const pfPlColor = (pf.total_pl || 0) >= 0 ? 'up' : 'down';
-    const qualityPct = dataHealth.overall_quality ? (dataHealth.overall_quality * 100).toFixed(0) + '%' : '--';
+    const activeProviders = (dataHealth.sources || []).filter((s) => s.available);
+    const providerLabel = activeProviders.map((s) => s.name).join(' + ') || 'unavailable';
+    const qualityPct = dataHealth.live_available ? 'LIVE' : 'OFFLINE';
     const qualityColor = healthStatus === 'healthy' ? '#22C55E' : healthStatus === 'degraded' ? '#F59E0B' : '#EF4444';
+    const portfolioScore = (0, score_display_1.finiteScore)(pf.avg_score);
+    const portfolioTrend = (0, score_display_1.finiteScore)(pf.score_trend);
     const content = `
+<style>
+.recommendation-reasons{margin-top:8px;max-width:760px;cursor:default}
+.reason-label{display:inline-block;color:#8b949e;font-size:11px;margin-right:6px}
+.reason-tags{display:inline-flex;flex-wrap:wrap;gap:4px;vertical-align:middle}
+.reason-tag{display:inline-block;padding:2px 8px;border:1px solid #30363d;border-radius:10px;background:#1b2d3a;color:#9ecbff;font-size:11px;line-height:1.4}
+.recommendation-details{margin-top:7px;border-top:1px solid #21262d;padding-top:6px}
+.recommendation-details summary{display:inline-block;color:#58a6ff;font-size:11px;cursor:pointer;list-style:none}
+.recommendation-details summary::-webkit-details-marker{display:none}
+.recommendation-details summary::before{content:'＋';margin-right:3px;color:#8b949e}
+.recommendation-details[open] summary::before{content:'－'}
+.recommendation-detail-body{margin-top:7px;padding:8px 10px;background:#0d1117;border:1px solid #21262d;border-radius:6px}
+.recommendation-detail-item+.recommendation-detail-item{margin-top:8px;padding-top:8px;border-top:1px solid #21262d}
+.recommendation-detail-label{color:#a78bfa;font-size:11px;margin-bottom:3px}
+.recommendation-detail-text{color:#c9d1d9;font-size:12px;line-height:1.55;white-space:pre-wrap;word-break:break-word}
+</style>
 <!-- Data Quality + Greeting Bar -->
 <div style="padding:8px 24px;display:flex;justify-content:space-between;align-items:center">
 ${greeting ? '<div style="font-size:12px;color:#A78BFA;line-height:1.5">🤖 ' + greeting + '</div>' : '<div></div>'}
 <div style="font-size:11px;display:flex;align-items:center;gap:6px">
 <span>${healthIcon}</span>
-<span style="color:#8b949e">${dataHealth.provider || 'unavailable'}</span>
+<span style="color:#8b949e">${providerLabel}</span>
 <span style="color:${qualityColor}">${qualityPct}</span>
 </div>
 </div>
 
 <!-- ═══════════ Portfolio Summary Cards ═══════════ -->
-${pf.position_count > 0 ? `
+${pf.position_count > 0 || scanner.total_scanned > 0 ? `
 <div class="grid4">
-<div class="card" style="border-left:3px solid #7C3AED"><h3>总资产</h3><div class="metric-value" style="font-size:24px">¥${((pf.total_value || 0) / 10000).toFixed(1)}万</div><span class="text-sm text-muted">${pf.position_count || 0}只持仓</span></div>
-<div class="card"><h3>总盈亏</h3><div class="metric-value ${pfPlColor}">${(pf.total_pl || 0) >= 0 ? '+' : ''}${(pf.total_pl_pct || 0).toFixed(1)}%</div><span class="text-sm ${(pf.daily_pl_pct || 0) >= 0 ? 'up' : 'down'}">今日 ${(pf.daily_pl_pct || 0) >= 0 ? '+' : ''}${(pf.daily_pl_pct || 0).toFixed(1)}%</span></div>
-<div class="card" style="border-left:3px solid ${(pf.avg_score || 50) >= 70 ? '#22C55E' : '#F59E0B'}"><h3>AI评分</h3><div class="metric-value ${(pf.avg_score || 50) >= 70 ? 'up' : 'warn'}">${(pf.avg_score || 50).toFixed(0)}</div><span class="text-sm ${(pf.score_trend || 0) >= 0 ? 'up' : 'down'}">${(pf.score_trend || 0) >= 0 ? '↑' : '↓'}${Math.abs(pf.score_trend || 0).toFixed(0)} vs 昨日</span></div>
-<div class="card"><h3>情绪</h3><div class="metric-value" style="color:#F59E0B;font-size:36px">${'★'.repeat(brief.market?.sentiment_stars || 4)}${'☆'.repeat(5 - (brief.market?.sentiment_stars || 4))}</div><span class="text-sm text-muted">${brief.market?.sentiment_label || '积极'} ${brief.market?.sentiment_score || 72}分</span></div>
+<div class="card" style="border-left:3px solid #7C3AED"><h3>今日扫描</h3><div class="metric-value" style="font-size:24px">${scanner.total_scanned || 0}</div><span class="text-sm text-muted">真实日线研究池</span></div>
+<div class="card"><h3>候选机会</h3><div class="metric-value up">${scanner.candidates_found || candidates.length}</div><span class="text-sm text-muted">已完成信号计算</span></div>
+<div class="card" style="border-left:3px solid ${portfolioScore === null ? '#6B7280' : portfolioScore >= 70 ? '#22C55E' : '#F59E0B'}"><h3>AI评分</h3><div class="metric-value ${(0, score_display_1.scoreTone)(portfolioScore)}">${(0, score_display_1.scoreText)(portfolioScore)}</div><span class="text-sm text-muted">${portfolioTrend === null ? '趋势不可用' : `${portfolioTrend >= 0 ? '↑' : '↓'}${Math.abs(portfolioTrend).toFixed(0)} vs 昨日`}</span></div>
+<div class="card"><h3>市场情绪</h3><div class="metric-value" style="color:#F59E0B;font-size:24px">${brief.market?.sentiment_label === 'unknown' ? 'N/A' : (brief.market?.sentiment_score ?? '--')}</div><span class="text-sm text-muted">${brief.market?.sentiment_label === 'unknown' ? '市场宽度数据不可用' : brief.market?.sentiment_label || '--'}</span></div>
 </div>
 ` : ''}
 
@@ -80,10 +264,11 @@ ${brief.one_liner ? `
 
 <!-- ═══════════ Market Overview ═══════════ -->
 <div class="grid4">
-<div class="card"><h3>上涨</h3><div class="metric-value up">${m.up?.toLocaleString() || '3,865'}</div><span class="text-sm text-muted">涨停 ${m.limit_up || 68}</span></div>
-<div class="card"><h3>下跌</h3><div class="metric-value down">${m.down?.toLocaleString() || '1,023'}</div><span class="text-sm text-muted">跌停 ${m.limit_down || 12}</span></div>
-<div class="card"><h3>成交额</h3><div class="metric-value" style="font-size:24px">${market.total_volume || '1.43'}万亿</div></div>
-<div class="card"><h3>北向资金</h3><div class="metric-value ${nb.direction === 'inflow' ? 'up' : 'down'}">${nb.net_flow != null ? (nb.net_flow > 0 ? '+' : '') + nb.net_flow + '亿' : '+58亿'}</div></div>
+<div class="card"><h3>上涨</h3><div class="metric-value up">${breadthAvailable ? m.up.toLocaleString() : 'N/A'}</div><span class="text-sm text-muted">${breadthAvailable ? `涨停 ${m.limit_up}` : '数据源暂不可用'}</span></div>
+<div class="card"><h3>下跌</h3><div class="metric-value down">${breadthAvailable ? m.down.toLocaleString() : 'N/A'}</div><span class="text-sm text-muted">${breadthAvailable ? `跌停 ${m.limit_down}` : '数据源暂不可用'}</span></div>
+<div class="card"><h3>成交额</h3><div class="metric-value" style="font-size:24px">${breadthAvailable && market.total_volume ? market.total_volume + '万亿' : 'N/A'}</div></div>
+<div class="card"><h3>北向资金</h3><div class="metric-value ${nb.direction === 'inflow' ? 'up' : nb.direction === 'outflow' ? 'down' : 'neutral'}">${breadthAvailable && nb.net_flow ? (nb.net_flow > 0 ? '+' : '') + nb.net_flow + '亿' : 'N/A'}</div></div>
+<div class="card"><h3>市场环境</h3><div class="metric-value" style="color:${regimeColor};font-size:24px">${regimeAvailable ? regimeLabel : 'N/A'}</div><span class="text-sm text-muted">${regimeAvailable ? `评分 ${regimeScore.toFixed(0)} · 置信度 ${(regimeConfidence * 100).toFixed(0)}%` : '宽度数据不可用'}</span></div>
 </div>
 
 <!-- ═══════════ Hot Sectors + Risk ═══════════ -->
@@ -91,7 +276,7 @@ ${brief.one_liner ? `
 <div class="card"><div class="card-header"><h3>今日热点</h3></div>
 ${hotSectors.map((s) => `<div class="stock-row" onclick="navigate('marketmap')">
 <span>${'★'.repeat(s.stars || 1)}${'☆'.repeat(5 - (s.stars || 1))} ${s.name}</span>
-<span class="tag tag-${(s.score || 50) >= 70 ? 'up' : (s.score || 50) >= 40 ? 'warn' : 'down'}">${s.status || '活跃'}</span>
+<span class="tag tag-${(0, score_display_1.finiteScore)(s.score) === null ? 'info' : (0, score_display_1.finiteScore)(s.score) >= 70 ? 'up' : (0, score_display_1.finiteScore)(s.score) >= 40 ? 'warn' : 'down'}">${s.status || '数据不可用'}</span>
 </div>`).join('') || '<div class="empty-state"><p>加载中...</p></div>'}
 </div>
 <div class="card"><div class="card-header"><h3>风险预警</h3></div>
@@ -102,18 +287,57 @@ ${risks.map((r) => `<div class="stock-row">
 </div>
 
 <!-- ═══════════ Top Opportunities ═══════════ -->
-<div style="padding:0 24px"><div class="card"><div class="card-header"><h3>🔥 今日机会 Top ${candidates.length}</h3></div>
+<div style="padding:0 24px"><div class="card">
+<div class="card-header">
+<div><h3>📊 样本技术排名 Top ${candidates.length}</h3>
+<div class="text-sm text-muted" style="margin-top:4px">${rankingNote}</div></div>
+<span class="tag tag-${coverageComplete ? 'up' : 'warn'}">覆盖 ${coverageLabel}${scanner.cached ? ' · 缓存' : ''}</span>
+</div>
 ${candidates.map((c, i) => {
-        const sc = c.fusion_score >= 75 ? 'up' : c.fusion_score >= 55 ? 'neutral' : 'down';
-        const stars = c.fusion_score >= 80 ? '★★★★★' : c.fusion_score >= 65 ? '★★★★' : c.fusion_score >= 50 ? '★★★' : '★★';
+        const candidateScore = (0, score_display_1.finiteScore)(c.fusion_score);
+        const sc = (0, score_display_1.scoreTone)(candidateScore);
+        const stars = candidateScore === null ? '☆☆☆☆☆' : candidateScore >= 80 ? '★★★★★' : candidateScore >= 65 ? '★★★★' : candidateScore >= 50 ? '★★★' : '★★';
         const name = c.stock_name || c.stock_code || '--';
         return `<div class="stock-row" onclick="analyzeStock('${c.stock_code}')">
-<div><span class="stock-name">#${i + 1} ${name}</span><br><span class="stock-code">${c.stock_code} · ${stars}</span></div>
-<div style="text-align:right"><span class="metric-value ${sc}" style="font-size:24px">${(c.fusion_score || 50).toFixed(0)}</span><br>
-<span class="tag tag-${c.direction === 'buy' ? 'up' : c.direction === 'sell' ? 'down' : 'info'}">${c.direction === 'buy' ? 'Strong Buy' : c.direction === 'sell' ? 'Sell' : 'Neutral'}</span></div>
+<div style="min-width:0;flex:1;padding-right:16px"><span class="stock-name">样本 #${i + 1} ${name}</span><br><span class="stock-code">${c.stock_code} · ${stars} · ${c.data_source || '来源未知'}</span>${_renderRecommendationReasons(c, `candidate-reason-${i}`, false)}</div>
+<div style="text-align:right"><span class="metric-value ${sc}" style="font-size:24px">${(0, score_display_1.scoreText)(candidateScore)}</span><br>
+<span class="text-sm text-muted">研究分 ${(0, score_display_1.scoreText)(c.primary_score ?? c.action_score)} · 机会排名分 ${(0, score_display_1.scoreText)(c.ranking_score)}</span><br>
+<span class="tag tag-${c.direction === 'buy' ? 'up' : c.direction === 'sell' ? 'down' : 'info'}">${c.display_state_label || (c.direction === 'buy' ? '技术偏强' : c.direction === 'sell' ? '技术偏弱' : '技术中性')}</span></div>
 </div>`;
-    }).join('') || '<div class="empty-state"><div class="icon">🔍</div><p>运行扫描以发现机会</p></div>'}
+    }).join('') || `<div class="empty-state"><div class="icon">🔍</div><p>${blockedCandidates.length > 0 ? '本次扫描没有通过证据门槛的有效推荐' : '运行扫描以发现机会'}</p></div>`}
 </div></div>
+
+<!-- ═══════════ Restricted Deep Reviews ═══════════ -->
+${blockedCandidates.length > 0 ? `
+<div style="padding:0 24px;margin-top:16px"><div class="card" style="border-left:3px solid #F59E0B">
+<div class="card-header">
+<div><h3>🧪 AI深度复核（受限）</h3>
+<div class="text-sm text-muted" style="margin-top:4px">已完成深度分析，但因数据或风险门槛未形成买卖推荐</div></div>
+<span class="tag tag-warn">不可直接交易</span>
+</div>
+${blockedCandidates.map((c) => `
+<div class="stock-row" onclick="analyzeStock('${c.stock_code}')">
+<div style="min-width:0;flex:1;padding-right:16px"><span class="stock-name">${c.stock_name || c.stock_code}</span><br><span class="stock-code">${c.stock_code} · ${c.deep_rating || '已深度复核'} · ${c.decision_status || '受限'}</span>${_renderRecommendationReasons(c, `blocked-reason-${c.rank}`, true)}</div>
+<div style="text-align:right"><span class="metric-value neutral" style="font-size:20px">研究 ${(0, score_display_1.scoreText)((0, score_display_1.finiteScore)(c.primary_score ?? c.action_score ?? c.fusion_score))}</span><br>
+<span class="text-sm text-muted">机会排名 ${(0, score_display_1.scoreText)((0, score_display_1.finiteScore)(c.ranking_score))} · ${c.display_state_label || '证据门槛未通过'} · ${_guardReasons(c).slice(0, 2).join('、') || '需补充证据'}</span></div>
+</div>`).join('')}
+</div></div>` : ''}
+
+<!-- ═══════════ Continuity Watchlist ═══════════ -->
+${continuityWatchlist.length > 0 ? `
+<div style="padding:0 24px;margin-top:16px"><div class="card" style="border-left:3px solid #60A5FA">
+<div class="card-header">
+<div><h3>🔁 连续观察</h3>
+<div class="text-sm text-muted" style="margin-top:4px">保留近期高排名股票，防止短暂数据缺失导致观察对象消失</div></div>
+<span class="tag tag-info">仅观察 · 不自动交易</span>
+</div>
+${continuityWatchlist.map((c) => `
+<div class="stock-row" onclick="analyzeStock('${c.stock_code}')">
+<div><span class="stock-name">${c.stock_name || c.stock_code}</span><br><span class="stock-code">${c.stock_code} · 前次排名 #${c.previous_rank} · ${c.previous_decision_date}</span></div>
+<div style="text-align:right"><span class="metric-value neutral" style="font-size:20px">前次 ${(0, score_display_1.scoreText)((0, score_display_1.finiteScore)(c.previous_ranking_score))}</span><br>
+<span class="text-sm text-muted">当前 ${(0, score_display_1.scoreText)((0, score_display_1.finiteScore)(c.current_action_score))} · ${c.current_decision_status || '未入当前扫描'}</span></div>
+</div>`).join('')}
+</div></div>` : ''}
 
 <!-- ═══════════ My Watchlist Snapshot ═══════════ -->
 ${watchScores.length > 0 ? `
@@ -121,10 +345,18 @@ ${watchScores.length > 0 ? `
 <div class="card-header"><h3>📈 我的关注</h3><span class="text-sm text-muted" style="cursor:pointer" onclick="navigate('watchlist')">查看全部 →</span></div>
 <div class="grid4">
 ${watchScores.slice(0, 4).map((s) => {
-        const sc = s.fusion_score >= 70 ? 'up' : s.fusion_score >= 50 ? 'neutral' : 'down';
+        const watchScore = (0, score_display_1.finiteScore)(s.fusion_score);
+        const sc = (0, score_display_1.scoreTone)(watchScore);
+        const signalName = String(s.stock_name || '').trim();
+        const quote = watchQuoteMap[s.stock_code] || {};
+        const quoteName = String(quote.stock_name || quote.name || '').trim();
+        const displayName = signalName && signalName !== s.stock_code
+            ? signalName
+            : quoteName || '名称不可用';
         return `<div style="text-align:center;padding:8px;cursor:pointer" onclick="analyzeStock('${s.stock_code}')">
-<div class="stock-name">${s.stock_name || s.stock_code}</div>
-<div style="font-size:20px;font-weight:700" class="${sc}">${(s.fusion_score || 50).toFixed(0)}</div>
+<div class="stock-name">${displayName}</div>
+<div style="font-size:20px;font-weight:700" class="${sc}">${(0, score_display_1.scoreText)(watchScore)}</div>
+<div class="text-sm text-muted">技术分</div>
 <div class="text-sm"><span class="${s.direction === 'buy' ? 'up' : s.direction === 'sell' ? 'down' : 'neutral'}">${s.trend_arrow || '→'} ${s.top_signal || ''}</span></div>
 </div>`;
     }).join('')}
@@ -185,36 +417,22 @@ ${aiAlpha.ai_alpha_pct >= 0 ? '+' : ''}${aiAlpha.ai_alpha_pct.toFixed(1)}%
 <div style="padding:0 24px;margin-top:8px;margin-bottom:8px"><div class="card" style="border-left:3px solid #7C3AED">
 <div class="card-header"><h3>🤖 AI Track Record</h3><span class="text-sm text-muted" style="cursor:pointer" onclick="navigate('resume')">AI完整档案 →</span></div>
 <div class="grid4">
-<div style="text-align:center"><div style="font-size:20px;font-weight:700;color:#22C55E">${(trackRecord.accuracy * 100).toFixed(0)}%</div><div class="text-sm text-muted">准确率</div></div>
-<div style="text-align:center"><div style="font-size:20px;font-weight:700;color:#22C55E">${trackRecord.correct_count}/${trackRecord.total_recommendations}</div><div class="text-sm text-muted">正确/总数</div></div>
+<div style="text-align:center"><div style="font-size:20px;font-weight:700;color:${trackRecord.accuracy_available ? '#22C55E' : '#F59E0B'}">${trackRecord.accuracy_available ? (trackRecord.accuracy * 100).toFixed(0) + '%' : '待验证'}</div><div class="text-sm text-muted">方向准确率</div></div>
+<div style="text-align:center"><div style="font-size:20px;font-weight:700;color:#22C55E">${trackRecord.correct_count}/${trackRecord.verified_decisions}</div><div class="text-sm text-muted">正确/已验证</div></div>
 <div style="text-align:center"><div style="font-size:20px;font-weight:700;color:#22C55E">${trackRecord.current_streak}次</div><div class="text-sm text-muted">连续命中</div></div>
 <div style="text-align:center"><div style="font-size:20px;font-weight:700;color:${trackRecord.avg_return_pct >= 0 ? '#22C55E' : '#EF4444'}">${trackRecord.avg_return_pct >= 0 ? '+' : ''}${trackRecord.avg_return_pct.toFixed(1)}%</div><div class="text-sm text-muted">平均收益</div></div>
 </div>
 </div></div>` : '')}
 
 <div style="padding:16px 24px;text-align:center" class="text-muted text-sm">
-🔄 Auto-refresh: 60s · 最后更新: <span id="lastUpdate">${new Date().toLocaleTimeString('zh-CN')}</span>
+🔄 自动刷新: 60秒 · 页面数据时间: <span id="lastUpdate">${new Date().toLocaleTimeString('zh-CN')}</span>
 </div>`;
     const extraScript = `
 let dashInterval;
-let alertUnread = ${alertFeed.unread_count || 0};
 async function refreshDashboard() {
-    try {
-        await fetch('${constants_1.BASE_URL}/market/overview');
-        // Refresh alerts for Today Focus
-        const alertsResp = await fetch('${constants_1.BASE_URL}/alerts/today').catch(() => null);
-        if (alertsResp) {
-            const alertData = await alertsResp.json();
-            const newUnread = alertData.unread_count || 0;
-            if (newUnread > alertUnread) {
-                vscode.postMessage({command:'alertUpdate',unread:newUnread,urgent:alertData.urgent_count||0});
-            }
-            alertUnread = newUnread;
-        }
-        document.getElementById('lastUpdate').textContent = new Date().toLocaleTimeString('zh-CN');
-    } catch(e) {}
+    vscode.postMessage({command:'refreshPage'});
 }
-function startAutoRefresh() { refreshDashboard(); dashInterval = setInterval(refreshDashboard, 60000); }
+function startAutoRefresh() { clearInterval(dashInterval); dashInterval = setInterval(refreshDashboard, 60000); }
 function stopAutoRefresh() { clearInterval(dashInterval); }
 document.addEventListener('visibilitychange', () => { document.hidden ? stopAutoRefresh() : startAutoRefresh(); });
 startAutoRefresh();`;

@@ -160,6 +160,41 @@ class TestBacktestEngine:
         assert result.start_date != ""
         assert result.end_date != ""
 
+    @pytest.mark.asyncio
+    async def test_trade_profit_is_net_of_all_configured_fees(self):
+        klines = [
+            {"date": "2026-08-20", "close": 10.0},
+            {"date": "2026-08-21", "open": 10.0, "close": 10.5},
+            {"date": "2026-08-24", "open": 11.0, "close": 11.0},
+        ]
+        signals = [
+            {"date": "2026-08-20", "score": 80, "direction": "buy"},
+            {"date": "2026-08-21", "score": 80, "direction": "sell"},
+        ]
+        engine = BacktestEngine(
+            initial_capital=10000, position_size=1000, slippage_rate=0,
+        )
+
+        result = await engine.run("000001.SZ", klines, signals)
+
+        assert result.final_capital == pytest.approx(10098.4)
+        assert len(result.trades) == 1
+        trade = result.trades[0]
+        assert trade.quantity == 100
+        assert trade.entry_amount == 1000
+        assert trade.exit_amount == 1100
+        assert trade.buy_fee == 0.5
+        assert trade.sell_commission == 0.55
+        assert trade.stamp_tax == 0.55
+        assert trade.total_fees == 1.6
+        assert trade.profit_amount == 98.4
+        assert trade.gross_profit_pct == 10.0
+        assert trade.profit_pct == pytest.approx(9.84)
+        assert trade.entry_signal_date == "2026-08-20"
+        assert trade.entry_date == "2026-08-21"
+        assert trade.exit_signal_date == "2026-08-21"
+        assert trade.exit_date == "2026-08-24"
+
 
 # ===== PerformanceMetrics Tests =====
 

@@ -55,5 +55,11 @@ coverage.xml
 *.db-wal
 *.db-shm
 
+# Deployment runtime state (release manifests never contain credentials)
+runtime/releases/
+runtime/active-manifest.json
+runtime/maintenance.json
+runtime/deployment.lock
+
 # Local dev convenience scripts
 restart.ps1

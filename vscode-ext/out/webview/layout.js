@@ -42,24 +42,33 @@ exports.pageShell = pageShell;
 const vscode = __importStar(require("vscode"));
 const constants_1 = require("../constants");
 let currentPanel = null;
+let currentMessageDisposable = null;
 function getCurrentPanel() {
     return currentPanel;
 }
 function createOrShowPanel(title, html, onMessage) {
     if (currentPanel) {
-        currentPanel.dispose();
+        currentPanel.title = title;
+        currentPanel.reveal(vscode.ViewColumn.One);
     }
-    currentPanel = vscode.window.createWebviewPanel('quantaiTerminal', title, vscode.ViewColumn.One, { enableScripts: true, retainContextWhenHidden: true });
+    else {
+        currentPanel = vscode.window.createWebviewPanel('quantaiTerminal', title, vscode.ViewColumn.One, { enableScripts: true, retainContextWhenHidden: true });
+        currentPanel.onDidDispose(() => {
+            currentPanel = null;
+            currentMessageDisposable?.dispose();
+            currentMessageDisposable = null;
+        });
+    }
     currentPanel.webview.html = html;
-    currentPanel.webview.onDidReceiveMessage(onMessage);
-    currentPanel.onDidDispose(() => { currentPanel = null; });
+    currentMessageDisposable?.dispose();
+    currentMessageDisposable = currentPanel.webview.onDidReceiveMessage(onMessage);
     return currentPanel;
 }
 function getPageTitle(page) {
     return constants_1.PAGE_TITLES[page] || 'Adaptive Investment Intelligence';
 }
 function buildNav(active) {
-    return `<div class="nav">${constants_1.NAV_ITEMS.map(i => `<span class="nav-item${i.id === active ? ' active' : ''}" onclick="navigate('${i.id}')">${i.label}</span>`).join('')}</div>`;
+    return `<div class="nav">${constants_1.NAV_ITEMS.map(i => `<button type="button" class="nav-item${i.id === active ? ' active' : ''}" onclick="navigate('${i.id}')">${i.label}</button>`).join('')}</div>`;
 }
 function pageShell(active, title, content, extraScript = '') {
     const nav = buildNav(active);
@@ -72,9 +81,11 @@ const vscode = acquireVsCodeApi();
 function navigate(page) { vscode.postMessage({command:'navigate',page}); }
 function analyzeStock(code) { vscode.postMessage({command:'analyze',code}); }
 function addToWatchlist() { vscode.postMessage({command:'addWatch'}); }
+function removeFromWatchlist(code) { vscode.postMessage({command:'removeWatch',code}); }
 function compareStocks() { vscode.postMessage({command:'compare'}); }
 function showTimeline() { vscode.postMessage({command:'timeline'}); }
-${extraScript}
-</script></body></html>`;
+</script>
+<script>${extraScript}</script>
+</body></html>`;
 }
 //# sourceMappingURL=layout.js.map

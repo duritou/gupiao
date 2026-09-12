@@ -18,6 +18,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
+import httpx
 
 
 @dataclass
@@ -72,6 +73,79 @@ class FileChannel(NotificationChannel):
         return True
 
 
+class WeComWebhookChannel(NotificationChannel):
+    """企业微信机器人 Webhook 通道。
+
+    The webhook URL is intentionally supplied at runtime. This channel only
+    sends markdown notifications and never handles trading credentials.
+    """
+
+    name = "wechat_work"
+
+    def __init__(self, webhook_url: str, timeout_seconds: float = 10.0):
+        self.webhook_url = webhook_url.strip()
+        self.timeout_seconds = timeout_seconds
+
+    async def send(self, title: str, content: str) -> bool:
+        if not self.webhook_url:
+            return False
+        message = f"# {title}\n\n{content}"[:3800]
+        try:
+            async with httpx.AsyncClient(timeout=self.timeout_seconds) as client:
+                response = await client.post(
+                    self.webhook_url,
+                    json={"msgtype": "markdown", "markdown": {"content": message}},
+                )
+            if response.is_error:
+                return False
+            payload = response.json()
+            return payload.get("errcode", 0) == 0
+        except (httpx.HTTPError, ValueError):
+            return False
+
+
+class PushPlusChannel(NotificationChannel):
+    """Personal or topic-group WeChat delivery through PushPlus."""
+
+    name = "pushplus"
+
+    def __init__(
+        self,
+        token: str,
+        endpoint: str = "https://www.pushplus.plus/send",
+        timeout_seconds: float = 10.0,
+        topic: str = "",
+    ):
+        self.token = token.strip()
+        self.endpoint = endpoint.strip() or "https://www.pushplus.plus/send"
+        self.timeout_seconds = timeout_seconds
+        self.topic = topic.strip()
+
+    async def send(self, title: str, content: str) -> bool:
+        if not self.token:
+            return False
+        try:
+            payload = {
+                "token": self.token,
+                "title": title,
+                "content": content[:3800],
+                "template": "markdown",
+                "channel": "wechat",
+            }
+            if self.topic:
+                payload["topic"] = self.topic
+            async with httpx.AsyncClient(timeout=self.timeout_seconds) as client:
+                response = await client.post(
+                    self.endpoint,
+                    json=payload,
+                )
+            if response.is_error:
+                return False
+            return response.json().get("code") == 200
+        except (httpx.HTTPError, ValueError):
+            return False
+
+
 class Notifier:
     """通知管理器"""
 
@@ -111,3 +185,30 @@ class Notifier:
     @property
     def history(self) -> list[Notification]:
         return list(self._history)
+
+
+_notifier: Notifier | None = None
+
+
+def get_notifier() -> Notifier:
+    """Build the configured notifier once per process."""
+    global _notifier
+    if _notifier is None:
+        _notifier = Notifier()
+        try:
+            from config.settings import settings
+
+            if settings.PUSHPLUS_TOKEN:
+                _notifier.register(
+                    PushPlusChannel(
+                        settings.PUSHPLUS_TOKEN,
+                        settings.PUSHPLUS_ENDPOINT,
+                        topic=settings.PUSHPLUS_TOPIC or "",
+                    )
+                )
+            if settings.WECHAT_WEBHOOK_URL:
+                _notifier.register(WeComWebhookChannel(settings.WECHAT_WEBHOOK_URL))
+        except Exception:
+            # Notification configuration must never prevent the trading loop.
+            pass
+    return _notifier

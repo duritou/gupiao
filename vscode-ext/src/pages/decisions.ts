@@ -2,6 +2,7 @@
 
 import { pageShell } from '../webview/layout';
 import { BASE_URL } from '../constants';
+import { finiteScore, scoreText } from '../webview/score-display';
 
 export function buildDecisionsPage(data: any): string {
     const decisionsData = data.decisions || {};
@@ -39,7 +40,16 @@ ${decisions.map((d: any) => _renderDecisionCard(d, recLabels, recColors)).join('
 }
 
 function _renderDecisionCard(d: any, labels: Record<string, string>, colors: Record<string, string>): string {
-    const color = colors[d.recommendation] || '#8b949e';
+    const stateColors: Record<string, string> = {
+        execution_ready: '#22C55E', buy_candidate: '#F59E0B', hold: '#58a6ff',
+        reduce: '#EF4444', research_blocked: '#F59E0B', research_pending: '#8b949e',
+        expired: '#8b949e',
+    };
+    const state = d.display_state || 'research_pending';
+    const stateLabel = d.display_state_label || labels[d.recommendation] || '分析待完成';
+    const color = stateColors[state] || colors[d.recommendation] || '#8b949e';
+    const primaryScore = finiteScore(d.primary_score ?? d.action_score ?? d.ai_score);
+    const rankingScore = finiteScore(d.ranking_score);
     const urgencyColors: Record<string, string> = { today: '#EF4444', this_week: '#F59E0B', monitor: '#8b949e' };
 
     return `
@@ -56,10 +66,16 @@ ${d.user_past_trades > 0 ? `<span style="font-size:10px;color:#8b949e">${d.user_
 <div class="flex-row gap-8">
 <span style="font-size:10px;color:${urgencyColors[d.urgency]};border:1px solid ${urgencyColors[d.urgency]};padding:1px 6px;border-radius:8px">${d.urgency === 'today' ? '今日' : d.urgency === 'this_week' ? '本周' : '关注'}</span>
 <div style="text-align:right">
-<div style="font-size:22px;font-weight:700;color:${color}">${(d.ai_score || 50).toFixed(0)}</div>
-<div style="font-size:10px;color:${color}">${labels[d.recommendation] || d.recommendation}</div>
+<div style="font-size:22px;font-weight:700;color:${primaryScore === null ? '#9CA3AF' : color}">${scoreText(primaryScore)}</div>
+<div style="font-size:10px;color:${color};font-weight:600">${stateLabel}</div>
+<div style="font-size:10px;color:#8b949e;margin-top:2px">${d.primary_score_label || '研究评分'} · ${d.ranking_score_label || '机会排名分'} ${scoreText(rankingScore)}</div>
 </div>
 </div>
+</div>
+
+<div style="display:flex;gap:8px;align-items:center;margin-bottom:10px;font-size:11px">
+<span style="color:${color};border:1px solid ${color}66;border-radius:10px;padding:2px 8px">${stateLabel}</span>
+<span style="color:#9CA3AF">执行：${d.execution_status_label || '等待执行确认'}</span>
 </div>
 
 <!-- Bull vs Bear -->

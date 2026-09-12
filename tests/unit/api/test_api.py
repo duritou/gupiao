@@ -20,6 +20,24 @@ class TestSystemRoutes:
         assert "modules" in r.json()
 
 
+class TestAIOSRoutes:
+    def test_status_uses_persistent_journal_state(self):
+        r = client.get("/api/v1/ai-os/status")
+        assert r.status_code == 200
+        data = r.json()
+        assert "today_progress" in data
+        assert "journal_decisions_total" in data["today_progress"]
+        assert data["data_source"] == "task_executor + decision_journal"
+
+    def test_memory_and_learning_routes_return_real_data(self):
+        memory = client.get("/api/v1/ai-os/memory/today")
+        learning = client.get("/api/v1/ai-os/learning-log")
+        assert memory.status_code == 200
+        assert learning.status_code == 200
+        assert memory.json()["data_source"] == "decision_journal + paper_account + learning_log"
+        assert isinstance(learning.json()["learning_log"], list)
+
+
 class TestSignalsRoutes:
     def test_list_signals(self):
         r = client.get("/api/v1/signals/list")

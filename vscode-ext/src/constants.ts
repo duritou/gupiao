@@ -1,6 +1,31 @@
 /** Shared constants for the Adaptive Investment Intelligence Platform extension. */
 
-export const BASE_URL = 'http://127.0.0.1:8888/api/v1';
+import * as fs from 'fs';
+import * as path from 'path';
+
+function readRuntimeEnv(): Record<string, string> {
+    const candidates = [
+        process.env.INVESTMENT_RUNTIME_CONFIG,
+        path.resolve(__dirname, '../../../config/runtime.env'),
+    ].filter((candidate): candidate is string => Boolean(candidate));
+    for (const file of candidates) {
+        if (!fs.existsSync(file)) continue;
+        const values: Record<string, string> = {};
+        for (const raw of fs.readFileSync(file, 'utf8').split(/\r?\n/)) {
+            const line = raw.trim();
+            if (!line || line.startsWith('#') || !line.includes('=')) continue;
+            const index = line.indexOf('=');
+            values[line.slice(0, index).trim()] = line.slice(index + 1).trim();
+        }
+        return values;
+    }
+    return {};
+}
+
+const runtime = readRuntimeEnv();
+export const ADAPTIVE_API_HOST = process.env.ADAPTIVE_API_HOST || runtime.ADAPTIVE_API_HOST || '127.0.0.1';
+export const ADAPTIVE_API_PORT = Number(process.env.ADAPTIVE_API_PORT || runtime.ADAPTIVE_API_PORT || 8888);
+export const BASE_URL = `http://${ADAPTIVE_API_HOST}:${ADAPTIVE_API_PORT}/api/v1`;
 
 export const NAV_ITEMS: { id: string; label: string }[] = [
     { id: 'dashboard', label: 'Dashboard' },
@@ -45,6 +70,9 @@ body{font-family:'Segoe UI',system-ui,-apple-system,sans-serif;background:#0d111
 .tag{display:inline-block;padding:2px 10px;margin:2px;border-radius:12px;font-size:12px;white-space:nowrap}
 .tag-up{background:#1b3a1b;color:#3fb950} .tag-down{background:#3a1b1b;color:#f85149}
 .tag-info{background:#1b2d3a;color:#58a6ff} .tag-warn{background:#3a351b;color:#d2991d}
+.tag-muted{background:#21262d;color:#8b949e}
+.alert{padding:12px 16px;border-radius:6px;border:1px solid;margin:8px 0;font-size:13px}
+.alert-warn{background:#3a351b;border-color:#d2991d;color:#d2991d}
 .stock-row{display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid #21262d;cursor:pointer}
 .stock-row:hover{background:#1c2128}
 .stock-name{font-weight:600}.stock-code{color:#8b949e;font-size:12px}
@@ -55,7 +83,7 @@ body{font-family:'Segoe UI',system-ui,-apple-system,sans-serif;background:#0d111
 .btn-sm{padding:4px 10px;font-size:11px}
 .pulse{animation:pulse 2s infinite}@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.5}}
 .nav{display:flex;gap:4px;padding:8px 24px;background:#0d1117;border-bottom:1px solid #30363d;overflow-x:auto}
-.nav-item{padding:8px 16px;border-radius:6px 6px 0 0;cursor:pointer;color:#8b949e;font-size:13px;white-space:nowrap;border:1px solid transparent}
+.nav-item{padding:8px 16px;border-radius:6px 6px 0 0;cursor:pointer;color:#8b949e;font:inherit;font-size:13px;white-space:nowrap;border:1px solid transparent;background:transparent}
 .nav-item:hover{color:#c9d1d9;background:#161b22}
 .nav-item.active{color:#58a6ff;border-color:#30363d;border-bottom-color:#0d1117;background:#161b22}
 table{width:100%;border-collapse:collapse}th,td{padding:8px 12px;text-align:left;border-bottom:1px solid #21262d;font-size:13px}

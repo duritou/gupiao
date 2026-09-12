@@ -130,7 +130,37 @@ class FunctionSpec:
 # Used by IFindTransport.call() to look up how to call a function.
 
 _FUNCTION_REGISTRY: dict[str, FunctionSpec] = {}
-# TO BE FILLED from Super Command — see FunctionSpec docstring
+
+# 官方 iFinD HTTP API 端点(https://quantapi.51ifind.com/api/v1)
+_IFIND_BASE = "https://quantapi.51ifind.com/api/v1"
+
+_QUOTE_SPEC = FunctionSpec(
+    id="quote", capability="realtime_quote", market="CN", asset="stock",
+    url=f"{_IFIND_BASE}/real_time_quotation",
+    method="POST",
+    body_template={
+        "codes": "{code}",
+        "indicators": "latest;open;high;low;preClose;change;latestVolume;latestAmount",
+    },
+    response_path="tables",
+    cache_ttl=30, timeout=10,
+)
+_KLINE_SPEC = FunctionSpec(
+    id="kline", capability="daily_kline", market="CN", asset="stock",
+    url=f"{_IFIND_BASE}/cmd_history_quotation",
+    method="POST",
+    body_template={
+        "codes": "{code}",
+        "indicators": "open,high,low,close,volume,amount",
+        "startdate": "{start}",
+        "enddate": "{end}",
+        "functionpara": {"Fill": "Blank"},
+    },
+    response_path="tables",
+    cache_ttl=300, timeout=30,
+)
+_FUNCTION_REGISTRY["quote"] = _QUOTE_SPEC
+_FUNCTION_REGISTRY["kline"] = _KLINE_SPEC
 
 
 # ================================================================
@@ -162,11 +192,20 @@ class TokenManager:
             return self._access_token
 
     def _refresh(self):
-        """Refresh access token using refresh token.
-
-        FILL IN after Super Command generates the token refresh endpoint.
-        """
-        pass  # Will be implemented when real endpoint is known
+        """用 refresh_token 换 access_token(官方 HTTP API get_access_token)。"""
+        if not IFIND_REFRESH_TOKEN:
+            return  # 无 refresh_token,保持默认(调用会失败,source_manager 走其他 provider)
+        try:
+            url = "https://quantapi.51ifind.com/api/v1/get_access_token"
+            headers = {"Content-Type": "application/json", "refresh_token": IFIND_REFRESH_TOKEN}
+            resp = self._session.post(url, json={}, headers=headers, timeout=10)
+            if resp.status_code == 200:
+                token = (resp.json() or {}).get("data", {}).get("access_token")
+                if token:
+                    self._access_token = token
+                    self._expires_at = _time.time() + 7000  # 留缓冲
+        except Exception:
+            pass
 
     def call(
         self,
@@ -178,7 +217,7 @@ class TokenManager:
     ) -> tuple[int, dict | None]:
         """Make authenticated HTTP call. Returns (status_code, data_or_None)."""
         token = self.get_token()
-        headers = {"Authorization": f"Bearer {token}"}
+        headers = {"access_token": token}  # 官方 iFinD HTTP API 格式(非 Bearer)
         if headers_extra:
             headers.update(headers_extra)
 
@@ -202,7 +241,7 @@ class TokenManager:
                 # Token expired — refresh and retry once
                 with self._lock:
                     self._refresh()
-                headers["Authorization"] = f"Bearer {self._access_token}"
+                headers["access_token"] = self._access_token
                 retry = self._session.post(
                     url, json=body or {}, headers=headers, timeout=timeout,
                 )
@@ -324,29 +363,32 @@ class IFindProvider:
     # ================================================================
 
     def get_quote(self, code: str) -> IFindQuote | None:
-        """Get real-time quote. Transport normalizes fields via FunctionSpec.mapping."""
+        """实时行情。解析 iFinD 的 tables[].table{} 嵌套格式。"""
         status, data = self._t.call("quote", {"code": code}, timeout=10)
-        if status != 200 or data is None:
+        if status != 200 or not data:
             return None
+        tables = data if isinstance(data, list) else [data]
+        t = tables[0] if tables and isinstance(tables[0], dict) else {}
+        fields = t.get("table") if isinstance(t.get("table"), dict) else {}
 
-        # Transport already applied field_mapping → standard field names
-        item = data[0] if isinstance(data, list) else data
+        def _f(key, default=0.0):
+            try:
+                return float(fields.get(key, default))
+            except (TypeError, ValueError):
+                return default
 
         return IFindQuote(
-            code=code,
-            name=str(item.get("name", "")),
-            price=float(item.get("price", 0)),
-            open=float(item.get("open", 0)),
-            high=float(item.get("high", 0)),
-            low=float(item.get("low", 0)),
-            pre_close=float(item.get("pre_close", 0)),
-            change_pct=float(item.get("change_pct", 0)),
-            volume=float(item.get("volume", 0)),
-            amount=float(item.get("amount", 0)),
-            turnover=float(item.get("turnover", 0)),
-            pe=float(item.get("pe", 0)),
-            pb=float(item.get("pb", 0)),
-            total_market_cap=float(item.get("total_market_cap", 0)),
+            code=t.get("thscode", code),
+            name="",  # 实时行情不返回 name,需 basic_data 另查
+            price=_f("latest"),
+            open=_f("open"),
+            high=_f("high"),
+            low=_f("low"),
+            pre_close=_f("preClose"),
+            change_pct=_f("change"),
+            volume=_f("latestVolume"),
+            amount=_f("latestAmount"),
+            turnover=0.0, pe=0.0, pb=0.0, total_market_cap=0.0,
         )
 
     # ================================================================
@@ -356,16 +398,44 @@ class IFindProvider:
     def get_kline(
         self, code: str, period: str = "day", count: int = 250,
     ) -> list[dict] | None:
-        """Get K-line data. Transport normalizes fields via FunctionSpec.mapping."""
+        """历史K线。iFinD cmd_history_quotation 用 startdate/enddate,返回 tables[].table{指标:list}。"""
+        from datetime import date as dt_date, timedelta
+        end = dt_date.today().strftime("%Y-%m-%d")
+        start = (dt_date.today() - timedelta(days=int(count * 1.8))).strftime("%Y-%m-%d")
         status, data = self._t.call(
             "kline",
-            {"code": code, "period": period, "count": str(count)},
+            {"code": code, "start": start, "end": end},
             timeout=30,
         )
-        if status != 200 or data is None:
+        if status != 200 or not data:
             return None
-        # Transport already normalized via field_mapping
-        return data if isinstance(data, list) else None
+        tables = data if isinstance(data, list) else [data]
+        t = tables[0] if tables and isinstance(tables[0], dict) else {}
+        fields = t.get("table") if isinstance(t.get("table"), dict) else {}
+        times = t.get("time") or []
+
+        def _col(key):
+            v = fields.get(key, [])
+            return list(v) if isinstance(v, list) else ([v] if v is not None else [])
+
+        opens, highs, lows = _col("open"), _col("high"), _col("low")
+        closes, vols, amts = _col("close"), _col("volume"), _col("amount")
+        n = min(len(times), len(closes))
+        bars = []
+        for i in range(n):
+            try:
+                bars.append({
+                    "date": str(times[i])[:10],
+                    "open": float(opens[i]) if i < len(opens) else 0.0,
+                    "high": float(highs[i]) if i < len(highs) else 0.0,
+                    "low": float(lows[i]) if i < len(lows) else 0.0,
+                    "close": float(closes[i]),
+                    "volume": float(vols[i]) if i < len(vols) else 0.0,
+                    "amount": float(amts[i]) if i < len(amts) else 0.0,
+                })
+            except (TypeError, ValueError, IndexError):
+                continue
+        return bars[-count:] if bars else None
 
     # ================================================================
     # Financial / News — registered when Super Command templates added

@@ -1,25 +1,61 @@
 # Tushare Pro — A股财务数据
 provider: tushare
 version: "1.0"
-description: A股财务数据(PE/PB/ROE/利润表/资产负债表)
+description: A股盘后日线、每日指标、财务与个股资金流；按接口权限优先源
+
+time_semantics:
+  daily: eod
+  daily_basic: eod
+  fina_indicator: announcement_and_report_period
+  income: announcement_and_report_period
+  balancesheet: announcement_and_report_period
+  cashflow: announcement_and_report_period
+  moneyflow: eod
 
 capabilities:
-  financial_indicators:
+  daily_kline:
+    method: SDK
+    protocol: tushare.pro_api.daily
+    note: 未复权日线，金额单位为千元，数据按交易日盘后更新
+  daily_basic:
     method: SDK
     protocol: tushare.pro_api.daily_basic
-    note: 免费token可用, T+1数据(非实时)
+    note: 每日估值、市值和换手；金额字段单位为万元；不提供OHLCV
     mapping:
-      price: close
-      pre_close: null       # 需要前一日数据计算
-      change_pct: pct_chg
-      volume: vol
-      amount: amount
       turnover: turnover_rate
       pe: pe
       pe_ttm: pe_ttm
       pb: pb
-      total_market_cap: total_mv
-      circ_market_cap: circ_mv
+      ps_ttm: ps_ttm
+      total_mv: total_mv
+      circ_mv: circ_mv
+  daily_snapshot:
+    method: SDK
+    protocol: tushare.pro_api.daily + tushare.pro_api.daily_basic
+    note: 按交易日连接全市场日线和每日指标并核算覆盖率
+  index_data:
+    method: SDK
+    protocol: tushare.pro_api.index_daily
+    note: 指数日线，盘后数据
+  fund_flow:
+    method: SDK
+    protocol: tushare.pro_api.moneyflow
+    note: 个股资金流，金额字段单位为万元；不等同于北向资金
+  financial_indicators:
+    method: SDK
+    protocol: tushare.pro_api.fina_indicator
+    note: 财务指标按公告日期和报告期提供，具体字段按权限返回
+    mapping:
+      eps: eps
+      roe: roe
+      roa: roa
+      revenue_yoy: tr_yoy
+      profit_yoy: netprofit_yoy
+
+  financial_statements:
+    method: SDK
+    protocol: tushare.pro_api.income + balancesheet + cashflow
+    note: 三表按公告日期和报告期提供，历史回放需保留可知时点
 
   stock_basic:
     method: SDK
@@ -29,33 +65,16 @@ capabilities:
       industry: industry
       list_date: list_date
 
-certification:
-  financial_indicators:
-    verified: true
-    samples: 200
-    accuracy: 0.95
-    consistency: 0.94
-    last_verified: "2026-07-07"
-  stock_basic:
-    verified: true
-    samples: 500
-    accuracy: 1.0
-    last_verified: "2026-07-07"
-  realtime_quote:
-    verified: false
-    samples: 0
-    last_verified: ""
-
 known_limits:
-  realtime_delay_sec: 86400    # T+1 (daily_basic is not realtime)
-  history_years: 10
+  realtime_delay_sec: 86400    # 盘后日线，不是盘中实时
+  history_years: provider_dependent
   minute_history_days: 0
-  supports_adjust: ["qfq", "hfq"]
+  supports_adjust: ["raw"]
   supports_tick: false
   supports_orderbook: false
-  max_batch_size: 100
+  max_batch_size: endpoint_dependent
 
 limitations:
-  - daily接口需要120积分(免费token无权限)
-  - daily_basic仅提供T+1数据
-  - 无实时行情
+  - 日线、daily_basic、财务与资金流仍按具体接口权限和频次限制执行
+  - daily_basic、daily和moneyflow为盘后/历史数据
+  - 无盘中实时行情、分钟、盘口和逐笔数据

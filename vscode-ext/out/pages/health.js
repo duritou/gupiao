@@ -3,7 +3,6 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.buildHealthPage = buildHealthPage;
 const layout_1 = require("../webview/layout");
-const constants_1 = require("../constants");
 function buildHealthPage(data) {
     const health = data.health || {};
     const subsystems = health.subsystems || [];
@@ -61,12 +60,7 @@ ${detailLines.map(([k, v]) => `
 </div>`;
     const extraScript = `
 async function refreshHealth() {
-    try {
-        const resp = await fetch('${constants_1.BASE_URL}/market/system-health');
-        const data = await resp.json();
-        document.getElementById('lastUpdate').textContent = new Date().toLocaleTimeString('zh-CN');
-        vscode.postMessage({command:'navigate',page:'health'});
-    } catch(e) {}
+    vscode.postMessage({command:'refreshPage'});
 }
 let healthInterval;
 function startAutoRefresh() { healthInterval = setInterval(refreshHealth, 30000); }

@@ -112,6 +112,7 @@ class ProviderRuntimeMetrics:
     is_degraded: bool = False        # Auto-removed from primary chain
     degraded_at: float = 0.0
     health_check_interval: float = 300.0  # 5 minutes
+    last_health_check_at: float = 0.0
 
     def record(self, event: ProviderCallEvent):
         """Record a single provider call and update all windows."""
@@ -233,13 +234,22 @@ class ProviderReliabilityEngine:
 
     # Thresholds
     DEGRADE_THRESHOLD = 0.50    # Trust below this → auto-degrade
-    RECOVER_THRESHOLD = 0.80    # Trust above this → auto-recover
-    MIN_RECOVER_SAMPLES = 20    # Need this many successful checks to recover
 
     def __init__(self):
         self._metrics: dict[str, ProviderRuntimeMetrics] = {}
         self._trust_history: dict[str, list[tuple[float, float]]] = defaultdict(list)
         # trust_history[provider] = [(timestamp, trust_score), ...]
+
+    def reset_runtime_state(self) -> None:
+        """Clear process-local observations before an isolated run.
+
+        Production processes normally retain these observations for adaptive
+        routing.  Tests and offline replays need an explicit boundary so a
+        failed live probe in one run cannot change provider selection in the
+        next isolated run.
+        """
+        self._metrics.clear()
+        self._trust_history.clear()
 
     def get_or_create_metrics(self, provider: str) -> ProviderRuntimeMetrics:
         """Get or create metrics tracker for a provider."""
@@ -272,12 +282,15 @@ class ProviderReliabilityEngine:
                 metrics.is_degraded = True
                 metrics.degraded_at = _time.time()
 
-        # Auto-recover check
-        if metrics.is_degraded and metrics.consecutive_successes >= self.MIN_RECOVER_SAMPLES:
-            trust = self.compute_trust(provider, "30min")
-            if trust.overall_trust >= self.RECOVER_THRESHOLD:
-                metrics.is_degraded = False
-                metrics.consecutive_failures = 0
+        # A degraded provider is only called by the bounded half-open probe.
+        # One validated success is enough to return it to the normal route;
+        # otherwise requiring many consecutive successes deadlocks recovery
+        # because degraded providers are excluded from ordinary traffic.
+        if metrics.is_degraded and success:
+            metrics.is_degraded = False
+            metrics.degraded_at = 0.0
+            metrics.last_health_check_at = 0.0
+            metrics.consecutive_failures = 0
 
     def compute_trust(
         self, provider: str, window: str = "24h"
@@ -399,6 +412,19 @@ class ProviderReliabilityEngine:
         """Check if a provider is currently degraded."""
         metrics = self._metrics.get(provider)
         return metrics.is_degraded if metrics else False
+
+    def should_attempt(self, provider: str, now: float | None = None) -> bool:
+        """Allow active providers and one periodic half-open recovery probe."""
+        metrics = self._metrics.get(provider)
+        if metrics is None or not metrics.is_degraded:
+            return True
+
+        checked_at = _time.time() if now is None else float(now)
+        last_probe = max(metrics.degraded_at, metrics.last_health_check_at)
+        if checked_at - last_probe < metrics.health_check_interval:
+            return False
+        metrics.last_health_check_at = checked_at
+        return True
 
     def get_trust_history(
         self, provider: str, limit: int = 100

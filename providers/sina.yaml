@@ -1,0 +1,69 @@
+# 新浪财经 — 东方财富之外的免费 A 股行情备用源
+provider: sina
+version: "1.0"
+description: 新浪财经实时行情与未复权日线，底层链路独立于东方财富
+
+code_format: "sh600519"
+
+capabilities:
+  realtime_quote:
+    method: HTTP
+    protocol: https://hq.sinajs.cn/list={symbol}
+    note: 必须携带 Referer=https://finance.sina.com.cn/
+    mapping:
+      name: 0
+      open: 1
+      pre_close: 2
+      price: 3
+      high: 4
+      low: 5
+      volume: 8
+      amount: 9
+      date: 30
+      time: 31
+
+  daily_kline:
+    method: HTTP
+    protocol: CN_MarketData.getKLineData
+    params:
+      scale: 240
+      ma: "no"
+      datalen: 1023
+    mapping:
+      date: day
+      open: open
+      high: high
+      low: low
+      close: close
+      volume: volume
+
+certification:
+  realtime_quote:
+    verified: true
+    samples: 5
+    accuracy: 1.0
+    consistency: 1.0
+    last_verified: "2026-08-23"
+  daily_kline:
+    verified: true
+    samples: 3
+    accuracy: 1.0
+    consistency: 0.0
+    last_verified: "2026-08-23"
+
+known_limits:
+  realtime_delay_sec: 0
+  history_years: 4
+  minute_history_days: 0
+  supports_adjust: []
+  supports_tick: false
+  supports_orderbook: true
+  max_batch_size: 100
+
+known_bugs:
+  - 实时报价缺少新浪Referer时会返回403或空响应
+  - 日线最多返回1023条且为未复权数据, 只作为低优先级兜底
+
+limitations:
+  - 不提供可靠的主力资金净流入金额
+  - 实时接口为公开网页接口, 没有商业SLA

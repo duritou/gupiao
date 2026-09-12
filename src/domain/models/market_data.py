@@ -11,7 +11,29 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime
+from decimal import Decimal
 from typing import Any
+
+
+@dataclass(frozen=True)
+class MarketData:
+    """Immutable normalized OHLCV value object used by repository/domain tests.
+
+    Provider-specific adapters may expose richer ``MarketQuote`` or
+    ``KlineBar`` objects below, while repository code can use this compact
+    Decimal-based representation for persistence and equality-safe tests.
+    """
+
+    stock_code: str
+    period: str
+    timestamp: datetime
+    open: Decimal
+    high: Decimal
+    low: Decimal
+    close: Decimal
+    volume: int | float | Decimal
+    amount: Decimal = Decimal("0")
+    turnover_rate: Decimal | None = None
 
 
 @dataclass
@@ -191,15 +213,54 @@ PROVIDER_CAPABILITIES: dict[str, ProviderCapability] = {
     "mootdx": ProviderCapability(
         provider="mootdx",
         markets=["CN"],
+        # 2026-07-11 实测: 本环境 mootdx quotes/bars 全空(连 000725/600519 都 shape=(0,0)),
+        # 仅 stocks 列表和 finance 财务可用。行情类能力全部下架,避免 fallback 链白试 +
+        # 制造"有 provider"的错觉。恢复时改回 True 并务必验证 quotes 非空。
+        realtime_quote=False,
+        daily_kline=False,
+        minute_kline=False,
+        index_data=False,
+        data_quality="basic",
+    ),
+    "tencent": ProviderCapability(
+        provider="tencent",
+        markets=["CN"],
+        # qt.gtimg.cn 实时报价 + web.ifzq.gtimg.cn 前复权日K, 均不封IP。
+        # akshare 被东财风控时的主力 fallback。直连, 见 source_manager._try_tencent_*。
+        realtime_quote=True,
+        daily_kline=True,
+        index_data=True,
+        data_quality="excellent",
+    ),
+    "tickflow": ProviderCapability(
+        provider="tickflow",
+        markets=["CN", "US", "HK"],
         realtime_quote=True,
         daily_kline=True,
         minute_kline=True,
-        index_data=True,
+        weekly_kline=True,
+        monthly_kline=True,
+        financial_indicators=True,
+        requires_auth=True,
+        rate_limited=True,
         data_quality="excellent",
+    ),
+    "sina": ProviderCapability(
+        provider="sina",
+        markets=["CN"],
+        # hq.sinajs.cn 实时报价与 money.finance.sina.com.cn 未复权日线。
+        # 底层链路独立于东方财富；请求必须携带新浪 Referer。
+        realtime_quote=True,
+        daily_kline=True,
+        rate_limited=True,
+        data_quality="good",
     ),
     "tushare": ProviderCapability(
         provider="tushare",
         markets=["CN"],
+        # Tushare provides completed daily data. It is not an intraday quote
+        # source unless a separate realtime permission is enabled.
+        realtime_quote=False,
         daily_kline=True,
         financial_indicators=True,
         financial_statements=True,
@@ -207,6 +268,7 @@ PROVIDER_CAPABILITIES: dict[str, ProviderCapability] = {
         shareholder_data=True,
         index_data=True,
         sector_data=True,
+        fund_flow=True,
         requires_auth=True,
         rate_limited=True,
         data_quality="excellent",

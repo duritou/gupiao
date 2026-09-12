@@ -4,9 +4,12 @@ Alerts are generated from real AI decisions in the journal.
 Strong signals (fusion >= 80) → P1, moderate (fusion >= 65) → P2.
 """
 
-from datetime import datetime
+from datetime import date
+
 from fastapi import APIRouter, Query
 from pydantic import BaseModel
+
+from src.api.routes.journal_utils import latest_per_stock
 
 router = APIRouter(tags=["alerts"], prefix="/alerts")
 
@@ -29,11 +32,14 @@ class OutcomeRequest(BaseModel):
 
 # ---- Alert builder from real journal ----
 
-def _build_alerts_from_journal():
+def _build_alerts_from_journal(decision_date: str = ""):
     """Generate alerts from real pipeline decisions in the journal."""
     from src.infrastructure.storage.market_database import market_db
 
-    decisions = market_db.get_recent_decisions(limit=30)
+    decisions = latest_per_stock(
+        market_db.get_decisions_for_date(decision_date, limit=5000)
+        if decision_date else market_db.get_recent_decisions(limit=500)
+    )
     alerts = []
 
     for d in decisions:
@@ -43,10 +49,14 @@ def _build_alerts_from_journal():
             continue
 
         tags = []
-        if d.get("macd_score", 50) >= 65: tags.append("MACD金叉")
-        if d.get("rsi_score", 50) <= 35: tags.append("RSI超卖")
-        if d.get("ma_score", 50) >= 65: tags.append("多头排列")
-        if d.get("volume_score", 50) >= 65: tags.append("放量")
+        if d.get("macd_score", 50) >= 65:
+            tags.append("MACD金叉")
+        if d.get("rsi_score", 50) <= 35:
+            tags.append("RSI超卖")
+        if d.get("ma_score", 50) >= 65:
+            tags.append("多头排列")
+        if d.get("volume_score", 50) >= 65:
+            tags.append("放量")
         created = d.get("created_at", "")
 
         alerts.append({
@@ -62,12 +72,12 @@ def _build_alerts_from_journal():
             "evidence": [{"type": "signal", "description": d.get("evidence", "")}],
             "tags": tags[:3],
             "created_at": created[:19] if created else "",
-            "status": "new",
+            "status": "new" if decision_date == date.today().isoformat() else "historical",
             "category": "signal",
             "historical_accuracy": 0,
         })
 
-    return alerts
+    return sorted(alerts, key=lambda alert: alert["score"], reverse=True)
 
 
 def _build_today_focus(alerts: list) -> dict:
@@ -85,8 +95,10 @@ def _build_today_focus(alerts: list) -> dict:
         one_liner = "AI Pipeline 产出中 — 运行 POST /ai-os/run-pipeline 更新"
 
     return {
-        "urgent": p1,
-        "important": p2,
+        # Keep the dashboard/desktop notifier focused.  The complete counts and
+        # alert feed remain available from the alert endpoints.
+        "urgent": p1[:5],
+        "important": p2[:8],
         "one_liner": one_liner,
     }
 
@@ -119,8 +131,10 @@ async def get_alerts(level: str = Query(None), limit: int = Query(50, ge=1, le=1
 @router.get("/today")
 async def get_today_alerts():
     """Today's alert summary — for Dashboard Today Focus."""
-    alerts = _build_alerts_from_journal()
+    today = date.today().isoformat()
+    alerts = _build_alerts_from_journal(today)
     return {
+        "date": today,
         "alerts": alerts[:20],
         "total_today": len(alerts),
         "unread_count": len(alerts),
@@ -144,11 +158,11 @@ async def get_alert_stats():
 
 
 @router.get("/recent")
-async def get_recent_alerts():
-    return {"alerts": _build_alerts_from_journal()[:10]}
+async def get_recent_alerts(limit: int = Query(50, ge=1, le=100)):
+    return {"alerts": _build_alerts_from_journal()[:limit]}
 
 
 @router.get("/unread-count")
 async def unread_count():
-    alerts = _build_alerts_from_journal()
+    alerts = _build_alerts_from_journal(date.today().isoformat())
     return {"unread": len(alerts), "urgent": sum(1 for a in alerts if a["level"] == "P1")}

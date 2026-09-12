@@ -5,6 +5,7 @@ import { CHART_RUNTIME_JS } from '../chart/chart-runtime';
 import { INDICATORS_JS } from '../chart/chart-indicators';
 import { OVERLAYS_JS } from '../chart/chart-overlays';
 import { TIMELINE_JS } from '../chart/chart-timeline';
+import { finiteScore, scoreText, scoreTone } from '../webview/score-display';
 
 export function buildResearchPage(code: string, detail: any): string {
     const d = detail || {};
@@ -16,9 +17,10 @@ export function buildResearchPage(code: string, detail: any): string {
     const news = d.news || [];
     const price = d.latest_price || 0;
     const changePct = d.price_change_pct || 0;
-    const sc = (d.ai_score || 50) >= 70 ? 'up' : (d.ai_score || 50) >= 50 ? 'warn' : 'down';
-    const stars = d.stars || 3;
-    const starStr = '★'.repeat(stars) + '☆'.repeat(5 - stars);
+    const aiScore = finiteScore(d.ai_score);
+    const sc = scoreTone(aiScore);
+    const stars = Math.max(0, Math.min(5, Math.round(Number(d.stars) || 0)));
+    const starStr = stars > 0 ? '★'.repeat(stars) + '☆'.repeat(5 - stars) : '评分不可用';
     const recColor = d.direction === 'buy' ? '#22C55E' : d.direction === 'sell' ? '#EF4444' : '#9CA3AF';
 
     // Real data provenance (v7.4)
@@ -148,7 +150,6 @@ ${!dataAvail ? `<div style="font-size:10px;color:#EF4444;margin-top:4px">${d.dat
 <button class="period-btn" id="btn-vol" onclick="window._runtime&&_runtime.toggle('volume')" style="color:#9CA3AF">VOL</button>
 <span style="flex:1"></span>
 <button class="period-btn" id="btn-live" style="color:#22C55E" onclick="toggleLiveFeed()">Live</button>
-<button class="period-btn" style="color:#7C3AED" onclick="addAIDemo()">+ AI</button>
 </div>
 
 <!-- K-Line Chart -->
@@ -164,10 +165,12 @@ ${!dataAvail ? `<div style="font-size:10px;color:#EF4444;margin-top:4px">${d.dat
 
 <!-- AI Score Hero -->
 <div class="ai-score-hero">
+<div style="font-size:10px;color:#8b949e;letter-spacing:.4px;margin-bottom:6px">技术评分 · 详情页信号</div>
 <div class="score-stars">${starStr}</div>
-<div class="score-num ${sc}">${(d.ai_score || 50).toFixed(0)}</div>
+<div class="score-num ${sc}">${scoreText(aiScore)}</div>
 <div class="score-rec" style="background:${recColor}22;color:${recColor};border:1px solid ${recColor}44">${d.recommendation || '观望'}</div>
 <div class="score-conf">置信度 ${((d.confidence || 0) * 100).toFixed(0)}% · ${d.buy_signals || 0}看多/${d.sell_signals || 0}看空</div>
+<div style="font-size:10px;color:#6B7280;margin-top:6px">此分用于技术分析；最终状态请以决策中心的研究结论为准</div>
 </div>
 
 <!-- Score Breakdown (loaded from API) -->
@@ -207,11 +210,11 @@ ${risks.map((r: string) => {
 <div class="ai-section">
 <h4>📊 关键指标</h4>
 <div class="indicator-item"><span class="ind-label">MACD</span><span class="ind-value" style="color:${(indicators.macd?.signal === '金叉' || scores.macd >= 60) ? '#22C55E' : '#EF4444'}">${indicators.macd?.signal || (scores.macd >= 60 ? '金叉' : '死叉')}</span></div>
-<div class="indicator-item"><span class="ind-label">RSI</span><span class="ind-value">${indicators.rsi?.value || (scores.rsi || 50).toFixed(0)} <span style="font-size:10px;color:#9CA3AF">${indicators.rsi?.status || '健康'}</span></span></div>
+<div class="indicator-item"><span class="ind-label">RSI</span><span class="ind-value">${indicators.rsi?.value ?? (finiteScore(scores.rsi) === null ? 'N/A' : finiteScore(scores.rsi)!.toFixed(0))} <span style="font-size:10px;color:#9CA3AF">${indicators.rsi?.status || (finiteScore(scores.rsi) === null ? '数据不可用' : '健康')}</span></span></div>
 <div class="indicator-item"><span class="ind-label">均线</span><span class="ind-value" style="color:${(scores.ma >= 60) ? '#22C55E' : (scores.ma <= 40) ? '#EF4444' : '#F59E0B'}">${indicators.ma?.trend || (scores.ma >= 60 ? '多头排列' : '空头排列')}</span></div>
 <div class="indicator-item"><span class="ind-label">成交量</span><span class="ind-value" style="color:${(scores.volume >= 60) ? '#22C55E' : '#9CA3AF'}">${scores.volume >= 60 ? '放量' : '正常'}</span></div>
 <div class="indicator-item"><span class="ind-label">KDJ</span><span class="ind-value">${(scores.kdj >= 60) ? '<span style=color:#22C55E>金叉</span>' : (scores.kdj <= 40) ? '<span style=color:#EF4444>死叉</span>' : '<span style=color:#9CA3AF>中性</span>'}</div>
-<div class="indicator-item"><span class="ind-label">BOLL</span><span class="ind-value">${(scores.boll >= 60) ? '<span style=color:#22C55E>上轨</span>' : (scores.boll <= 40) ? '<span style=color:#EF4444>下轨</span>' : '<span style=color:#9CA3AF>中轨</span>'}</div>
+<div class="indicator-item"><span class="ind-label">BOLL</span><span class="ind-value">${(scores.boll >= 60) ? '<span style=color:#22C55E>下轨/超卖</span>' : (scores.boll <= 40) ? '<span style=color:#EF4444>上轨/超买</span>' : '<span style=color:#9CA3AF>中轨</span>'}</div>
 </div>
 
 <!-- Fund Flow -->
@@ -308,58 +311,6 @@ ${TIMELINE_JS}
             }
         };
 
-        // Demo: emit evidence through EvidenceBus
-        window.addAIDemo = function() {
-            const d = klineData;
-            // Buy signal evidence
-            runtime.emitEvidence(new Evidence({
-                type: 'buy_signal', date: d[Math.floor(d.length * 0.55)].date,
-                price: d[Math.floor(d.length * 0.55)].low, score: 92, confidence: 0.89,
-                title: 'MACD金叉 + MA多头', description: '多指标共振看多',
-                source: ['signal:macd', 'signal:ma', 'knowledge:semiconductor'],
-            }));
-            runtime.emitEvidence(new Evidence({
-                type: 'buy_signal', date: d[Math.floor(d.length * 0.72)].date,
-                price: d[Math.floor(d.length * 0.72)].low, score: 87, confidence: 0.85,
-                title: 'RSI超卖反弹', description: 'RSI跌至30后反弹',
-                source: ['signal:rsi', 'signal:volume'],
-            }));
-            // Support line evidence
-            runtime.emitEvidence(new Evidence({
-                type: 'support', date: d[Math.floor(d.length * 0.30)].date,
-                price: d[Math.floor(d.length * 0.30)].low, confidence: 0.88,
-                title: 'S1', description: '过去三次触及反弹',
-                source: ['ai:analyst', 'backtest:regression'],
-            }));
-            // AI Recommendation
-            runtime.emitEvidence(new Evidence({
-                type: 'ai_rec', date: d[Math.floor(d.length * 0.68)].date,
-                score: 91, confidence: 0.87,
-                title: 'AI强烈关注', description: '多指标共振 + 行业景气上行',
-                source: ['ai:analyst', 'knowledge:semiconductor', 'signal:macd'],
-            }));
-            // Backtest trade
-            runtime.emitEvidence(new Evidence({
-                type: 'backtest', date: d[Math.floor(d.length * 0.45)].date,
-                confidence: 0.80, title: '回测交易 +18.3%',
-                detail: {
-                    entryDate: d[Math.floor(d.length * 0.45)].date,
-                    entryPrice: d[Math.floor(d.length * 0.45)].close,
-                    exitDate: d[Math.floor(d.length * 0.62)].date,
-                    exitPrice: d[Math.floor(d.length * 0.62)].close,
-                    profitPct: 18.3, holdingDays: 35,
-                },
-            }));
-            // News event
-            runtime.emitEvidence(new Evidence({
-                type: 'news', date: d[Math.floor(d.length * 0.52)].date,
-                confidence: 0.70, title: 'Q3业绩超预期',
-                description: '营收增长35%，利润增长42%',
-                source: ['news:earnings'],
-            }));
-            timeline.render();
-        };
-
         // Period switcher
         document.querySelectorAll('.period-btn[data-days]').forEach(btn => {
             btn.addEventListener('click', function() {
@@ -441,11 +392,13 @@ function renderBreakdown(container, bd) {
     let html = '<div style="background:#111827;border:1px solid #1F2937;border-radius:6px;padding:10px 12px">';
     html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">';
     html += '<span style="font-size:12px;font-weight:600;color:#9CA3AF">评分分解</span>';
-    html += '<span style="font-size:20px;font-weight:800;color:' + (bd.final_score>=70?'#22C55E':bd.final_score>=50?'#F59E0B':'#EF4444') + '">' + (bd.final_score||50).toFixed(0) + '</span>';
+    const finalScore = Number(bd.final_score);
+    const hasFinalScore = Number.isFinite(finalScore);
+    html += '<span style="font-size:20px;font-weight:800;color:' + (!hasFinalScore?'#9CA3AF':finalScore>=70?'#22C55E':finalScore>=50?'#F59E0B':'#EF4444') + '">' + (hasFinalScore ? finalScore.toFixed(0) : 'N/A') + '</span>';
     html += '</div>';
 
     // Total bar
-    const pct = bd.final_score || 50;
+    const pct = hasFinalScore ? finalScore : 0;
     html += '<div style="height:4px;background:#1F2937;border-radius:2px;margin-bottom:10px">';
     html += '<div style="height:4px;border-radius:2px;width:' + pct + '%;background:' + (pct>=70?'#22C55E':pct>=50?'#F59E0B':'#EF4444') + '"></div></div>';
 

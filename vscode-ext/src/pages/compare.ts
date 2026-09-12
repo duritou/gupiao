@@ -2,6 +2,7 @@
 
 import { pageShell } from '../webview/layout';
 import { BASE_URL } from '../constants';
+import { finiteScore, scoreText, scoreTone } from '../webview/score-display';
 
 export function buildComparePage(data: any): string {
     const stocks = data.stocks || [];
@@ -80,8 +81,9 @@ function buildCompareHTML(stocks) {
             let display = String(val != null ? val : '-');
             let cls = '';
             if (key === 'ai_score') {
-                display = String(val || 50);
-                cls = val >= 70 ? 'up' : val >= 50 ? 'neutral' : 'down';
+                const hasScore = val !== null && val !== undefined && val !== '' && Number.isFinite(Number(val));
+                display = hasScore ? Number(val).toFixed(0) : 'N/A';
+                cls = hasScore ? Number(val) >= 70 ? 'up' : Number(val) >= 50 ? 'warn' : 'down' : 'neutral';
             } else if (key === 'macd') {
                 cls = String(val).includes('✓') ? 'up' : String(val).includes('✗') ? 'down' : 'neutral';
             } else if (key === 'direction' || key === 'recommendation') {
@@ -123,7 +125,7 @@ function buildCompareTable(stocks: any[]): string {
             const val = s[key];
             let display = String(val != null ? val : '-');
             let cls = '';
-            if (key === 'ai_score') { cls = val >= 70 ? 'up' : val >= 50 ? 'neutral' : 'down'; display = String(val || 50); }
+            if (key === 'ai_score') { cls = scoreTone(val); display = scoreText(val); }
             else if (key === 'macd') { cls = String(val).includes('✓') ? 'up' : String(val).includes('✗') ? 'down' : 'neutral'; }
             html += `<div class="compare-cell ${cls}">${display}</div>`;
         });

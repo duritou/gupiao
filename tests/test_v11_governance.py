@@ -29,8 +29,9 @@ class TestCaseRetrieval:
             direction="buy",
         )
         assert report.stock_code == "688256.SH"
-        assert report.total_cases_searched > 0
-        # Should find some similar cases
+        # A fresh install has no synthetic cases; retrieval must remain honest.
+        assert report.total_cases_searched >= 0
+        # Historical matches are optional until real cases have been archived.
         assert report.total_similar >= 0
         if report.matches:
             # Each match should have similarity fields
@@ -118,6 +119,27 @@ class TestGovernance:
         risk_check = next(c for c in result.checks if c.check_id == "risk_budget")
         assert risk_check.result == "FAIL"
         assert result.overall_verdict == "REJECTED"
+
+    def test_governance_never_allows_profile_to_exceed_system_cap(self):
+        """A user profile cannot raise the paper-execution hard cap."""
+        from src.explain.governance import governance_engine
+
+        class _RiskProfile:
+            level = "aggressive"
+
+        class _Profile:
+            risk_profile = _RiskProfile()
+
+        result = governance_engine.audit(
+            stock_code="688256.SH",
+            stock_name="test",
+            user_profile=_Profile(),
+            position_pct=21,
+        )
+
+        risk_check = next(c for c in result.checks if c.check_id == "risk_budget")
+        assert risk_check.result == "FAIL"
+        assert "20%" in risk_check.evidence_used[-1]
 
     def test_committee_rejected_fails_consensus(self):
         """When committee rejects, consensus check should FAIL."""

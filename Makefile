@@ -39,7 +39,7 @@ sync-data: ## 同步行情数据
 	poetry run python scripts/sync_market_data.py
 
 run-api: ## 启动 API 服务
-	poetry run uvicorn src.api.app:app --host 127.0.0.1 --port 8888 --reload
+	poetry run python scripts/run_api.py
 
 docs: ## 查看架构文档
 	@echo "架构文档: docs/architecture-final-v1.0.md"

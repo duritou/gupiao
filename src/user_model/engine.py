@@ -90,15 +90,25 @@ class UserModelEngine:
         # Estimate holding period from outcome timing
         holding_days = []
         for s in followed:
+            observed_days = getattr(s, "paper_holding_days", None)
+            if (
+                getattr(s, "paper_holding_complete", False)
+                and isinstance(observed_days, (int, float))
+                and observed_days >= 0
+            ):
+                holding_days.append(float(observed_days))
+                continue
             if hasattr(s, 'created_at') and hasattr(s, 'user_action_at') and s.user_action_at:
                 try:
                     t0 = datetime.fromisoformat(s.created_at)
                     t1 = datetime.fromisoformat(s.user_action_at)
-                    holding_days.append(abs((t1 - t0).days) + 14)  # +14 avg post-action hold
+                    holding_days.append(abs((t1 - t0).days))
                 except (ValueError, TypeError):
-                    holding_days.append(20)
+                    continue
 
-        avg_hold = sum(holding_days) / len(holding_days) if holding_days else 20
+        if not holding_days:
+            return InvestmentStyle()
+        avg_hold = sum(holding_days) / len(holding_days)
 
         # Classify
         if avg_hold < 7:
@@ -131,18 +141,19 @@ class UserModelEngine:
         if not followed:
             return RiskProfile()
 
-        # Estimate position sizes from action prices
+        # Estimate position sizes from recorded fill value when available.
         sizes = []
         losses_tolerated = []
         for s in followed:
-            if hasattr(s, 'user_action_price') and s.user_action_price > 0:
-                sizes.append(min(0.3, 0.05 + len(followed) * 0.002))
+            position_pct = getattr(s, "paper_position_size_pct", None)
+            if isinstance(position_pct, (int, float)) and position_pct >= 0:
+                sizes.append(min(1.0, float(position_pct) / 100))
             if hasattr(s, 'final_profit_pct') and s.final_profit_pct < 0:
                 losses_tolerated.append(abs(s.final_profit_pct))
 
-        avg_size = sum(sizes) / len(sizes) if sizes else 0.15
-        max_size = max(sizes) if sizes else 0.25
-        max_dd = max(losses_tolerated) if losses_tolerated else 12.0
+        avg_size = sum(sizes) / len(sizes) if sizes else 0.0
+        max_size = max(sizes) if sizes else 0.0
+        max_dd = max(losses_tolerated) if losses_tolerated else 0.0
 
         # Classify
         if max_size > 0.25 or max_dd > 15:
@@ -160,7 +171,7 @@ class UserModelEngine:
                          and hasattr(s, 'direction') and s.direction == "sell")
         total_losses = sum(1 for s in followed
                           if hasattr(s, 'final_profit_pct') and s.final_profit_pct < -5)
-        stop_adherence = sold_losses / total_losses if total_losses else 0.5
+        stop_adherence = sold_losses / total_losses if total_losses else 0.0
 
         return RiskProfile(
             level=level,
@@ -177,9 +188,8 @@ class UserModelEngine:
         sector_data: dict[str, dict] = defaultdict(lambda: {"count": 0, "wins": 0, "returns": []})
 
         for s in followed:
-            sector = self._guess_sector_from_name(
-                getattr(s, 'stock_name', ''),
-                getattr(s, 'stock_code', ''),
+            sector = getattr(s, "paper_sector", "") or self._guess_sector_from_name(
+                getattr(s, 'stock_name', ''), getattr(s, 'stock_code', ''),
             )
             sector_data[sector]["count"] += 1
             profit = getattr(s, 'final_profit_pct', 0)
@@ -468,7 +478,10 @@ class UserModelEngine:
         for s in snaps:
             if hasattr(s, 'created_at') and s.created_at:
                 try:
-                    dates.append(datetime.fromisoformat(s.created_at))
+                    # Journal history contains both legacy naive timestamps and
+                    # newer timezone-aware timestamps. Calendar dates are all
+                    # this metric needs and remain directly comparable.
+                    dates.append(datetime.fromisoformat(s.created_at).date())
                 except (ValueError, TypeError):
                     pass
         if len(dates) < 2:

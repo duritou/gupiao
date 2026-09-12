@@ -11,6 +11,7 @@ This is the difference between 'AI says buy' and 'AI says buy, backed by
 from __future__ import annotations
 
 import hashlib
+import json
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from enum import Enum
@@ -224,6 +225,39 @@ _case_history: list[ResearchCase] = []
 def archive_case(case: ResearchCase):
     _case_library[case.case_id] = case
     _case_history.append(case)
+
+
+def restore_cases(rows: list[dict[str, Any]]) -> int:
+    """Rebuild the in-memory case index from persisted decisive decisions."""
+    restored = 0
+    for row in reversed(rows):
+        case_id = f"RC-PERSISTED-{row.get('id')}"
+        if not row.get("id") or case_id in _case_library:
+            continue
+        try:
+            analysis = row.get("analysis_json") or "{}"
+            payload = analysis if isinstance(analysis, dict) else json.loads(analysis)
+        except (TypeError, ValueError, json.JSONDecodeError):
+            payload = {}
+        case = ResearchCase(
+            case_id=case_id,
+            stock_code=str(row.get("stock_code") or ""),
+            stock_name=str(row.get("stock_name") or ""),
+            created_at=str(row.get("created_at") or row.get("decision_date") or ""),
+            ai_score=float(row.get("ai_score") or payload.get("ai_score") or 50),
+            direction=str(row.get("direction") or "neutral"),
+            confidence=float(row.get("confidence") or 0),
+            recommendation_text=str(row.get("recommendation") or ""),
+            evidence_grade=EvidenceGrade.C,
+            outcome_known=bool(row.get("outcome_known")),
+            actual_30d_return=float(row.get("actual_return") or 0),
+            was_correct=(bool(row.get("was_correct")) if row.get("was_correct") is not None else None),
+            outcome_analyzed_at=str(payload.get("outcome_analyzed_at") or ""),
+            is_replayable=bool(payload.get("is_replayable", True)),
+        )
+        archive_case(case)
+        restored += 1
+    return restored
 
 
 def get_case(case_id: str) -> ResearchCase | None:

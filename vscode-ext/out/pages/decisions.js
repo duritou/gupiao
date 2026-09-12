@@ -3,6 +3,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.buildDecisionsPage = buildDecisionsPage;
 const layout_1 = require("../webview/layout");
+const score_display_1 = require("../webview/score-display");
 function buildDecisionsPage(data) {
     const decisionsData = data.decisions || {};
     const decisions = decisionsData.decisions || [];
@@ -35,7 +36,16 @@ ${decisions.map((d) => _renderDecisionCard(d, recLabels, recColors)).join('')}
     return (0, layout_1.pageShell)('decisions', 'Decision Center · 决策中心', content, '');
 }
 function _renderDecisionCard(d, labels, colors) {
-    const color = colors[d.recommendation] || '#8b949e';
+    const stateColors = {
+        execution_ready: '#22C55E', buy_candidate: '#F59E0B', hold: '#58a6ff',
+        reduce: '#EF4444', research_blocked: '#F59E0B', research_pending: '#8b949e',
+        expired: '#8b949e',
+    };
+    const state = d.display_state || 'research_pending';
+    const stateLabel = d.display_state_label || labels[d.recommendation] || '分析待完成';
+    const color = stateColors[state] || colors[d.recommendation] || '#8b949e';
+    const primaryScore = (0, score_display_1.finiteScore)(d.primary_score ?? d.action_score ?? d.ai_score);
+    const rankingScore = (0, score_display_1.finiteScore)(d.ranking_score);
     const urgencyColors = { today: '#EF4444', this_week: '#F59E0B', monitor: '#8b949e' };
     return `
 <div class="card" style="border-left:3px solid ${color};margin-bottom:12px" onclick="${d.stock_code ? `analyzeStock('${d.stock_code}')` : ''}">
@@ -51,10 +61,16 @@ ${d.user_past_trades > 0 ? `<span style="font-size:10px;color:#8b949e">${d.user_
 <div class="flex-row gap-8">
 <span style="font-size:10px;color:${urgencyColors[d.urgency]};border:1px solid ${urgencyColors[d.urgency]};padding:1px 6px;border-radius:8px">${d.urgency === 'today' ? '今日' : d.urgency === 'this_week' ? '本周' : '关注'}</span>
 <div style="text-align:right">
-<div style="font-size:22px;font-weight:700;color:${color}">${(d.ai_score || 50).toFixed(0)}</div>
-<div style="font-size:10px;color:${color}">${labels[d.recommendation] || d.recommendation}</div>
+<div style="font-size:22px;font-weight:700;color:${primaryScore === null ? '#9CA3AF' : color}">${(0, score_display_1.scoreText)(primaryScore)}</div>
+<div style="font-size:10px;color:${color};font-weight:600">${stateLabel}</div>
+<div style="font-size:10px;color:#8b949e;margin-top:2px">${d.primary_score_label || '研究评分'} · ${d.ranking_score_label || '机会排名分'} ${(0, score_display_1.scoreText)(rankingScore)}</div>
 </div>
 </div>
+</div>
+
+<div style="display:flex;gap:8px;align-items:center;margin-bottom:10px;font-size:11px">
+<span style="color:${color};border:1px solid ${color}66;border-radius:10px;padding:2px 8px">${stateLabel}</span>
+<span style="color:#9CA3AF">执行：${d.execution_status_label || '等待执行确认'}</span>
 </div>
 
 <!-- Bull vs Bear -->

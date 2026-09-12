@@ -7,10 +7,25 @@ from datetime import date
 
 def get_journal_decisions(limit: int = 50) -> list[dict]:
     """Return recent pipeline decisions sorted by score descending."""
+    from src.ai_os.recommendation_quality import sort_decisions
     from src.infrastructure.storage.market_database import market_db
 
-    decisions = market_db.get_recent_decisions(limit=limit)
-    return sorted(decisions, key=lambda d: float(d.get("ai_score") or 0), reverse=True)
+    decisions = market_db.get_recent_decisions(limit=max(limit * 5, limit))
+    unique = latest_per_stock(decisions)
+    return sort_decisions(unique)[:limit]
+
+
+def latest_per_stock(decisions: list[dict]) -> list[dict]:
+    """Keep only the newest decision for each stock from newest-first rows."""
+    result = []
+    seen = set()
+    for decision in decisions:
+        code = str(decision.get("stock_code") or "").strip().upper()
+        if not code or code in seen:
+            continue
+        seen.add(code)
+        result.append(decision)
+    return result
 
 
 def latest_decision_for_code(code: str) -> dict | None:
@@ -36,10 +51,17 @@ def recommended_codes(limit: int = 30) -> list[str]:
 
 def stock_name_from_journal(code: str) -> str:
     """Resolve a display name from the decision journal; otherwise use code."""
-    decision = latest_decision_for_code(code)
-    if decision and decision.get("stock_name"):
-        return str(decision["stock_name"])
-    return code
+    normalized = code.strip().upper()
+    try:
+        from src.infrastructure.storage.market_database import market_db
+
+        name = market_db.get_stock_name(normalized)
+        if name:
+            return name
+    except Exception:
+        pass
+    decision = latest_decision_for_code(normalized)
+    return str(decision["stock_name"]) if decision and decision.get("stock_name") else code
 
 
 def score_stars(score: float) -> int:

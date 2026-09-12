@@ -4,6 +4,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.buildComparePage = buildComparePage;
 const layout_1 = require("../webview/layout");
 const constants_1 = require("../constants");
+const score_display_1 = require("../webview/score-display");
 function buildComparePage(data) {
     const stocks = data.stocks || [];
     const content = `
@@ -79,8 +80,9 @@ function buildCompareHTML(stocks) {
             let display = String(val != null ? val : '-');
             let cls = '';
             if (key === 'ai_score') {
-                display = String(val || 50);
-                cls = val >= 70 ? 'up' : val >= 50 ? 'neutral' : 'down';
+                const hasScore = val !== null && val !== undefined && val !== '' && Number.isFinite(Number(val));
+                display = hasScore ? Number(val).toFixed(0) : 'N/A';
+                cls = hasScore ? Number(val) >= 70 ? 'up' : Number(val) >= 50 ? 'warn' : 'down' : 'neutral';
             } else if (key === 'macd') {
                 cls = String(val).includes('✓') ? 'up' : String(val).includes('✗') ? 'down' : 'neutral';
             } else if (key === 'direction' || key === 'recommendation') {
@@ -121,8 +123,8 @@ function buildCompareTable(stocks) {
             let display = String(val != null ? val : '-');
             let cls = '';
             if (key === 'ai_score') {
-                cls = val >= 70 ? 'up' : val >= 50 ? 'neutral' : 'down';
-                display = String(val || 50);
+                cls = (0, score_display_1.scoreTone)(val);
+                display = (0, score_display_1.scoreText)(val);
             }
             else if (key === 'macd') {
                 cls = String(val).includes('✓') ? 'up' : String(val).includes('✗') ? 'down' : 'neutral';

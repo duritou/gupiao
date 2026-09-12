@@ -51,22 +51,22 @@ capabilities:
 
 certification:
   realtime_quote:
-    verified: true
-    samples: 1328
-    accuracy: 0.998
-    consistency: 0.987
-    last_verified: "2026-07-07"
+    verified: false
+    samples: 1
+    accuracy: 0.0
+    consistency: 0.0
+    last_verified: "2026-08-23"
   daily_kline:
-    verified: true
-    samples: 520
-    accuracy: 1.0
-    consistency: 1.0
-    last_verified: "2026-07-07"
+    verified: false
+    samples: 1
+    accuracy: 0.0
+    consistency: 0.0
+    last_verified: "2026-07-11"
   minute_kline:
-    verified: true
-    samples: 240
-    accuracy: 1.0
-    last_verified: "2026-07-07"
+    verified: false
+    samples: 0
+    accuracy: 0.0
+    last_verified: ""
 
 known_limits:
   realtime_delay_sec: 0
@@ -78,8 +78,9 @@ known_limits:
   max_batch_size: 100
 
 known_bugs:
-  - BESTIP空串: 全新安装后Quotes.factory()抛ValueError, 解决: 显式传server IP
-  - frequency≠category: 传category被**kwargs静默吞掉, 永远退化成日线
+  - "BESTIP空串：全新安装后Quotes.factory()抛ValueError，解决方式为显式传server IP"
+  - "frequency≠category：传category被**kwargs静默吞掉，永远退化成日线"
+  - "当前网络能连接TCP服务器但quotes/bars返回空表，因此运行时能力已停用"
 
 servers:
   - 119.97.185.59:7709

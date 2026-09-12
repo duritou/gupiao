@@ -18,6 +18,7 @@ from src.domain.events.core.event_type import (
 
 @dataclass(frozen=True)
 class TestSignalPayload(BaseEventPayload):
+    __test__ = False
     stock_code: str = ""
     score: float = 0.0
     direction: str = "buy"

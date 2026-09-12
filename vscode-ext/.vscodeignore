@@ -1,0 +1,11 @@
+# 打包时排除: 扩展运行只需 out/(编译产物) + node_modules(依赖) + package.json + README
+.vscode/**
+src/**
+**/*.ts
+**/*.map
+tsconfig.json
+.gitignore
+.gitattributes
+.git/**
+tests/**
+*.log

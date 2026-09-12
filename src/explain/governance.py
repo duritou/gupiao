@@ -25,6 +25,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
 
+from src.ai_os.trading_policy import PAPER_MAX_POSITION_PCT
 
 # ================================================================
 # Data Models
@@ -222,7 +223,8 @@ class DecisionGovernor:
     ) -> GovernanceCheck:
         """Verify position is within user's risk tolerance."""
         # Determine user's max position from profile or use defaults
-        max_position = 25.0  # Default moderate
+        system_max_position = PAPER_MAX_POSITION_PCT * 100
+        max_position = system_max_position
         risk_level = "moderate"
 
         if user_profile and hasattr(user_profile, 'risk_profile') and user_profile.risk_profile:
@@ -233,6 +235,11 @@ class DecisionGovernor:
             # Map risk levels to limits
             risk_limits = {"保守型": 15.0, "稳健型": 20.0, "积极型": 30.0, "激进型": 40.0}
             max_position = risk_limits.get(risk_level, 25.0)
+
+        # Governance must never approve a position that the paper-execution
+        # layer will reject. A user's profile may be more conservative, but it
+        # cannot raise the system-wide hard cap.
+        max_position = min(float(max_position), system_max_position)
 
         pct_used = (position_pct / max_position * 100) if max_position > 0 else 100
 
@@ -531,6 +538,15 @@ class DecisionGovernor:
                 detail="无法获取模型校准数据。假设模型性能稳定。",
                 recommendation="定期运行校准评估以监控模型漂移。",
                 evidence_used=["校准数据缺失"],
+            )
+
+        if not bool(getattr(calibration_report, "available", False)):
+            return GovernanceCheck(
+                check_name="模型漂移", check_id="model_drift", category="stability",
+                result="WARN", score=50.0,
+                detail="校准样本不足，当前不能判断模型是否漂移。",
+                recommendation="继续积累已回填的真实结果；样本成熟前不要把校准分视为可靠指标。",
+                evidence_used=["校准状态: insufficient_samples"],
             )
 
         cal_score = getattr(calibration_report, 'overall_calibration_score', 0.5)

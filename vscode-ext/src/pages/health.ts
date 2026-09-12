@@ -1,7 +1,6 @@
 /** System Health v7.3 — Data Trust + all subsystems at a glance. */
 
 import { pageShell } from '../webview/layout';
-import { BASE_URL } from '../constants';
 
 export function buildHealthPage(data: any): string {
     const health = data.health || {};
@@ -64,12 +63,7 @@ ${detailLines.map(([k, v]) => `
 
     const extraScript = `
 async function refreshHealth() {
-    try {
-        const resp = await fetch('${BASE_URL}/market/system-health');
-        const data = await resp.json();
-        document.getElementById('lastUpdate').textContent = new Date().toLocaleTimeString('zh-CN');
-        vscode.postMessage({command:'navigate',page:'health'});
-    } catch(e) {}
+    vscode.postMessage({command:'refreshPage'});
 }
 let healthInterval;
 function startAutoRefresh() { healthInterval = setInterval(refreshHealth, 30000); }

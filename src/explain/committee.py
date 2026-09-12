@@ -119,6 +119,40 @@ class InvestmentCommittee:
     sources and scoring logic — just like a real investment committee.
     """
 
+    def _apply_calibration(self, raw_confidence: float) -> float:
+        """用历史 Calibration 分桶实际命中率校准 confidence(分桶 isotonic)。
+
+        学习闭环最后一环:历史显示某置信度桶系统性偏差时,把 confidence 朝该桶
+        实际命中率收缩。样本不足/异常时返回原值,绝不影响主流程。
+        """
+        if not raw_confidence or raw_confidence <= 0:
+            return raw_confidence
+        try:
+            from src.explain.evidence_quality import _case_history
+            from src.explain.calibration import calibration_engine
+            report = calibration_engine.compute_calibration(_case_history)
+            # 样本不足不校准(空样本时 score=0/buckets=[],直接用会误清零 confidence)
+            if report.total_verified_cases < 10 or not report.buckets:
+                return raw_confidence
+            # 找 raw_confidence(0-1)所在桶;边界 raw>=最大桶 max_conf 归该桶
+            bucket = None
+            for b in report.buckets:
+                if b.min_conf <= raw_confidence < b.max_conf:
+                    bucket = b
+                    break
+            if bucket is None and report.buckets:
+                last = report.buckets[-1]
+                if raw_confidence >= last.max_conf:
+                    bucket = last
+            if bucket is None or getattr(bucket, "total_cases", 0) < 3:
+                return raw_confidence
+            # 朝该桶实际命中率收缩(学习率 α=0.5,平滑收敛,不直接替换)
+            alpha = 0.5
+            calibrated = raw_confidence + alpha * (bucket.actual_accuracy - raw_confidence)
+            return max(0.0, min(1.0, calibrated))
+        except Exception:
+            return raw_confidence
+
     def evaluate(
         self, stock_code: str, stock_name: str,
         base_score: float = 70.0,
@@ -176,6 +210,7 @@ class InvestmentCommittee:
         total_w = sum(weights)
         composite = sum(r.score * r.weight for r in reports) / total_w if total_w > 0 else 50
         avg_confidence = sum(r.confidence for r in reports) / len(reports) if reports else 0
+        avg_confidence = self._apply_calibration(avg_confidence)  # 反哺:用历史 Calibration 分桶校准
 
         # Direction from vote
         if vote_result == "passed":

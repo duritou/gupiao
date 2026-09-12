@@ -3,7 +3,10 @@
 Answers: "Where did this data come from, and can I trust it?"
 
 Architecture (multi-provider with auto-failover):
-  AkShare ───────┐
+  TickFlow ──────┐
+  Tencent ───────┤
+  Sina ──────────┤
+  AkShare ───────┤
   Finnhub ───────┤
   FMP ───────────┤
   Twelve Data ───┤
@@ -12,7 +15,7 @@ Architecture (multi-provider with auto-failover):
                   ├── SourceManager ──→ Provenance + Data
   Cache ─────────┤
                   │
-  Fallback: Cache → AkShare → Finnhub → FMP → TwelveData → AlphaVantage → BaoStock → Error
+  CN fallback: Cache → TickFlow → Tencent → Sina → AkShare/BaoStock → Error
 
 Every data point carries DataProvenance — the user ALWAYS knows
 where the data came from and how fresh it is.
@@ -23,8 +26,9 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import os
+import re
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime, time as dt_time, timedelta
 from enum import Enum
 from typing import Any, Callable
 
@@ -34,6 +38,12 @@ from src.infrastructure.market_data.fusion import (
     SourceReading,
 )
 from src.infrastructure.market_data.provider_metrics import reliability_engine
+from src.infrastructure.market_data.tushare_provider import tushare_provider
+
+# P0 止血: akshare 实时接口对部分住宅 IP 有连接级风控(hang / RemoteDisconnected),
+# 裸 asyncio.to_thread 无超时会阻塞事件循环、拖垮整个 FastAPI 服务(连 /docs 都 hang)。
+# 所有 akshare 调用必须经此超时,失败立即返回 degraded 数据,绝不 hang。
+_AKSHARE_TIMEOUT: float = 8.0
 
 # API 凭据从环境变量读取(见 .env / .env.example),禁止硬编码入库
 try:
@@ -64,6 +74,44 @@ POLYGON_BASE_URL = "https://api.polygon.io/v2"
 
 # Tushare — A-share financial data
 TUSHARE_TOKEN = os.getenv("TUSHARE_TOKEN", "")
+RESEARCH_QUOTE_ATTEMPT_TIMEOUT_SECONDS = 8.0
+
+
+def _exception_detail(exc: BaseException, limit: int = 160) -> str:
+    """Preserve exception type when providers return an empty message."""
+    detail = str(exc).strip() or repr(exc)
+    detail = re.sub(
+        r"(?i)(token|access_token|api[_-]?key|password)\s*=\s*[^&\s,;]+",
+        r"\1=[REDACTED]",
+        detail,
+    )
+    detail = re.sub(r"(?i)(authorization:\s*bearer\s+)[^\s]+", r"\1[REDACTED]", detail)
+    return f"{type(exc).__name__}: {detail[:limit]}"
+
+
+def _normalize_market_code(value: str) -> str:
+    """Normalize six-digit A-share input before provider routing."""
+    text = str(value or "").strip().upper()
+    if "." in text or not text.isdigit() or len(text) != 6:
+        return text
+    if text.startswith(("6", "9")):
+        return f"{text}.SH"
+    if text.startswith(("0", "2", "3")):
+        return f"{text}.SZ"
+    if text.startswith(("4", "8")):
+        return f"{text}.BJ"
+    return text
+
+
+def _number(value: Any, default: float | None = None) -> float | None:
+    """Parse optional provider numerics without turning bad data into zero."""
+    if value in (None, "", "-") or isinstance(value, bool):
+        return default
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError):
+        return default
+    return default if parsed != parsed else parsed
 
 # mootdx server pool (通达信 TCP 7709) — probed on first use
 _TDX_SERVERS = [
@@ -81,6 +129,7 @@ _TDX_SERVERS = [
 
 class SourceProvider(str, Enum):
     AKSHARE = "akshare"
+    SINA = "sina"
     TUSHARE = "tushare"
     BAOSTOCK = "baostock"
     CACHE = "cache"
@@ -99,6 +148,10 @@ class DataProvenance:
     cache_age_seconds: float = 0.0
     trust_score: float = 0.0         # 0-1 composite trust
     error_message: str = ""          # Non-empty = data unavailable, DO NOT USE
+    data_date: str = ""              # Trading/report date represented by data
+    endpoint: str = ""               # Provider endpoint(s) used
+    coverage_ratio: float | None = None
+    fallback_reason: str = ""
 
     @property
     def is_available(self) -> bool:
@@ -138,6 +191,13 @@ class DataProvenance:
             "status": self.status_label,
             "available": self.is_available,
             "error": self.error_message,
+            "data_date": self.data_date,
+            "endpoint": self.endpoint,
+            "coverage_ratio": (
+                round(self.coverage_ratio, 4)
+                if self.coverage_ratio is not None else None
+            ),
+            "fallback_reason": self.fallback_reason,
         }
 
 
@@ -249,9 +309,11 @@ class SourceManager:
 
     def __init__(self):
         self.cache = DataCache()
+        self._cache_provenance: dict[str, DataProvenance] = {}
         self._sources: dict[str, SourceStatus] = {}
         self._capabilities: dict[str, SourceCapability] = {}
         self._fetch_functions: dict[str, dict[str, Callable]] = {}
+        self._last_probe: dict = {}
         self._init_sources()
 
     def _init_sources(self):
@@ -287,7 +349,11 @@ class SourceManager:
             is_available=False,
         )
         self._capabilities["tushare"] = SourceCapability(
+            realtime_quotes=False,
             max_kline_days=365 * 10,
+            indices=True,
+            sectors=True,
+            market_breadth=True,
             rate_limited=True,
             requires_auth=True,
         )
@@ -299,6 +365,41 @@ class SourceManager:
         )
         self._capabilities["akshare"] = SourceCapability(
             max_kline_days=365 * 5,
+            rate_limited=True,
+        )
+
+        # P1: 腾讯财经(qt.gtimg.cn) — 指数实时, 不封IP, akshare 被东财风控时 fallback
+        self._sources["tencent"] = SourceStatus(
+            name="tencent",
+            is_available=False,
+        )
+        self._capabilities["tencent"] = SourceCapability(
+            max_kline_days=365 * 5,
+            rate_limited=False,
+        )
+
+        # Optional authenticated API: primary quote/K-line provider when a
+        # TICKFLOW_API_KEY is configured. It is skipped entirely otherwise.
+        self._sources["tickflow"] = SourceStatus(
+            name="tickflow",
+            is_available=False,
+        )
+        self._capabilities["tickflow"] = SourceCapability(
+            realtime_quotes=True,
+            kline_history=True,
+            max_kline_days=365 * 20,
+            rate_limited=True,
+            requires_auth=True,
+        )
+
+        # 新浪财经 — 独立于东方财富的免费实时行情与未复权日线。
+        # hq.sinajs.cn 会校验 Referer，所以必须通过专用适配器访问。
+        self._sources["sina"] = SourceStatus(
+            name="sina",
+            is_available=False,
+        )
+        self._capabilities["sina"] = SourceCapability(
+            max_kline_days=1023,
             rate_limited=True,
         )
 
@@ -402,19 +503,27 @@ class SourceManager:
         candidates = []
 
         for name, caps in PROVIDER_CAPABILITIES.items():
+            if name == "tickflow":
+                from src.infrastructure.market_data.tickflow_provider import is_configured
+                if not is_configured():
+                    continue
             if not caps.supports_market(market):
                 continue
             if not caps.has(capability):
                 continue
-            if self._is_provider_degraded(name):
+            if not reliability_engine.should_attempt(name):
                 continue
             trust = reliability_engine.get_trust(name, "24h")
             quality_bonus = {"excellent": 0.05, "good": 0.02, "basic": 0.0}
             score = trust + quality_bonus.get(caps.data_quality, 0)
-            candidates.append((score, name))
+            # A configured TickFlow account is the intentional primary for
+            # quote/K-line traffic; observed health still removes it after
+            # repeated failures, allowing the normal fallback chain.
+            priority = 0 if name == "tickflow" else 1
+            candidates.append((priority, -score, name))
 
-        candidates.sort(key=lambda x: -x[0])
-        return [name for _, name in candidates]
+        candidates.sort()
+        return [name for _, _, name in candidates]
 
     # ================================================================
     # Provider metrics recording — feeds dynamic trust scores
@@ -444,10 +553,13 @@ class SourceManager:
     ) -> tuple[dict | None, DataProvenance]:
         """Dispatch quote request to the right provider implementation."""
         dispatcher = {
+            "tickflow": self._try_tickflow_quote,
             "ifind": self._try_ifind_quote,
             "mootdx": self._try_mootdx_quote,
             "tushare": self._try_tushare_quote,
             "akshare": self._try_akshare_quote,
+            "tencent": self._try_tencent_quote,
+            "sina": self._try_sina_quote,
             "baostock": self._try_baostock_quote,
             "finnhub": self._try_finnhub_quote,
             "fmp": self._try_fmp_quote,
@@ -470,10 +582,13 @@ class SourceManager:
     ) -> tuple[list[dict] | None, DataProvenance]:
         """Dispatch K-line request to the right provider implementation."""
         dispatcher = {
+            "tickflow": lambda c, n: self._try_tickflow_kline(c, n),
             "ifind": lambda c, n: self._try_ifind_kline(c, n),
             "mootdx": lambda c, n: self._try_mootdx_kline(c, n),
             "tushare": lambda c, n: self._try_tushare_kline(c, n),
             "akshare": lambda c, n: self._try_akshare_kline(c, n),
+            "tencent": lambda c, n: self._try_tencent_kline(c, n),
+            "sina": lambda c, n: self._try_sina_kline(c, n),
             "baostock": lambda c, n: self._try_baostock_kline(c, n),
             "finnhub": lambda c, n: self._try_finnhub_kline(c, n),
             "fmp": lambda c, n: self._try_fmp_kline(c, n),
@@ -495,29 +610,60 @@ class SourceManager:
     # Public API — the only way data enters the system
     # ================================================================
 
-    async def get_realtime_quote(self, code: str) -> tuple[dict | None, DataProvenance]:
+    async def get_realtime_quote(
+        self,
+        code: str,
+        *,
+        excluded_providers: set[str] | None = None,
+    ) -> tuple[dict | None, DataProvenance]:
         """Get real-time quote with provenance. NEVER returns mock."""
+        code = _normalize_market_code(code)
+        excluded = {
+            str(provider).strip().lower()
+            for provider in (excluded_providers or set())
+            if str(provider).strip()
+        }
         cache_key = f"spot:quote:{code}"
+        from src.infrastructure.market_data.tickflow_provider import is_configured
+        tickflow_configured = is_configured()
 
         # 1. Try cache first
         cached = self.cache.get(cache_key)
-        if cached is not None:
+        # Startup probes may have cached Tencent/Sina. Once TickFlow is
+        # configured, an older non-TickFlow cache must not hide the selected
+        # primary; it remains available through the normal fallback chain.
+        cached_source = str((cached or {}).get("source") or "").lower()
+        cache_is_tickflow = "tickflow" in cached_source
+        cache_is_realtime = (cached or {}).get("is_realtime") is not False
+        if cached is not None and any(
+            provider in cached_source for provider in excluded
+        ):
+            cached = None
+        if cached is not None and (not tickflow_configured or cache_is_tickflow):
+            if not cache_is_realtime:
+                cached = None
+        if cached is not None and (not tickflow_configured or cache_is_tickflow):
             age = self.cache.get_age(cache_key)
             return cached, DataProvenance(
                 provider="cache",
                 source_name="本地缓存",
                 fetched_at=(datetime.now() - timedelta(seconds=age)).isoformat(),
                 data_age_seconds=age,
-                is_live=True,
+                is_live=cache_is_realtime,
                 is_cached=True,
                 cache_age_seconds=age,
                 trust_score=0.95 if age < 60 else 0.8,
+                data_date=str(cached.get("data_date") or ""),
+                endpoint=str(cached.get("endpoint") or ""),
             )
 
         # 2. Capability-based routing — auto-rank providers by market + trust
         providers = self._get_ranked_providers(code, "realtime_quote")
-        providers += [p for p in self._get_ranked_providers(code, "daily_kline")
-                      if p not in providers]
+        providers += [
+            p for p in self._get_ranked_providers(code, "daily_kline")
+            if p not in providers and p not in excluded
+        ]
+        providers = [p for p in providers if p not in excluded]
 
         for p in providers:
             result, prov = await self._dispatch_quote(p, code)
@@ -525,11 +671,14 @@ class SourceManager:
                 self.cache.set(cache_key, result)
                 return result, prov
 
-        # 3. All sources failed — try T+1 tushare as last resort
-        result, prov = await self._try_tushare_quote(code)
-        if result is not None:
-            self.cache.set(cache_key, result)
-            return result, prov
+        # 3. All sources failed — use Tushare only when the caller has not
+        # already attempted it. Research enrichment passes this exclusion so
+        # its primary/retry budget cannot be bypassed by this last resort.
+        if "tushare" not in excluded:
+            result, prov = await self._try_tushare_quote(code)
+            if result is not None:
+                self.cache.set(cache_key, result)
+                return result, prov
 
         # 4. 全部失败:返回 (None, 不可用 provenance),避免调用方解包 None 崩溃(/detail 500)
         return None, DataProvenance(
@@ -541,12 +690,95 @@ class SourceManager:
             error_message="所有数据源均不可用",
         )
 
-    async def get_kline(self, code: str, count: int = 250) -> tuple[list[dict] | None, DataProvenance]:
-        """Get K-line data with provenance."""
-        cache_key = f"kline_daily:{code}:{count}"
+    async def get_eod_quote(self, code: str) -> tuple[dict | None, DataProvenance]:
+        """Get Tushare's dated close first, then use live quote fallbacks."""
+        code = _normalize_market_code(code)
+        quote, provenance = await self._try_tushare_quote(code)
+        if quote is not None:
+            return quote, provenance
+        return await self.get_realtime_quote(code)
+
+    async def probe_live_sources(self, code: str = "600000.SH") -> dict:
+        """Run a bounded startup probe against configured and fallback feeds."""
+        checked_at = datetime.now().isoformat(timespec="seconds")
+        quote = None
+        provenance = DataProvenance(
+            provider="none",
+            source_name="实时行情启动探测",
+            fetched_at=checked_at,
+            is_live=False,
+            trust_score=0.0,
+            error_message="已配置实时行情源均不可用",
+        )
+        probe_results = []
+        probes = []
+        from src.infrastructure.market_data.tickflow_provider import is_configured
+        if is_configured():
+            probes.append(("tickflow", self._try_tickflow_quote))
+        probes.extend((
+            ("tushare", self._try_tushare_quote),
+            ("tencent", self._try_tencent_quote),
+            ("sina", self._try_sina_quote),
+        ))
+        for provider, fetch in probes:
+            try:
+                candidate_quote, candidate_provenance = await asyncio.wait_for(
+                    fetch(code), timeout=10,
+                )
+            except Exception as exc:
+                candidate_quote = None
+                candidate_provenance = DataProvenance(
+                    provider=provider,
+                    source_name=f"{provider} 启动探测",
+                    fetched_at=checked_at,
+                    is_live=False,
+                    trust_score=0.0,
+                    error_message=f"启动探测失败: {str(exc)[:120]}",
+                )
+            probe_results.append({
+                "provider": provider,
+                "available": candidate_quote is not None,
+                "price": float((candidate_quote or {}).get("price") or 0),
+                "data_date": str((candidate_quote or {}).get("data_date") or ""),
+                "error": candidate_provenance.error_message,
+            })
+            if quote is None and candidate_quote is not None:
+                quote = candidate_quote
+                provenance = candidate_provenance
+        if quote is not None:
+            self.cache.set(f"spot:quote:{code}", quote)
+        self._last_probe = {
+            "checked_at": checked_at,
+            "code": code,
+            "available": quote is not None,
+            "provider": provenance.provider,
+            "price": float((quote or {}).get("price") or 0),
+            "data_date": str((quote or {}).get("data_date") or ""),
+            "error": provenance.error_message,
+            "providers": probe_results,
+        }
+        return dict(self._last_probe)
+
+    async def get_kline(
+        self, code: str, count: int = 250, adjustment_mode: str | None = None,
+    ) -> tuple[list[dict] | None, DataProvenance]:
+        """Get K-line data with provenance and an optional adjustment contract."""
+        code = _normalize_market_code(code)
+        normalized_adjustment = str(adjustment_mode or "any").strip().lower()
+        cache_key = f"kline_daily:{code}:{count}:{normalized_adjustment}"
 
         cached = self.cache.get(cache_key)
-        if cached is not None:
+        from src.infrastructure.market_data.tickflow_provider import is_configured
+        tickflow_configured = is_configured()
+        cached_source = str(
+            (cached[0].get("source") if isinstance(cached, list) and cached else "")
+            if cached is not None else ""
+        ).lower()
+        cache_is_tickflow = "tickflow" in cached_source
+        # Once TickFlow is configured, a pre-existing Sina/Tencent K-line
+        # cache must not hide the selected primary provider.  It remains a
+        # fallback only after the live provider chain has been attempted.
+        if cached is not None and (not tickflow_configured or cache_is_tickflow):
             age = self.cache.get_age(cache_key)
             return cached, DataProvenance(
                 provider="cache", source_name="本地缓存(K线)",
@@ -558,10 +790,22 @@ class SourceManager:
 
         # Capability-based routing for K-line
         providers = self._get_ranked_providers(code, "daily_kline")
+        if normalized_adjustment == "qfq" and self._is_a_share(code):
+            qfq_providers = {"akshare", "tencent", "baostock"}
+            providers = [provider for provider in providers if provider in qfq_providers]
+        elif self._is_a_share(code) and tushare_provider.configured:
+            # Tushare is the dated EOD truth source.  Keep adjusted-K-line
+            # providers as fallbacks because Tushare's daily endpoint is raw.
+            providers = ["tushare", *[provider for provider in providers if provider != "tushare"]]
 
         for p in providers:
             result, prov = await self._dispatch_kline(p, code, count)
             if result is not None:
+                for bar in result:
+                    bar.setdefault(
+                        "adjustment_mode",
+                        "qfq" if p in {"akshare", "tencent", "baostock"} else "raw",
+                    )
                 self.cache.set(cache_key, result)
                 return result, prov
 
@@ -579,23 +823,55 @@ class SourceManager:
         cached = self.cache.get(cache_key)
         if cached is not None:
             age = self.cache.get_age(cache_key)
+            cached_provenance = self._cache_provenance.get(cache_key)
             return cached, DataProvenance(
                 provider="cache", source_name="本地缓存(指数)",
                 fetched_at=(datetime.now() - timedelta(seconds=age)).isoformat(),
-                data_age_seconds=age, is_live=True, is_cached=True,
-                cache_age_seconds=age, trust_score=0.95,
+                data_age_seconds=age,
+                is_live=bool(cached_provenance and cached_provenance.is_live),
+                is_cached=True,
+                cache_age_seconds=age,
+                trust_score=cached_provenance.trust_score if cached_provenance else 0.0,
+                data_date=cached_provenance.data_date if cached_provenance else "",
+                endpoint=cached_provenance.endpoint if cached_provenance else "",
             )
 
-        result, prov = await self._try_akshare_indices()
-        if result is not None:
-            self.cache.set(cache_key, result)
-            return result, prov
+        # Tushare is the authenticated daily truth source when available.
+        # Tencent/AkShare remain fallbacks for intraday or permission gaps.
+        for fetch in (
+            self._try_tushare_indices,
+            self._try_tencent_indices,
+            self._try_akshare_indices,
+        ):
+            result, prov = await fetch()
+            if result is not None:
+                self.cache.set(cache_key, result)
+                self._cache_provenance[cache_key] = prov
+                return result, prov
 
         return None, DataProvenance(
             provider="none", source_name="无可用数据源",
             fetched_at=datetime.now().isoformat(),
             is_live=False, trust_score=0.0,
             error_message="无法获取指数数据。",
+        )
+
+    async def get_intraday_index_quotes(self) -> tuple[list[dict] | None, DataProvenance]:
+        """Get current-session indices without falling back to dated closes."""
+        failures: list[str] = []
+        for fetch in (self._try_tencent_indices, self._try_akshare_indices):
+            result, provenance = await fetch()
+            if result and provenance.is_live:
+                return result, provenance
+            if provenance.error_message:
+                failures.append(provenance.error_message)
+        return None, DataProvenance(
+            provider="none",
+            source_name="今日盘中指数行情",
+            fetched_at=datetime.now().isoformat(),
+            is_live=False,
+            trust_score=0.0,
+            error_message="; ".join(failures)[:240] or "今日盘中指数行情不可用",
         )
 
     async def get_market_breadth(self) -> tuple[dict | None, DataProvenance]:
@@ -605,16 +881,42 @@ class SourceManager:
         cached = self.cache.get(cache_key)
         if cached is not None:
             age = self.cache.get_age(cache_key)
+            cached_provenance = self._cache_provenance.get(cache_key)
+            cached_data_date = (
+                str(cached.get("data_date") or "")
+                if isinstance(cached, dict) else ""
+            )
             return cached, DataProvenance(
                 provider="cache", source_name="本地缓存(涨跌)",
                 fetched_at=(datetime.now() - timedelta(seconds=age)).isoformat(),
-                data_age_seconds=age, is_live=True, is_cached=True,
-                cache_age_seconds=age, trust_score=0.95,
+                data_age_seconds=age,
+                is_live=bool(cached_provenance and cached_provenance.is_live),
+                is_cached=True,
+                cache_age_seconds=age,
+                trust_score=cached_provenance.trust_score if cached_provenance else 0.0,
+                data_date=(cached_provenance.data_date if cached_provenance else "")
+                or cached_data_date,
+                endpoint=cached_provenance.endpoint if cached_provenance else "",
             )
+
+        # Prefer the complete Tushare close snapshot. Local breadth is a
+        # fallback because it may lag or contain a partial historical batch.
+        result, prov = await self._try_tushare_breadth()
+        if result is not None:
+            self.cache.set(cache_key, result)
+            self._cache_provenance[cache_key] = prov
+            return result, prov
+
+        result, prov = await self._try_local_market_breadth()
+        if result is not None:
+            self.cache.set(cache_key, result)
+            self._cache_provenance[cache_key] = prov
+            return result, prov
 
         result, prov = await self._try_akshare_breadth()
         if result is not None:
             self.cache.set(cache_key, result)
+            self._cache_provenance[cache_key] = prov
             return result, prov
 
         return None, DataProvenance(
@@ -623,6 +925,156 @@ class SourceManager:
             is_live=False, trust_score=0.0,
             error_message="无法获取涨跌统计。",
         )
+
+    async def get_intraday_market_breadth(self) -> tuple[dict | None, DataProvenance]:
+        """Get today's live breadth or return unavailable; never use a close snapshot."""
+        result, provenance = await self._try_akshare_breadth()
+        today = datetime.now().date().isoformat()
+        data_date = str(
+            provenance.data_date or (result or {}).get("data_date") or ""
+        )[:10]
+        if result is not None and provenance.is_live and data_date == today:
+            return result, provenance
+        return None, DataProvenance(
+            provider="none",
+            source_name="今日盘中涨跌统计",
+            fetched_at=datetime.now().isoformat(),
+            is_live=False,
+            trust_score=0.0,
+            data_date=data_date,
+            error_message=(
+                provenance.error_message
+                or f"今日盘中涨跌统计不可用（data_date={data_date or 'unknown'}）"
+            )[:240],
+        )
+
+    async def _try_tushare_indices(
+        self,
+    ) -> tuple[list[dict] | None, DataProvenance]:
+        """Fetch the close-only index snapshot from Tushare first."""
+        started = datetime.now()
+        try:
+            payload = await asyncio.wait_for(
+                tushare_provider.fetch_indices(), timeout=30.0
+            )
+            if not payload.data:
+                raise ValueError("empty_tushare_indices")
+            latency = (datetime.now() - started).total_seconds() * 1000
+            source = self._sources["tushare"]
+            source.is_available = True
+            source.last_success_at = datetime.now().isoformat()
+            source.last_error = ""
+            source.latency_ms = latency
+            source.total_calls += payload.row_count
+            source.success_count += payload.row_count
+            source.consecutive_failures = 0
+            trust = self._record_call("tushare", "indices", True, latency)
+            return payload.data, DataProvenance(
+                provider="tushare", source_name="Tushare Pro (指数日线)",
+                fetched_at=datetime.now().isoformat(), data_age_seconds=0,
+                is_live=False, trust_score=trust, data_date=payload.data_date,
+                endpoint=payload.endpoint,
+            )
+        except Exception as exc:
+            self._record_tushare_failure("indices", exc, started)
+            return None, DataProvenance(
+                provider="tushare", source_name="Tushare Pro (指数日线)",
+                fetched_at=datetime.now().isoformat(), is_live=False,
+                trust_score=0.0, endpoint="index_daily",
+                error_message=f"Tushare 指数获取失败: {str(exc)[:120]}",
+            )
+
+    async def _try_tushare_breadth(
+        self,
+    ) -> tuple[dict | None, DataProvenance]:
+        """Build breadth from one complete Tushare daily snapshot."""
+        started = datetime.now()
+        try:
+            payload = await asyncio.wait_for(
+                tushare_provider.fetch_breadth(), timeout=45.0
+            )
+            data = dict(payload.data or {})
+            coverage = payload.coverage_ratio
+            # A partial snapshot must never replace the last complete market
+            # environment.  80% is the existing local completion threshold.
+            if not data.get("data_date") or not data.get("covered_stocks"):
+                raise ValueError("empty_tushare_breadth")
+            if coverage is not None and coverage < 0.80:
+                raise ValueError(f"tushare_breadth_incomplete:{coverage:.3f}")
+            latency = (datetime.now() - started).total_seconds() * 1000
+            source = self._sources["tushare"]
+            source.is_available = True
+            source.last_success_at = datetime.now().isoformat()
+            source.last_error = ""
+            source.latency_ms = latency
+            source.total_calls += 1
+            source.success_count += 1
+            source.consecutive_failures = 0
+            trust = self._record_call("tushare", "breadth", True, latency)
+            return data, DataProvenance(
+                provider="tushare", source_name="Tushare Pro (全市场收盘统计)",
+                fetched_at=datetime.now().isoformat(), is_live=False,
+                trust_score=trust, data_date=str(data.get("data_date") or ""),
+                endpoint=payload.endpoint, coverage_ratio=coverage,
+            )
+        except Exception as exc:
+            self._record_tushare_failure("breadth", exc, started)
+            return None, DataProvenance(
+                provider="tushare", source_name="Tushare Pro (全市场收盘统计)",
+                fetched_at=datetime.now().isoformat(), is_live=False,
+                trust_score=0.0, endpoint="daily+daily_basic+stk_limit",
+                error_message=f"Tushare 市场宽度获取失败: {str(exc)[:120]}",
+            )
+
+    def _record_tushare_failure(
+        self, endpoint: str, error: Exception, started: datetime
+    ) -> None:
+        source = self._sources["tushare"]
+        source.last_error = str(error)[:200]
+        source.consecutive_failures += 1
+        source.total_calls += 1
+        latency = (datetime.now() - started).total_seconds() * 1000
+        source.latency_ms = latency
+        self._record_call("tushare", endpoint, False, latency, str(error)[:100])
+
+    async def _try_local_market_breadth(
+        self,
+    ) -> tuple[dict | None, DataProvenance]:
+        """Use the latest completed local close when the live full-market feed is risky."""
+        try:
+            from src.infrastructure.storage.market_database import market_db
+
+            result = await asyncio.to_thread(market_db.get_latest_market_breadth)
+            data_date = str(result.get("data_date") or "")
+            if not data_date or not (result.get("up") or result.get("down")):
+                raise ValueError("local market breadth is empty")
+            try:
+                data_age = max(
+                    0.0,
+                    (datetime.now() - datetime.fromisoformat(data_date)).total_seconds(),
+                )
+            except ValueError:
+                data_age = 0.0
+            return result, DataProvenance(
+                provider="local_market_db",
+                source_name=f"本地全市场收盘行情 ({data_date})",
+                fetched_at=datetime.now().isoformat(),
+                data_age_seconds=data_age,
+                is_live=False,
+                is_cached=True,
+                cache_age_seconds=data_age,
+                trust_score=0.86,
+                data_date=data_date,
+            )
+        except Exception as exc:
+            return None, DataProvenance(
+                provider="none",
+                source_name="本地全市场行情",
+                fetched_at=datetime.now().isoformat(),
+                is_live=False,
+                trust_score=0.0,
+                error_message=f"本地涨跌统计不可用: {str(exc)[:100]}",
+            )
 
     # ================================================================
     # Status & Diagnostics
@@ -649,13 +1101,18 @@ class SourceManager:
         any_available = any(
             s["available"] for s in sources_status if s["name"] != "cache"
         )
+        tested = any(int(s.get("total_calls") or 0) > 0 for s in sources_status)
         return {
             "live_data_available": any_available,
             "cache_entries": len(self.cache._store),
             "sources": sources_status,
+            "tested": tested,
+            "last_probe": dict(self._last_probe),
             "recommendation": (
                 "Data pipeline healthy" if any_available
-                else "No live data source available. AI analysis may be paused."
+                else "Providers not tested yet. Startup probe is pending."
+                if not tested else
+                "No live data source available. AI analysis may be paused."
             ),
         }
 
@@ -970,148 +1427,590 @@ class SourceManager:
         """International APIs only make sense for non-A-share codes."""
         return not self._is_a_share(code)
 
-    async def _try_tushare_quote(self, code: str) -> tuple[dict | None, DataProvenance]:
-        """Get quote from tushare — uses daily_basic (free tier) for A-shares."""
-        source = self._sources["tushare"]
-        source.total_calls += 1
-        t0 = datetime.now()
-
-        try:
-            import tushare as ts
-            pro = await asyncio.to_thread(ts.pro_api, TUSHARE_TOKEN)
-
-            # Use daily_basic (free tier) instead of daily (requires points)
-            df = await asyncio.to_thread(
-                pro.daily_basic, ts_code=code,
-                fields="ts_code,trade_date,close,pe,pe_ttm,pb,ps,ps_ttm,total_mv,circ_mv,turnover_rate,volume_ratio"
-            )
-            # daily_basic is T+1 (yesterday's data) — acceptable for research
-            df = df.head(2) if df is not None and not df.empty else None
-
-            if df is None or df.empty:
-                raise ValueError(f"No data for {code}")
-
-            latest = df.iloc[0]
-            prev = df.iloc[1] if len(df) > 1 else latest
-
-            price = float(latest["close"])
-            pre_close = float(prev["close"]) if len(df) > 1 else float(latest["pre_close"]) if "pre_close" in latest else price
-            change_pct = float(latest.get("pct_chg", 0))
-            high = float(latest.get("high", price))
-            low = float(latest.get("low", price))
-            open_p = float(latest.get("open", price))
-            volume = float(latest.get("vol", 0))
-            amount = float(latest.get("amount", 0))
-
-            # Get stock name
-            stock_name = code
+    async def get_stock_evidence(self, code: str, flow_days: int = 5) -> dict[str, Any]:
+        """Return Tushare-first quote, fundamental and flow evidence."""
+        code = _normalize_market_code(code)
+        async def fetch_fundamental() -> tuple[dict[str, Any], DataProvenance]:
+            started = datetime.now()
             try:
-                df_name = await asyncio.to_thread(
-                    pro.stock_basic, ts_code=code,
-                    fields="ts_code,name",
+                payload = await asyncio.wait_for(
+                    tushare_provider.fetch_fundamental(code), timeout=25.0
                 )
-                if df_name is not None and not df_name.empty:
-                    stock_name = str(df_name.iloc[0]["name"])
-            except Exception:
-                pass
+                fundamental = dict(payload.data or {})
+                latency = (datetime.now() - started).total_seconds() * 1000
+                self._record_call("tushare", "fundamental", True, latency)
+                return fundamental, DataProvenance(
+                    provider="tushare", source_name="Tushare Pro (财务指标)",
+                    fetched_at=datetime.now().isoformat(), data_date=payload.data_date,
+                    endpoint=payload.endpoint, is_live=False, trust_score=0.95,
+                )
+            except Exception as exc:
+                latency = (datetime.now() - started).total_seconds() * 1000
+                self._record_call(
+                    "tushare", "fundamental", False, latency, _exception_detail(exc, 100)
+                )
+                return {}, DataProvenance(
+                    provider="tushare", source_name="Tushare Pro (财务指标)",
+                    fetched_at=datetime.now().isoformat(), is_live=False,
+                    trust_score=0.0,
+                    error_message=f"Tushare 财务指标获取失败: {_exception_detail(exc, 100)}",
+                )
 
-            latency = (datetime.now() - t0).total_seconds() * 1000
+        async def fetch_flow() -> tuple[dict[str, Any], DataProvenance]:
+            from src.infrastructure.market_data.research_flow import get_research_flow
 
-            quote = {
-                "stock_code": code, "stock_name": stock_name,
-                "price": price, "change_pct": round(change_pct, 2),
-                "change_amount": round(price - pre_close, 2),
-                "volume": volume, "amount": amount,
-                "amount_yi": round(amount / 1e8, 2) if amount else 0,
-                "high": high, "low": low, "open": open_p,
-                "pre_close": pre_close, "turnover": 0, "pe": 0,
-                "total_market_cap": 0,
+            started = datetime.now()
+            try:
+                flow = await asyncio.wait_for(
+                    get_research_flow(code, flow_days), timeout=25.0
+                )
+                latency = (datetime.now() - started).total_seconds() * 1000
+                self._record_call("tushare", "moneyflow", True, latency)
+                return flow, DataProvenance(
+                    provider="tushare", source_name="Tushare Pro (个股资金流)",
+                    fetched_at=str(flow.get("fetched_at") or ""), data_date=flow["data_date"],
+                    endpoint=flow["endpoint"], is_live=False, trust_score=0.95,
+                )
+            except Exception as exc:
+                latency = (datetime.now() - started).total_seconds() * 1000
+                self._record_call(
+                    "tushare", "moneyflow", False, latency, _exception_detail(exc, 100)
+                )
+                return {}, DataProvenance(
+                    provider="tushare", source_name="Tushare Pro (个股资金流)",
+                    fetched_at=datetime.now().isoformat(), is_live=False,
+                    trust_score=0.0,
+                    error_message=f"Tushare 资金流获取失败: {_exception_detail(exc, 100)}",
+                )
+
+        # These are independent evidence components.  One permission,
+        # timeout or empty-response failure must not discard the others.
+        async def fetch_quote():
+            return await self._bounded_research_quote(code)
+
+        (quote, quote_prov), (fundamental, fundamental_prov), (flow, flow_prov) = await asyncio.gather(
+            fetch_quote(), fetch_fundamental(), fetch_flow()
+        )
+
+        sources = [quote_prov.provider] if quote is not None else []
+        if fundamental:
+            sources.append("tushare.fundamental")
+        if flow:
+            sources.append("tushare.moneyflow")
+        return {
+            "quote": quote or {},
+            "fundamental": fundamental,
+            "fund_flow": flow,
+            "sources": sources,
+            "provenance": {
+                "quote": quote_prov.to_dict(),
+                "fundamental": fundamental_prov.to_dict(),
+                "fund_flow": flow_prov.to_dict(),
+            },
+        }
+
+    async def _bounded_research_quote(self, code: str) -> tuple[dict | None, DataProvenance]:
+        """Reserve fallback time without overlapping a timed-out request."""
+        failures = []
+        tasks = getattr(self, "_research_quote_tasks", None)
+        if tasks is None:
+            tasks = set()
+            self._research_quote_tasks = tasks
+
+        def retain(task: asyncio.Task) -> None:
+            tasks.add(task)
+
+            def finish(done: asyncio.Task) -> None:
+                tasks.discard(done)
+                if not done.cancelled():
+                    done.exception()
+
+            task.add_done_callback(finish)
+
+        async def attempt(fetch, *, preserve_on_timeout: bool):
+            task = asyncio.create_task(fetch(code))
+            retain(task)
+            try:
+                awaited = asyncio.shield(task) if preserve_on_timeout else task
+                value = await asyncio.wait_for(
+                    awaited, timeout=RESEARCH_QUOTE_ATTEMPT_TIMEOUT_SECONDS
+                )
+                return value, False, task
+            except asyncio.TimeoutError:
+                return None, True, task
+            except Exception as exc:
+                return exc, False, task
+
+        def completed_value(task: asyncio.Task):
+            try:
+                return task.result()
+            except Exception as exc:
+                return exc
+
+        primary, timed_out, primary_task = await attempt(
+            self._try_tushare_quote, preserve_on_timeout=True
+        )
+        if timed_out:
+            failures.append("tushare_primary:TimeoutError")
+            if not primary_task.done():
+                # asyncio.to_thread cannot stop an already-running SDK call.
+                # Do not launch a second Tushare request while that call is live.
+                failures.append("tushare_retry:skipped_inflight")
+                primary = None
+            else:
+                timed_out = False
+                primary = completed_value(primary_task)
+        if isinstance(primary, Exception):
+            failures.append(f"tushare_primary:{type(primary).__name__}")
+            primary = None
+        if primary is not None and not isinstance(primary, Exception):
+            quote, provenance = primary
+            if quote and float(quote.get("price") or 0) > 0:
+                provenance.fallback_reason = ";".join(failures)
+                return quote, provenance
+            failures.append(
+                "tushare_primary:"
+                f"{provenance.error_message or 'empty_or_invalid_quote'}"
+            )
+
+        if "tushare_retry:skipped_inflight" not in failures:
+            retry, retry_timed_out, retry_task = await attempt(
+                self._try_tushare_quote, preserve_on_timeout=True
+            )
+            if retry_timed_out:
+                failures.append("tushare_retry:TimeoutError")
+                if retry_task.done() and not retry_task.cancelled():
+                    retry = completed_value(retry_task)
+                else:
+                    retry = None
+            if isinstance(retry, Exception):
+                failures.append(f"tushare_retry:{type(retry).__name__}")
+                retry = None
+            if retry is not None and not isinstance(retry, Exception):
+                quote, provenance = retry
+                if quote and float(quote.get("price") or 0) > 0:
+                    provenance.fallback_reason = ";".join(failures)
+                    return quote, provenance
+                failures.append(
+                    "tushare_retry:"
+                    f"{provenance.error_message or 'empty_or_invalid_quote'}"
+                )
+
+        failures.append("tushare_fallback:skipped_already_attempted")
+        fallback, fallback_timed_out, fallback_task = await attempt(
+            lambda current_code: self.get_realtime_quote(
+                current_code, excluded_providers={"tushare"}
+            ),
+            preserve_on_timeout=False,
+        )
+        if fallback_timed_out:
+            failures.append("fallback:TimeoutError")
+            if fallback_task.done() and not fallback_task.cancelled():
+                fallback = completed_value(fallback_task)
+            else:
+                fallback = None
+        if isinstance(fallback, Exception):
+            failures.append(f"fallback:{type(fallback).__name__}")
+            fallback = None
+        if fallback is not None and not isinstance(fallback, Exception):
+            quote, provenance = fallback
+            if quote and float(quote.get("price") or 0) > 0:
+                provenance.fallback_reason = ";".join(failures)
+                return quote, provenance
+            failures.append(
+                "fallback:"
+                f"{provenance.error_message or 'empty_or_invalid_quote'}"
+            )
+        return None, DataProvenance(
+            provider="none", source_name="research_quote", is_live=False,
+            trust_score=0.0, error_message=";".join(failures),
+        )
+
+    async def get_financial_statements(self, code: str) -> tuple[dict, DataProvenance]:
+        """Return the latest Tushare three-statement packet when available."""
+        code = _normalize_market_code(code)
+        started = datetime.now()
+        try:
+            payload = await asyncio.wait_for(
+                tushare_provider.fetch_financial_statements(code), timeout=30.0
+            )
+            latency = (datetime.now() - started).total_seconds() * 1000
+            trust = self._record_call("tushare", "financial_statements", True, latency)
+            return dict(payload.data), DataProvenance(
+                provider="tushare", source_name="Tushare Pro (三大财务报表)",
+                fetched_at=datetime.now().isoformat(), data_date=payload.data_date,
+                endpoint=payload.endpoint, is_live=False, trust_score=trust,
+            )
+        except Exception as exc:
+            latency = (datetime.now() - started).total_seconds() * 1000
+            self._record_call("tushare", "financial_statements", False, latency, str(exc)[:100])
+            return {}, DataProvenance(
+                provider="tushare", source_name="Tushare Pro (三大财务报表)",
+                fetched_at=datetime.now().isoformat(), endpoint="income+balancesheet+cashflow",
+                error_message=f"Tushare 财务三表获取失败: {str(exc)[:100]}",
+            )
+
+    async def get_financial_history(
+        self, code: str, periods: int = 8
+    ) -> tuple[dict[str, Any], DataProvenance]:
+        """Return persisted multi-period Tushare statements, filling gaps once.
+
+        The local warehouse is preferred so repeated research does not spend
+        points.  A partial local packet is still returned if the provider is
+        unavailable; its coverage is explicit in ``period_counts`` and never
+        promoted to a complete report.
+        """
+        code = _normalize_market_code(code)
+        target_periods = max(1, min(int(periods), 12))
+        from src.infrastructure.storage import market_database as database_module
+
+        local = await asyncio.to_thread(
+            database_module.market_db.get_financial_history, code, target_periods
+        )
+        expected = ("income", "balancesheet", "cashflow", "fina_indicator")
+        local_counts = {name: len(local.get(name) or []) for name in expected}
+        local_complete = all(count >= target_periods for count in local_counts.values())
+        if local_complete:
+            dates = [
+                str(row.get("ann_date") or row.get("end_date") or "")[:10]
+                for rows in local.values() for row in rows
+            ]
+            data_date = max((item for item in dates if item), default="")
+            return {
+                "available": True,
+                "source": "tushare",
+                "endpoint": "local.financial_statement_history",
+                "statements": local,
+                "period_counts": local_counts,
+                "requested_periods": target_periods,
+                "history_complete": True,
+                "data_date": data_date,
+                "fetched_at": datetime.now().isoformat(),
+            }, DataProvenance(
+                provider="tushare", source_name="本地缓存(Tushare多期财报)",
+                fetched_at=datetime.now().isoformat(), data_date=data_date,
+                endpoint="local.financial_statement_history", is_live=False,
+                is_cached=True, trust_score=0.95,
+            )
+
+        started = datetime.now()
+        provider_error = ""
+        try:
+            payload = await asyncio.wait_for(
+                tushare_provider.fetch_financial_history(code, target_periods),
+                timeout=30.0,
+            )
+            fetched = dict(payload.data or {})
+            await asyncio.to_thread(
+                database_module.market_db.upsert_financial_history,
+                code,
+                fetched.get("statements") or {},
+                source="tushare",
+                fetched_at=str(fetched.get("fetched_at") or datetime.now().isoformat()),
+            )
+            local = await asyncio.to_thread(
+                database_module.market_db.get_financial_history, code, target_periods
+            )
+            local_counts = {name: len(local.get(name) or []) for name in expected}
+            provider_error = ";".join(str(item) for item in (fetched.get("errors") or []))
+            data_date = str(fetched.get("data_date") or "")[:10]
+            trust = self._record_call(
+                "tushare", "financial_history", True,
+                (datetime.now() - started).total_seconds() * 1000,
+            )
+            return {
+                "available": any(local.values()),
+                "source": "tushare",
+                "endpoint": "income+balancesheet+cashflow+fina_indicator",
+                "statements": local,
+                "period_counts": local_counts,
+                "requested_periods": target_periods,
+                "history_complete": all(
+                    count >= target_periods for count in local_counts.values()
+                ),
+                "provider_errors": provider_error,
+                "data_date": data_date,
+                "fetched_at": str(fetched.get("fetched_at") or datetime.now().isoformat()),
+            }, DataProvenance(
+                provider="tushare", source_name="Tushare Pro (多期财报)",
+                fetched_at=datetime.now().isoformat(), data_date=data_date,
+                endpoint="income+balancesheet+cashflow+fina_indicator", is_live=False,
+                trust_score=trust,
+            )
+        except Exception as exc:
+            provider_error = _exception_detail(exc, 120)
+            self._record_call(
+                "tushare", "financial_history", False,
+                (datetime.now() - started).total_seconds() * 1000, provider_error,
+            )
+
+        if local:
+            dates = [
+                str(row.get("ann_date") or row.get("end_date") or "")[:10]
+                for rows in local.values() for row in rows
+            ]
+            data_date = max((item for item in dates if item), default="")
+            return {
+                "available": True,
+                "source": "tushare",
+                "endpoint": "local.financial_statement_history",
+                "statements": local,
+                "period_counts": local_counts,
+                "requested_periods": target_periods,
+                "history_complete": False,
+                "provider_errors": provider_error,
+                "data_date": data_date,
+                "fetched_at": datetime.now().isoformat(),
+            }, DataProvenance(
+                provider="tushare", source_name="本地缓存(Tushare多期财报，部分)",
+                fetched_at=datetime.now().isoformat(), data_date=data_date,
+                endpoint="local.financial_statement_history", is_live=False,
+                is_cached=True, trust_score=0.8, fallback_reason=provider_error,
+            )
+        return {
+            "available": False,
+            "source": "tushare",
+            "endpoint": "income+balancesheet+cashflow+fina_indicator",
+            "statements": {},
+            "period_counts": local_counts,
+            "requested_periods": target_periods,
+            "history_complete": False,
+            "provider_errors": provider_error,
+            "data_date": "",
+            "fetched_at": datetime.now().isoformat(),
+        }, DataProvenance(
+            provider="tushare", source_name="Tushare Pro (多期财报)",
+            fetched_at=datetime.now().isoformat(), is_live=False,
+            trust_score=0.0, endpoint="income+balancesheet+cashflow+fina_indicator",
+            error_message=provider_error or "tushare_financial_history_unavailable",
+        )
+
+    async def get_fund_flow_history(
+        self, code: str, days: int = 20
+    ) -> tuple[dict[str, Any], DataProvenance]:
+        """Return dated money-flow history from the local Tushare cache first."""
+        code = _normalize_market_code(code)
+        target_days = max(1, min(int(days), 120))
+        from src.infrastructure.storage import market_database as database_module
+
+        local = await asyncio.to_thread(
+            database_module.market_db.get_fund_flow_history, code, target_days
+        )
+        if len(local) >= target_days:
+            return {
+                "available": True, "source": "tushare",
+                "endpoint": "local.fund_flow_history", "rows": local,
+                "row_count": len(local), "requested_days": target_days,
+                "data_date": str(local[0].get("trade_date") or "")[:10],
+                "fetched_at": datetime.now().isoformat(),
+            }, DataProvenance(
+                provider="tushare", source_name="本地缓存(Tushare资金流历史)",
+                fetched_at=datetime.now().isoformat(), data_date=str(local[0].get("trade_date") or "")[:10],
+                endpoint="local.fund_flow_history", is_live=False,
+                is_cached=True, trust_score=0.95,
+            )
+
+        started = datetime.now()
+        provider_error = ""
+        try:
+            payload = await asyncio.wait_for(
+                tushare_provider.fetch_moneyflow_history(code, target_days),
+                timeout=30.0,
+            )
+            fetched_rows = list(payload.data or [])
+            await asyncio.to_thread(
+                database_module.market_db.upsert_fund_flow_history, fetched_rows
+            )
+            local = await asyncio.to_thread(
+                database_module.market_db.get_fund_flow_history, code, target_days
+            )
+            trust = self._record_call(
+                "tushare", "moneyflow_history", True,
+                (datetime.now() - started).total_seconds() * 1000,
+            )
+            return {
+                "available": bool(local), "source": "tushare",
+                "endpoint": "moneyflow", "rows": local,
+                "row_count": len(local), "requested_days": target_days,
+                "history_complete": len(local) >= target_days,
+                "data_date": str(payload.data_date or (local[0].get("trade_date") if local else ""))[:10],
+                "fetched_at": datetime.now().isoformat(),
+            }, DataProvenance(
+                provider="tushare", source_name="Tushare Pro (资金流历史)",
+                fetched_at=datetime.now().isoformat(), data_date=str(payload.data_date or "")[:10],
+                endpoint="moneyflow", is_live=False, trust_score=trust,
+            )
+        except Exception as exc:
+            provider_error = _exception_detail(exc, 120)
+            self._record_call(
+                "tushare", "moneyflow_history", False,
+                (datetime.now() - started).total_seconds() * 1000, provider_error,
+            )
+        if local:
+            return {
+                "available": True, "source": "tushare",
+                "endpoint": "local.fund_flow_history", "rows": local,
+                "row_count": len(local), "requested_days": target_days,
+                "history_complete": False, "provider_errors": provider_error,
+                "data_date": str(local[0].get("trade_date") or "")[:10],
+                "fetched_at": datetime.now().isoformat(),
+            }, DataProvenance(
+                provider="tushare", source_name="本地缓存(Tushare资金流历史，部分)",
+                fetched_at=datetime.now().isoformat(), data_date=str(local[0].get("trade_date") or "")[:10],
+                endpoint="local.fund_flow_history", is_live=False,
+                is_cached=True, trust_score=0.8, fallback_reason=provider_error,
+            )
+        return {
+            "available": False, "source": "tushare", "endpoint": "moneyflow",
+            "rows": [], "row_count": 0, "requested_days": target_days,
+            "history_complete": False, "provider_errors": provider_error,
+            "data_date": "", "fetched_at": datetime.now().isoformat(),
+        }, DataProvenance(
+            provider="tushare", source_name="Tushare Pro (资金流历史)",
+            fetched_at=datetime.now().isoformat(), is_live=False, trust_score=0.0,
+            endpoint="moneyflow", error_message=provider_error or "tushare_moneyflow_history_unavailable",
+        )
+
+    async def get_dragon_tiger(
+        self, code: str, trade_date: str = ""
+    ) -> tuple[dict, DataProvenance]:
+        """Return Tushare's dated billboard summary when a row exists."""
+        code = _normalize_market_code(code)
+        started = datetime.now()
+        try:
+            payload = await asyncio.wait_for(
+                tushare_provider.fetch_top_list(code, trade_date), timeout=30.0
+            )
+            records = [
+                {
+                    "date": str(row.get("trade_date") or "")[:10],
+                    "reason": row.get("reason") or "",
+                    "net_buy": _number(row.get("net_amount")),
+                    "turnover": _number(row.get("turnover_rate")),
+                    "close": _number(row.get("close")),
+                    "pct_chg": _number(row.get("pct_chg")),
+                }
+                for row in payload.data
+            ]
+            data = {
+                "records": records,
+                "seats": {"buy": [], "sell": []},
+                "institution": {},
             }
+            latency = (datetime.now() - started).total_seconds() * 1000
+            trust = self._record_call("tushare", "top_list", True, latency)
+            return data, DataProvenance(
+                provider="tushare", source_name="Tushare Pro (龙虎榜摘要)",
+                fetched_at=datetime.now().isoformat(), is_live=False,
+                trust_score=trust, data_date=payload.data_date,
+                endpoint=payload.endpoint,
+            )
+        except Exception as exc:
+            latency = (datetime.now() - started).total_seconds() * 1000
+            self._record_call("tushare", "top_list", False, latency, str(exc)[:100])
+            return {}, DataProvenance(
+                provider="tushare", source_name="Tushare Pro (龙虎榜摘要)",
+                fetched_at=datetime.now().isoformat(), is_live=False,
+                trust_score=0.0, endpoint="top_list",
+                error_message=f"Tushare 龙虎榜获取失败: {str(exc)[:100]}",
+            )
 
+    async def _try_tushare_quote(self, code: str) -> tuple[dict | None, DataProvenance]:
+        """Get Tushare realtime minutes in-session, otherwise an audited close."""
+        started = datetime.now()
+        try:
+            realtime_error = ""
+            try:
+                realtime = await asyncio.wait_for(
+                    tushare_provider.fetch_realtime_quote(code), timeout=10.0
+                )
+                quote = dict(realtime.data or {})
+                exchange_at = datetime.fromisoformat(
+                    str(quote.get("exchange_at") or "").replace(" ", "T")
+                )
+                now = datetime.now().astimezone()
+                if exchange_at.tzinfo is None:
+                    exchange_at = exchange_at.replace(tzinfo=now.tzinfo)
+                else:
+                    exchange_at = exchange_at.astimezone(now.tzinfo)
+                age_seconds = (now - exchange_at).total_seconds()
+                local_time = now.time().replace(tzinfo=None)
+                in_session = (
+                    dt_time(9, 30) <= local_time <= dt_time(11, 30)
+                    or dt_time(13, 0) <= local_time <= dt_time(15, 0)
+                )
+                if not in_session or age_seconds < -5 or age_seconds > 180:
+                    raise ValueError("tushare_rt_min_stale_or_outside_session")
+                payload = realtime
+            except Exception as exc:
+                realtime_error = f"{type(exc).__name__}:{str(exc)[:80]}"
+                payload = await asyncio.wait_for(
+                    tushare_provider.fetch_daily_quote(code), timeout=30.0
+                )
+            quote = dict(payload.data or {})
+            source = self._sources["tushare"]
+            latency = (datetime.now() - started).total_seconds() * 1000
             source.is_available = True
             source.last_success_at = datetime.now().isoformat()
+            source.last_error = ""
             source.latency_ms = latency
+            source.total_calls += 1
             source.success_count += 1
             source.consecutive_failures = 0
-
-            dyn_trust = self._record_call("tushare", "quote", True, latency)
+            trust = self._record_call("tushare", "quote", True, latency)
+            is_live = bool(quote.get("is_realtime"))
             return quote, DataProvenance(
                 provider="tushare",
-                source_name="Tushare Pro (T+1 昨日数据)",
-                fetched_at=datetime.now().isoformat(),
-                data_age_seconds=0, is_live=False, trust_score=dyn_trust,
+                source_name=(
+                    "Tushare Pro (实时分钟)" if is_live
+                    else "Tushare Pro (盘后日线)"
+                ),
+                fetched_at=str(quote.get("fetched_at") or datetime.now().isoformat()),
+                is_live=is_live, trust_score=trust, data_date=payload.data_date,
+                endpoint=payload.endpoint,
+                error_message="" if is_live else realtime_error,
             )
-
-        except Exception as e:
-            source.is_available = False
-            source.last_error = str(e)[:200]
-            source.consecutive_failures += 1
-            latency = (datetime.now() - t0).total_seconds() * 1000
-            dyn_trust = self._record_call("tushare", "quote", False, latency, str(e)[:100])
+        except Exception as exc:
+            self._record_tushare_failure("quote", exc, started)
             return None, DataProvenance(
-                provider="tushare", source_name="Tushare Pro",
-                fetched_at=datetime.now().isoformat(),
-                is_live=False, trust_score=0.0,
-                error_message=f"Tushare 获取失败: {str(e)[:100]}",
+                provider="tushare", source_name="Tushare Pro (盘后日线)",
+                fetched_at=datetime.now().isoformat(), is_live=False,
+                trust_score=0.0, endpoint="daily+daily_basic",
+                error_message=f"Tushare 获取失败: {str(exc)[:100]}",
             )
 
-    async def _try_tushare_kline(self, code: str, count: int) -> tuple[list[dict] | None, DataProvenance]:
+    async def _try_tushare_kline(
+        self, code: str, count: int
+    ) -> tuple[list[dict] | None, DataProvenance]:
         """Get K-line data from tushare."""
-        source = self._sources["tushare"]
-        source.total_calls += 1
-        t0 = datetime.now()
-
+        started = datetime.now()
         try:
-            import tushare as ts
-            pro = await asyncio.to_thread(ts.pro_api, TUSHARE_TOKEN)
-            df = await asyncio.to_thread(pro.daily, ts_code=code, limit=count)
-
-            if df is None or df.empty:
-                raise ValueError(f"No K-line data for {code}")
-
-            # Tushare returns newest first, we want chronological
-            df = df.iloc[::-1]  # Reverse to chronological
-            df = df.tail(count)
-
-            klines = []
-            for _, r in df.iterrows():
-                klines.append({
-                    "date": str(r.get("trade_date", "")),
-                    "open": float(r.get("open", 0)),
-                    "high": float(r.get("high", 0)),
-                    "low": float(r.get("low", 0)),
-                    "close": float(r.get("close", 0)),
-                    "volume": float(r.get("vol", 0)),
-                    "amount": float(r.get("amount", 0)),
-                })
-
-            latency = (datetime.now() - t0).total_seconds() * 1000
-
+            payload = await asyncio.wait_for(
+                tushare_provider.fetch_kline(code, count), timeout=30.0
+            )
+            source = self._sources["tushare"]
+            latency = (datetime.now() - started).total_seconds() * 1000
             source.is_available = True
             source.last_success_at = datetime.now().isoformat()
+            source.last_error = ""
             source.latency_ms = latency
+            source.total_calls += 1
             source.success_count += 1
             source.consecutive_failures = 0
-
-            dyn_trust = self._record_call("tushare", "kline", True, latency)
-            return klines, DataProvenance(
-                provider="tushare",
-                source_name="Tushare Pro (K线)",
-                fetched_at=datetime.now().isoformat(),
-                data_age_seconds=0, is_live=True, trust_score=dyn_trust,
+            trust = self._record_call("tushare", "kline", True, latency)
+            return payload.data, DataProvenance(
+                provider="tushare", source_name="Tushare Pro (未复权日K)",
+                fetched_at=datetime.now().isoformat(), is_live=False,
+                trust_score=trust, data_date=payload.data_date,
+                endpoint=payload.endpoint,
             )
-
-        except Exception as e:
-            source.is_available = False
-            source.last_error = str(e)[:200]
-            source.consecutive_failures += 1
-            latency = (datetime.now() - t0).total_seconds() * 1000
-            dyn_trust = self._record_call("tushare", "kline", False, latency, str(e)[:100])
+        except Exception as exc:
+            self._record_tushare_failure("kline", exc, started)
             return None, DataProvenance(
-                provider="tushare", source_name="Tushare Pro",
-                fetched_at=datetime.now().isoformat(),
-                is_live=False, trust_score=dyn_trust,
-                error_message=f"Tushare K线获取失败: {str(e)[:100]}",
+                provider="tushare", source_name="Tushare Pro (未复权日K)",
+                fetched_at=datetime.now().isoformat(), is_live=False,
+                trust_score=0.0, endpoint="daily",
+                error_message=f"Tushare K线获取失败: {str(exc)[:100]}",
             )
 
     async def _try_akshare_quote(self, code: str) -> tuple[dict | None, DataProvenance]:
@@ -1123,7 +2022,7 @@ class SourceManager:
         try:
             import akshare as ak
             raw_code = code.replace(".SH", "").replace(".SZ", "").replace(".BJ", "")
-            df = await asyncio.to_thread(ak.stock_zh_a_spot_em)
+            df = await asyncio.wait_for(asyncio.to_thread(ak.stock_zh_a_spot_em), timeout=_AKSHARE_TIMEOUT)
 
             if df is None or df.empty:
                 raise ValueError("Empty response from akshare")
@@ -1199,13 +2098,13 @@ class SourceManager:
             from datetime import date as dt_date
 
             raw_code = code.replace(".SH", "").replace(".SZ", "").replace(".BJ", "")
-            df = await asyncio.to_thread(
+            df = await asyncio.wait_for(asyncio.to_thread(
                 ak.stock_zh_a_hist,
                 symbol=raw_code, period="daily",
                 start_date="20200101",
                 end_date=dt_date.today().strftime("%Y%m%d"),
                 adjust="qfq",
-            )
+            ), timeout=_AKSHARE_TIMEOUT)
 
             if df is None or df.empty:
                 raise ValueError("Empty K-line response")
@@ -1261,7 +2160,7 @@ class SourceManager:
 
         try:
             import akshare as ak
-            df = await asyncio.to_thread(ak.stock_zh_index_spot_em)
+            df = await asyncio.wait_for(asyncio.to_thread(ak.stock_zh_index_spot_em), timeout=_AKSHARE_TIMEOUT)
 
             if df is None or df.empty:
                 raise ValueError("Empty index response")
@@ -1286,7 +2185,10 @@ class SourceManager:
             return result, DataProvenance(
                 provider="akshare", source_name="东方财富(AkShare)",
                 fetched_at=datetime.now().isoformat(),
-                data_age_seconds=0, is_live=True, trust_score=0.95,
+                data_age_seconds=0,
+                is_live=True,
+                trust_score=0.95,
+                data_date=datetime.now().date().isoformat(),
             )
 
         except Exception as e:
@@ -1300,6 +2202,576 @@ class SourceManager:
                 error_message=f"AkShare 指数获取失败: {str(e)[:100]}",
             )
 
+    async def _try_tencent_indices(self) -> tuple[list[dict] | None, DataProvenance]:
+        """Get major indices from Tencent (qt.gtimg.cn). 不封IP, akshare 风控时 fallback。"""
+        source = self._sources["tencent"]
+        source.total_calls += 1
+
+        try:
+            import urllib.request
+            # 上证sh000001 深成指sz399001 创业板sz399006 科创50 sh000688
+            url = "https://qt.gtimg.cn/q=sh000001,sz399001,sz399006,sh000688"
+            req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+            resp = await asyncio.wait_for(
+                asyncio.to_thread(urllib.request.urlopen, req, None, 8),
+                timeout=_AKSHARE_TIMEOUT,
+            )
+            data = resp.read().decode("gbk")
+
+            wanted = {"上证指数", "深证成指", "创业板指", "科创50"}
+            result = []
+            for line in data.strip().split(";"):
+                if "=" not in line or '"' not in line:
+                    continue
+                vals = line.split('"')[1].split("~")
+                if len(vals) <= 32:
+                    continue
+                name = vals[1]
+                if name in wanted:
+                    result.append({
+                        "name": name,
+                        "code": "",
+                        "value": float(vals[3]) if vals[3] else 0,
+                        "change_pct": float(vals[32]) if vals[32] else 0,
+                    })
+
+            if not result:
+                raise ValueError("Tencent returned no indices")
+
+            source.is_available = True
+            source.last_success_at = datetime.now().isoformat()
+            source.success_count += 1
+            source.consecutive_failures = 0
+
+            return result, DataProvenance(
+                provider="tencent", source_name="腾讯财经 (qt.gtimg.cn)",
+                fetched_at=datetime.now().isoformat(),
+                data_age_seconds=0,
+                is_live=True,
+                trust_score=0.9,
+                data_date=datetime.now().date().isoformat(),
+            )
+
+        except Exception as e:
+            source.is_available = False
+            source.last_error = str(e)[:200]
+            source.consecutive_failures += 1
+            return None, DataProvenance(
+                provider="tencent", source_name="腾讯财经 (qt.gtimg.cn)",
+                fetched_at=datetime.now().isoformat(),
+                is_live=False, trust_score=0.0,
+                error_message=f"腾讯指数获取失败: {str(e)[:100]}",
+            )
+
+    async def _try_tencent_quote(self, code: str) -> tuple[dict | None, DataProvenance]:
+        """单股实时报价 from 腾讯(qt.gtimg.cn). 不封IP, akshare 风控时 fallback。
+        字段单位对齐 akshare: amount→元, volume→手, 总市值→元。"""
+        source = self._sources["tencent"]
+        source.total_calls += 1
+        t0 = datetime.now()
+
+        try:
+            import urllib.request
+            raw = code.replace(".SH", "").replace(".SZ", "").replace(".BJ", "")
+            prefix = "sh" if raw.startswith(("6", "9")) else ("bj" if raw.startswith("8") else "sz")
+            url = f"https://qt.gtimg.cn/q={prefix}{raw}"
+            req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+            resp = await asyncio.wait_for(
+                asyncio.to_thread(urllib.request.urlopen, req, None, 8),
+                timeout=_AKSHARE_TIMEOUT,
+            )
+            vals = resp.read().decode("gbk").split('"')[1].split("~")
+            if len(vals) < 53:
+                raise ValueError("Tencent quote truncated")
+
+            def _f(i):
+                try:
+                    return float(vals[i])
+                except (ValueError, IndexError):
+                    return 0.0
+
+            price = _f(3)
+            if price <= 0:
+                raise ValueError(f"Zero price for {raw}")
+
+            amt_wan = _f(37)  # 成交额, 单位万
+            exchange_timestamp = vals[30].strip() if len(vals) > 30 else ""
+            data_date = (
+                f"{exchange_timestamp[:4]}-{exchange_timestamp[4:6]}-"
+                f"{exchange_timestamp[6:8]}"
+                if len(exchange_timestamp) >= 8 and exchange_timestamp[:8].isdigit()
+                else ""
+            )
+            quote = {
+                "stock_code": code,
+                "stock_name": vals[1],
+                "price": price,
+                "change_pct": _f(32),
+                "change_amount": _f(31),
+                "volume": _f(6),                    # 手
+                "amount": amt_wan * 1e4,            # 万→元
+                "amount_yi": round(amt_wan / 1e4, 2),
+                "high": _f(33) or price,
+                "low": _f(34) or price,
+                "open": _f(5) or price,
+                "pre_close": _f(4) or price,
+                "turnover": _f(38),
+                "pe": _f(39),
+                "pb": _f(46),
+                "total_market_cap": _f(44) * 1e8,   # 亿→元
+                "data_date": data_date,
+                "exchange_timestamp": exchange_timestamp,
+                "source": "tencent",
+            }
+
+            from src.infrastructure.market_data.validator import validator
+            v = validator.validate_quote(quote, code)
+            if v.has_errors:
+                raise ValueError(f"Validation failed: {v.errors}")
+
+            latency = (datetime.now() - t0).total_seconds() * 1000
+            source.is_available = True
+            source.last_success_at = datetime.now().isoformat()
+            source.latency_ms = latency
+            source.success_count += 1
+            source.consecutive_failures = 0
+            trust = self._record_call(
+                "tencent", "quote", True, latency,
+                completeness=0.95,
+                validation_passed=True,
+            )
+            return quote, DataProvenance(
+                provider="tencent", source_name="腾讯财经 (qt.gtimg.cn)",
+                fetched_at=datetime.now().isoformat(), data_age_seconds=0,
+                is_live=True, trust_score=trust,
+            )
+
+        except Exception as e:
+            latency = (datetime.now() - t0).total_seconds() * 1000
+            source.is_available = False
+            source.last_error = str(e)[:200]
+            source.consecutive_failures += 1
+            trust = self._record_call(
+                "tencent", "quote", False, latency, str(e)[:100],
+                completeness=0.0,
+                validation_passed=False,
+            )
+            return None, DataProvenance(
+                provider="tencent", source_name="腾讯财经 (qt.gtimg.cn)",
+                fetched_at=datetime.now().isoformat(), is_live=False,
+                trust_score=trust,
+                error_message=f"腾讯报价获取失败: {str(e)[:100]}",
+            )
+
+    async def _try_tencent_kline(self, code: str, count: int) -> tuple[list[dict] | None, DataProvenance]:
+        """前复权日K线 from 腾讯(web.ifzq.gtimg.cn fqkline). 不封IP。
+        腾讯K线无成交额字段(amount=0), change_pct 由 close/prev_close 本地算。"""
+        source = self._sources["tencent"]
+        source.total_calls += 1
+        t0 = datetime.now()
+
+        try:
+            import urllib.request, json
+            raw = code.replace(".SH", "").replace(".SZ", "").replace(".BJ", "")
+            prefix = "sh" if raw.startswith(("6", "9")) else ("bj" if raw.startswith("8") else "sz")
+            n = max(count, 640)
+            url = f"https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param={prefix}{raw},day,2020-01-01,,{n},qfq"
+            req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+            resp = await asyncio.wait_for(
+                asyncio.to_thread(urllib.request.urlopen, req, None, 8),
+                timeout=_AKSHARE_TIMEOUT,
+            )
+            d = json.loads(resp.read().decode("utf-8"))
+            inner = d.get("data", {}).get(f"{prefix}{raw}", {})
+            kdata = inner.get("qfqday") or inner.get("day") or []
+            if not kdata:
+                raise ValueError("Empty kline response")
+
+            klines = []
+            prev_close = None
+            for bar in kdata[-count:]:
+                close = float(bar[2])
+                change_pct = round((close / prev_close - 1) * 100, 2) if prev_close else 0.0
+                klines.append({
+                    "date": bar[0],
+                    "open": float(bar[1]),
+                    "high": float(bar[3]),
+                    "low": float(bar[4]),
+                    "close": close,
+                    "volume": float(bar[5]) if len(bar) > 5 else 0.0,  # 手
+                    "amount": 0.0,  # 腾讯K线无成交额
+                    "change_pct": change_pct,
+                })
+                prev_close = close
+
+            latency = (datetime.now() - t0).total_seconds() * 1000
+            source.is_available = True
+            source.last_success_at = datetime.now().isoformat()
+            source.latency_ms = latency
+            source.success_count += 1
+            source.consecutive_failures = 0
+            trust = self._record_call(
+                "tencent", "kline", True, latency,
+                completeness=0.85,
+                validation_passed=True,
+            )
+            return klines, DataProvenance(
+                provider="tencent", source_name="腾讯财经 (K线 qfq)",
+                fetched_at=datetime.now().isoformat(), data_age_seconds=0,
+                is_live=True, trust_score=trust,
+            )
+
+        except Exception as e:
+            latency = (datetime.now() - t0).total_seconds() * 1000
+            source.is_available = False
+            source.last_error = str(e)[:200]
+            source.consecutive_failures += 1
+            trust = self._record_call(
+                "tencent", "kline", False, latency, str(e)[:100],
+                completeness=0.0,
+                validation_passed=False,
+            )
+            return None, DataProvenance(
+                provider="tencent", source_name="腾讯财经 (K线 qfq)",
+                fetched_at=datetime.now().isoformat(), is_live=False,
+                trust_score=trust,
+                error_message=f"腾讯K线获取失败: {str(e)[:100]}",
+            )
+
+    # ================================================================
+    # TickFlow provider — authenticated API for real-time quote/K-line
+    # ================================================================
+
+    async def _try_tickflow_quote(self, code: str) -> tuple[dict | None, DataProvenance]:
+        source = self._sources["tickflow"]
+        source.total_calls += 1
+        t0 = datetime.now()
+        try:
+            from src.infrastructure.market_data.tickflow_provider import fetch_quote
+
+            quote = await asyncio.to_thread(fetch_quote, code)
+            if float(quote.get("price") or 0) <= 0:
+                raise ValueError(f"TickFlow returned zero price for {code}")
+            from src.infrastructure.market_data.validator import validator
+            validation = validator.validate_quote(quote, code)
+            if validation.has_errors:
+                raise ValueError(f"Validation failed: {validation.errors}")
+
+            latency = (datetime.now() - t0).total_seconds() * 1000
+            source.is_available = True
+            source.last_success_at = datetime.now().isoformat()
+            source.last_error = ""
+            source.latency_ms = latency
+            source.success_count += 1
+            source.consecutive_failures = 0
+            trust = self._record_call(
+                "tickflow", "quote", True, latency,
+                completeness=0.95, validation_passed=True,
+            )
+            return quote, DataProvenance(
+                provider="tickflow", source_name="TickFlow API",
+                fetched_at=datetime.now().isoformat(), data_age_seconds=0,
+                is_live=True, trust_score=trust,
+            )
+        except Exception as exc:
+            latency = (datetime.now() - t0).total_seconds() * 1000
+            source.is_available = False
+            source.last_error = str(exc)[:200]
+            source.consecutive_failures += 1
+            trust = self._record_call(
+                "tickflow", "quote", False, latency, str(exc)[:100],
+                completeness=0.0, validation_passed=False,
+            )
+            return None, DataProvenance(
+                provider="tickflow", source_name="TickFlow API",
+                fetched_at=datetime.now().isoformat(), is_live=False,
+                trust_score=trust,
+                error_message=f"TickFlow 报价获取失败: {str(exc)[:100]}",
+            )
+
+    async def _try_tickflow_kline(
+        self, code: str, count: int
+    ) -> tuple[list[dict] | None, DataProvenance]:
+        source = self._sources["tickflow"]
+        source.total_calls += 1
+        t0 = datetime.now()
+        try:
+            from src.infrastructure.market_data.tickflow_provider import fetch_klines
+
+            klines = await asyncio.to_thread(
+                fetch_klines, code, count,
+            )
+            if not klines:
+                raise ValueError(f"TickFlow returned no K-lines for {code}")
+            latency = (datetime.now() - t0).total_seconds() * 1000
+            source.is_available = True
+            source.last_success_at = datetime.now().isoformat()
+            source.last_error = ""
+            source.latency_ms = latency
+            source.success_count += 1
+            source.consecutive_failures = 0
+            trust = self._record_call(
+                "tickflow", "kline", True, latency,
+                completeness=0.95, validation_passed=True,
+            )
+            return klines, DataProvenance(
+                provider="tickflow", source_name="TickFlow API (日K)",
+                fetched_at=datetime.now().isoformat(), data_age_seconds=0,
+                is_live=True, trust_score=trust,
+            )
+        except Exception as exc:
+            latency = (datetime.now() - t0).total_seconds() * 1000
+            source.is_available = False
+            source.last_error = str(exc)[:200]
+            source.consecutive_failures += 1
+            trust = self._record_call(
+                "tickflow", "kline", False, latency, str(exc)[:100],
+                completeness=0.0, validation_passed=False,
+            )
+            return None, DataProvenance(
+                provider="tickflow", source_name="TickFlow API (日K)",
+                fetched_at=datetime.now().isoformat(), is_live=False,
+                trust_score=trust,
+                error_message=f"TickFlow K线获取失败: {str(exc)[:100]}",
+            )
+
+    # ================================================================
+    # Sina provider — independent HTTP fallback for A-share quote/K-line
+    # ================================================================
+
+    @staticmethod
+    def _sina_symbol(code: str) -> str:
+        raw = code.replace(".SH", "").replace(".SZ", "").replace(".BJ", "")
+        prefix = (
+            "sh"
+            if raw.startswith(("5", "6", "9"))
+            else "bj"
+            if raw.startswith(("4", "8"))
+            else "sz"
+        )
+        return f"{prefix}{raw}"
+
+    async def _try_sina_quote(self, code: str) -> tuple[dict | None, DataProvenance]:
+        """Fetch a real quote from Sina; volume is normalized from shares to lots."""
+        source = self._sources["sina"]
+        source.total_calls += 1
+        t0 = datetime.now()
+
+        try:
+            import urllib.request
+
+            symbol = self._sina_symbol(code)
+            url = f"https://hq.sinajs.cn/list={symbol}"
+            req = urllib.request.Request(
+                url,
+                headers={
+                    "User-Agent": "Mozilla/5.0",
+                    "Referer": "https://finance.sina.com.cn/",
+                },
+            )
+            resp = await asyncio.wait_for(
+                asyncio.to_thread(urllib.request.urlopen, req, None, 8),
+                timeout=_AKSHARE_TIMEOUT,
+            )
+            text = resp.read().decode("gb18030", errors="replace")
+            if '="' not in text:
+                raise ValueError("Sina quote response is malformed")
+            values = text.split('="', 1)[1].rsplit('"', 1)[0].split(",")
+            if len(values) < 32:
+                raise ValueError("Sina quote response is truncated")
+
+            def _f(index: int) -> float:
+                try:
+                    return float(values[index])
+                except (IndexError, TypeError, ValueError):
+                    return 0.0
+
+            price = _f(3)
+            pre_close = _f(2)
+            if price <= 0:
+                raise ValueError(f"Zero price for {symbol}")
+            change_amount = price - pre_close if pre_close > 0 else 0.0
+            change_pct = change_amount / pre_close * 100 if pre_close > 0 else 0.0
+            data_date = values[30].strip()
+            quote_time = values[31].strip()
+            exchange_timestamp = "".join(
+                character for character in f"{data_date}{quote_time}" if character.isdigit()
+            )
+            amount = _f(9)
+            quote = {
+                "stock_code": code,
+                "stock_name": values[0].strip(),
+                "price": price,
+                "change_pct": round(change_pct, 4),
+                "change_amount": round(change_amount, 4),
+                "volume": _f(8) / 100,  # 股 -> 手
+                "amount": amount,
+                "amount_yi": round(amount / 1e8, 2),
+                "high": _f(4) or price,
+                "low": _f(5) or price,
+                "open": _f(1) or price,
+                "pre_close": pre_close or price,
+                "turnover": 0.0,
+                "pe": 0.0,
+                "pb": 0.0,
+                "total_market_cap": 0.0,
+                "data_date": data_date,
+                "exchange_timestamp": exchange_timestamp,
+                "source": "sina",
+            }
+
+            from src.infrastructure.market_data.validator import validator
+
+            validation = validator.validate_quote(quote, code)
+            if validation.has_errors:
+                raise ValueError(f"Validation failed: {validation.errors}")
+
+            latency = (datetime.now() - t0).total_seconds() * 1000
+            source.is_available = True
+            source.last_success_at = datetime.now().isoformat()
+            source.latency_ms = latency
+            source.success_count += 1
+            source.consecutive_failures = 0
+            trust = self._record_call(
+                "sina", "quote", True, latency,
+                completeness=0.8,
+                validation_passed=True,
+            )
+            return quote, DataProvenance(
+                provider="sina",
+                source_name="新浪财经 (hq.sinajs.cn)",
+                fetched_at=datetime.now().isoformat(),
+                data_age_seconds=0,
+                is_live=True,
+                trust_score=trust,
+            )
+        except Exception as exc:
+            latency = (datetime.now() - t0).total_seconds() * 1000
+            source.is_available = False
+            source.last_error = str(exc)[:200]
+            source.consecutive_failures += 1
+            trust = self._record_call(
+                "sina", "quote", False, latency, str(exc)[:100],
+                completeness=0.0,
+                validation_passed=False,
+            )
+            return None, DataProvenance(
+                provider="sina",
+                source_name="新浪财经 (hq.sinajs.cn)",
+                fetched_at=datetime.now().isoformat(),
+                is_live=False,
+                trust_score=trust,
+                error_message=f"新浪报价获取失败: {str(exc)[:100]}",
+            )
+
+    async def _try_sina_kline(
+        self, code: str, count: int,
+    ) -> tuple[list[dict] | None, DataProvenance]:
+        """Fetch unadjusted daily bars from Sina as a last-resort real source."""
+        source = self._sources["sina"]
+        source.total_calls += 1
+        t0 = datetime.now()
+
+        try:
+            import json
+            import urllib.parse
+            import urllib.request
+
+            symbol = self._sina_symbol(code)
+            params = urllib.parse.urlencode({
+                "symbol": symbol,
+                "scale": "240",
+                "ma": "no",
+                "datalen": str(max(1, min(int(count), 1023))),
+            })
+            url = (
+                "https://money.finance.sina.com.cn/quotes_service/api/json_v2.php/"
+                f"CN_MarketData.getKLineData?{params}"
+            )
+            req = urllib.request.Request(
+                url,
+                headers={
+                    "User-Agent": "Mozilla/5.0",
+                    "Referer": "https://finance.sina.com.cn/",
+                },
+            )
+            resp = await asyncio.wait_for(
+                asyncio.to_thread(urllib.request.urlopen, req, None, 8),
+                timeout=_AKSHARE_TIMEOUT,
+            )
+            rows = json.loads(resp.read().decode("utf-8"))
+            if not isinstance(rows, list) or not rows:
+                raise ValueError("Sina returned no K-line rows")
+
+            klines = []
+            previous_close = None
+            for row in rows[-count:]:
+                close = float(row.get("close") or 0)
+                if close <= 0:
+                    continue
+                change_pct = (
+                    round((close / previous_close - 1) * 100, 4)
+                    if previous_close
+                    else 0.0
+                )
+                klines.append({
+                    "date": str(row.get("day") or "")[:10],
+                    "open": float(row.get("open") or 0),
+                    "high": float(row.get("high") or 0),
+                    "low": float(row.get("low") or 0),
+                    "close": close,
+                    "volume": float(row.get("volume") or 0) / 100,  # 股 -> 手
+                    "amount": 0.0,
+                    "change_pct": change_pct,
+                })
+                previous_close = close
+            if not klines:
+                raise ValueError("Sina K-line rows contain no valid prices")
+
+            from src.infrastructure.market_data.validator import validator
+
+            validation = validator.validate_klines(klines, code)
+            if validation.has_errors:
+                raise ValueError(f"Validation failed: {validation.errors}")
+
+            latency = (datetime.now() - t0).total_seconds() * 1000
+            source.is_available = True
+            source.last_success_at = datetime.now().isoformat()
+            source.latency_ms = latency
+            source.success_count += 1
+            source.consecutive_failures = 0
+            trust = self._record_call(
+                "sina", "kline", True, latency,
+                completeness=0.75,
+                validation_passed=True,
+            )
+            return klines, DataProvenance(
+                provider="sina",
+                source_name="新浪财经 (未复权日K)",
+                fetched_at=datetime.now().isoformat(),
+                data_age_seconds=0,
+                is_live=True,
+                trust_score=trust,
+            )
+        except Exception as exc:
+            latency = (datetime.now() - t0).total_seconds() * 1000
+            source.is_available = False
+            source.last_error = str(exc)[:200]
+            source.consecutive_failures += 1
+            trust = self._record_call(
+                "sina", "kline", False, latency, str(exc)[:100],
+                completeness=0.0,
+                validation_passed=False,
+            )
+            return None, DataProvenance(
+                provider="sina",
+                source_name="新浪财经 (未复权日K)",
+                fetched_at=datetime.now().isoformat(),
+                is_live=False,
+                trust_score=trust,
+                error_message=f"新浪K线获取失败: {str(exc)[:100]}",
+            )
+
     async def _try_akshare_breadth(self) -> tuple[dict | None, DataProvenance]:
         """Try getting market breadth from akshare."""
         source = self._sources["akshare"]
@@ -1307,7 +2779,7 @@ class SourceManager:
 
         try:
             import akshare as ak
-            df = await asyncio.to_thread(ak.stock_zh_a_spot_em)
+            df = await asyncio.wait_for(asyncio.to_thread(ak.stock_zh_a_spot_em), timeout=_AKSHARE_TIMEOUT)
 
             if df is None or df.empty:
                 raise ValueError("Empty spot response")
@@ -1323,14 +2795,17 @@ class SourceManager:
             source.success_count += 1
             source.consecutive_failures = 0
 
+            data_date = datetime.now().date().isoformat()
             return {
                 "up": up, "down": down, "flat": flat,
                 "limit_up": limit_up, "limit_down": limit_down,
                 "total_volume": total_vol,
+                "data_date": data_date,
             }, DataProvenance(
                 provider="akshare", source_name="东方财富(AkShare)",
                 fetched_at=datetime.now().isoformat(),
                 data_age_seconds=0, is_live=True, trust_score=0.95,
+                data_date=data_date,
             )
 
         except Exception as e:
@@ -1534,9 +3009,12 @@ class SourceManager:
                 rs = await asyncio.to_thread(
                     bs.query_history_k_data_plus,
                     bs_code,
-                    'date,open,high,low,close,volume,amount',
+                    (
+                        'date,open,high,low,close,preclose,volume,amount,turn,'
+                        'tradestatus,pctChg,peTTM,pbMRQ,psTTM,pcfNcfTTM,isST'
+                    ),
                     start_date=start, end_date=end,
-                    frequency='d', adjustflag='3',
+                    frequency='d', adjustflag='2',
                 )
 
                 if rs.error_code != '0':
@@ -1560,8 +3038,18 @@ class SourceManager:
                         "high": float(r[2]) if r[2] else 0,
                         "low": float(r[3]) if r[3] else 0,
                         "close": float(r[4]) if r[4] else 0,
-                        "volume": float(r[5]) if r[5] else 0,
-                        "amount": float(r[6]) if r[6] else 0,
+                        "pre_close": float(r[5]) if r[5] else 0,
+                        "volume": float(r[6]) if r[6] else 0,
+                        "amount": float(r[7]) if r[7] else 0,
+                        "turnover": float(r[8]) if r[8] else 0,
+                        "trade_status": "trading" if r[9] == "1" else "suspended",
+                        "change_pct": float(r[10]) if r[10] else 0,
+                        "pe_ttm": float(r[11]) if r[11] else None,
+                        "pb_mrq": float(r[12]) if r[12] else None,
+                        "ps_ttm": float(r[13]) if r[13] else None,
+                        "pcf_ncf_ttm": float(r[14]) if r[14] else None,
+                        "is_st": r[15] == "1",
+                        "adjustment_mode": "qfq",
                     })
 
                 latency = (datetime.now() - t0).total_seconds() * 1000
@@ -2652,9 +4140,20 @@ class SourceManager:
                 "total_calls": status.total_calls,
                 "consecutive_failures": status.consecutive_failures,
                 "status": status.is_available,
+                "state": (
+                    "untested"
+                    if status.total_calls == 0
+                    else "up"
+                    if status.is_available
+                    else "down"
+                ),
             })
 
-        ranked.sort(key=lambda p: (-p["composite_score"], p["consecutive_failures"]))
+        ranked.sort(key=lambda p: (
+            p["state"] == "untested",
+            -p["composite_score"],
+            p["consecutive_failures"],
+        ))
         for i, r in enumerate(ranked):
             r["rank"] = i + 1
         return ranked
@@ -2666,20 +4165,65 @@ class SourceManager:
         source, timestamp, freshness, latency, backup status, provider rankings.
         """
         ranking = self.get_provider_ranking()
-        primary = ranking[0] if ranking else None
-        backups_available = [p for p in ranking[1:] if p["status"]]
+        route_code = code.strip().upper() if code else "600000.SH"
+        route = self._get_ranked_providers(route_code, "realtime_quote")
+        primary_name = route[0] if route else (ranking[0]["name"] if ranking else "")
+        primary = next(
+            (provider for provider in ranking if provider["name"] == primary_name),
+            ranking[0] if ranking else None,
+        )
+        backups_available = [
+            provider for provider in ranking
+            if provider["name"] != primary_name and provider["status"]
+        ]
+        tested = [p for p in ranking if p["state"] != "untested"]
+        pipeline_status = (
+            "live"
+            if primary and primary["state"] == "up"
+            else "degraded"
+            if backups_available
+            else "unknown"
+            if not tested
+            else "down"
+        )
 
         # Freshness check
-        spot_age = self.cache.get_age(f"spot:quote:{code}") if code else 0
-        freshness_level = "fresh" if spot_age < 5 else "recent" if spot_age < 60 else "stale" if spot_age < 300 else "expired"
-        freshness_color = "#22C55E" if freshness_level in ("fresh", "recent") else "#F59E0B" if freshness_level == "stale" else "#EF4444"
+        spot_age = self.cache.get_age(f"spot:quote:{code}") if code else None
+        freshness_level = (
+            "unknown"
+            if spot_age is None or spot_age >= 999999
+            else "fresh"
+            if spot_age < 5
+            else "recent"
+            if spot_age < 60
+            else "stale"
+            if spot_age < 300
+            else "expired"
+        )
+        freshness_color = (
+            "#6B7280"
+            if freshness_level == "unknown"
+            else "#22C55E"
+            if freshness_level in ("fresh", "recent")
+            else "#F59E0B"
+            if freshness_level == "stale"
+            else "#EF4444"
+        )
 
         return {
             "primary_provider": primary["name"] if primary else "unknown",
             "primary_display": self._provider_display_name(primary["name"] if primary else ""),
-            "status": "live" if primary and primary["status"] else "degraded" if backups_available else "down",
-            "status_icon": "🟢" if primary and primary["status"] else "🟡" if backups_available else "🔴",
-            "data_age_seconds": round(spot_age, 1) if spot_age < 999999 else None,
+            "status": pipeline_status,
+            "status_icon": (
+                "🟢"
+                if pipeline_status == "live"
+                else "🟡"
+                if pipeline_status == "degraded"
+                else "⚪"
+                if pipeline_status == "unknown"
+                else "🔴"
+            ),
+            "data_age_seconds": round(spot_age, 1) if spot_age is not None and spot_age < 999999 else None,
             "freshness": freshness_level,
             "freshness_color": freshness_color,
             "latency_ms": primary["avg_latency_ms"] if primary else 0,
@@ -2695,6 +4239,8 @@ class SourceManager:
                 if primary and primary["status"] and backups_available
                 else "Single source only — consider adding backup providers"
                 if primary and primary["status"]
+                else "Providers not tested yet — request a quote to run a live check"
+                if not tested
                 else "No live data available — AI analysis paused"
             ),
         }

@@ -3,18 +3,45 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.buildTimelinePage = buildTimelinePage;
 const layout_1 = require("../webview/layout");
+function finiteNumber(value, fallback = 0) {
+    const parsed = typeof value === 'number' ? value : Number(value);
+    return Number.isFinite(parsed) ? parsed : fallback;
+}
+function escapeHtml(value) {
+    return String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
 function buildTimelinePage(data) {
-    const result = data.timeline || {};
-    const entries = result.entries || [];
-    const stockCode = result.stock_code || '';
-    const stockName = result.stock_name || '';
+    const result = data?.timeline || {};
+    const entries = (Array.isArray(result.entries) ? result.entries : []).map((entry) => ({
+        ...entry,
+        date: String(entry?.date || ''),
+        score: finiteNumber(entry?.score, 50),
+        change: finiteNumber(entry?.change, 0),
+        direction: entry?.direction === 'up' ? 'up' : entry?.direction === 'down' ? 'down' : 'flat',
+        events: Array.isArray(entry?.events) ? entry.events : [],
+    }));
+    const stockCode = String(result.stock_code || '');
+    const stockName = String(result.stock_name || '');
+    const currentScore = result.current_score == null ? null : finiteNumber(result.current_score, 50);
+    const totalChange = finiteNumber(result.total_change, 0);
+    const errorHtml = data?.timelineError
+        ? `<div class="card" style="border-left:3px solid #f85149">
+<div class="flex-between"><span>Timeline 加载失败：${escapeHtml(data.timelineError)}</span>
+<button class="btn" onclick="retryTimeline()">重试</button></div>
+</div>`
+        : '';
     // Build a mini ASCII-style chart using divs
     const scores = entries.map((e) => e.score);
     const maxScore = Math.max(...scores, 50);
     const minScore = Math.min(...scores, 50);
     const range = maxScore - minScore || 1;
     const chartHeight = 8; // rows
-    let chartHtml = '<div style="font-family:monospace;font-size:11px;line-height:1.8;color:#8b949e">';
+    let chartHtml = '<pre style="margin:0;font-family:monospace;font-size:11px;line-height:1.8;color:#8b949e;white-space:pre;overflow-x:auto">';
     for (let row = chartHeight - 1; row >= 0; row--) {
         const level = minScore + (range * row) / (chartHeight - 1 || 1);
         chartHtml += `<span style="color:#8b949e">${level.toFixed(0).padStart(3)}</span> `;
@@ -50,25 +77,27 @@ function buildTimelinePage(data) {
         chartHtml += d.slice(5); // MM-DD
         chartHtml += ' '.repeat(Math.max(1, step * 1 - (d.length - 5)));
     }
-    chartHtml += '</div>';
+    chartHtml += '</pre>';
     const content = `
 <div style="padding:16px 24px">
+${errorHtml}
 <div class="card">
 <div class="flex-row gap-8" style="margin-bottom:16px">
-    <input type="text" id="timelineCode" placeholder="股票代码" value="${stockCode}" style="width:160px">
+    <input type="text" id="timelineCode" placeholder="股票代码，如 600613" value="${escapeHtml(stockCode)}" style="width:200px">
     <button class="btn btn-primary" onclick="loadTimeline()">查看</button>
 </div>
-${result.current_score != null ? `
+<div id="timelineInputError" class="text-sm" style="display:none;color:#f85149;margin-top:-8px;margin-bottom:12px"></div>
+${currentScore != null ? `
 <div class="flex-between mb-16">
-    <div><span class="stock-name">${stockName || stockCode}</span> <span class="stock-code">${stockCode}</span></div>
-    <div><span class="metric-value ${result.total_change >= 0 ? 'up' : 'down'}" style="font-size:28px">${result.current_score.toFixed(0)}</span>
-    <span class="text-sm ${result.total_change >= 0 ? 'up' : 'down'}">${result.total_change >= 0 ? '+' : ''}${result.total_change.toFixed(1)} (30天)</span></div>
+    <div><span class="stock-name">${escapeHtml(stockName || stockCode)}</span> <span class="stock-code">${escapeHtml(stockCode)}</span></div>
+    <div><span class="metric-value ${totalChange >= 0 ? 'up' : 'down'}" style="font-size:28px">${currentScore.toFixed(0)}</span>
+    <span class="text-sm ${totalChange >= 0 ? 'up' : 'down'}">${totalChange >= 0 ? '+' : ''}${totalChange.toFixed(1)}（${entries.length}个交易日）</span></div>
 </div>` : ''}
 </div>
 
 <div class="card">
 <h3>Score Timeline (${entries.length}天)</h3>
-<div class="timeline-chart">${chartHtml}</div>
+<div class="timeline-chart">${entries.length ? chartHtml : '<p class="text-muted">暂无该股票的历史评分。完成一次 AI 分析后会在这里形成时间线。</p>'}</div>
 </div>
 
 <div class="card">
@@ -79,13 +108,13 @@ ${entries.slice(-6).reverse().map((e) => {
         const dirColor = e.direction === 'up' ? '#3fb950' : e.direction === 'down' ? '#f85149' : '#8b949e';
         return `<div class="evidence-card" style="border-left:3px solid ${dirColor}">
 <div class="flex-between">
-<span style="font-weight:600">${e.date} · Score ${e.score.toFixed(0)}</span>
+<span style="font-weight:600">${escapeHtml(e.date)} · Score ${e.score.toFixed(0)}</span>
 <span style="color:${dirColor};font-weight:700">${changeStr}</span>
 </div>
 ${(e.events || []).map((ev) => `
 <div class="ev-desc" style="margin-top:4px">
-<span style="color:${parseFloat(ev.impact) >= 0 ? '#3fb950' : '#f85149'}">${ev.impact}</span>
-· ${ev.event} <span class="tag tag-info">${ev.source}</span>
+<span style="color:${finiteNumber(ev?.impact) >= 0 ? '#3fb950' : '#f85149'}">${escapeHtml(ev?.impact)}</span>
+· ${escapeHtml(ev?.event)} <span class="tag tag-info">${escapeHtml(ev?.source)}</span>
 </div>`).join('')}
 </div>`;
     }).join('') || '<p class="text-muted">点击"查看"加载评分演变</p>'}
@@ -93,10 +122,25 @@ ${(e.events || []).map((ev) => `
 </div>
 </div>`;
     const extraScript = `
-async function loadTimeline() {
-    const code = document.getElementById('timelineCode').value.trim();
+function loadTimeline() {
+    const input = document.getElementById('timelineCode');
+    const error = document.getElementById('timelineInputError');
+    const code = input.value.trim().toUpperCase();
     if (!code) return;
-    vscode.postMessage({command:'navigate',page:'timeline',code:code});
+    if (!/^\\d{6}(\\.(SH|SZ|BJ))?$/.test(code)) {
+        error.textContent = '请输入6位股票代码，可选 .SH、.SZ 或 .BJ 后缀';
+        error.style.display = 'block';
+        input.focus();
+        return;
+    }
+    error.style.display = 'none';
+    vscode.postMessage({command:'timeline',code:code});
+}
+document.getElementById('timelineCode').addEventListener('keydown', function(event) {
+    if (event.key === 'Enter') loadTimeline();
+});
+function retryTimeline() {
+    vscode.postMessage({command:'refreshPage'});
 }
 `;
     return (0, layout_1.pageShell)('timeline', 'Timeline · 评分演变', content, extraScript);

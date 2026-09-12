@@ -14,7 +14,10 @@ async def test_source_manager_baostock_quote():
     assert quote["price"] > 0, f"Price should be > 0, got {quote['price']}"
     assert quote["stock_name"], "Stock name should not be empty"
     assert prov.is_available, "Provenance should show data available"
-    VALID_PROVIDERS = ("ifind", "mootdx", "tushare", "akshare", "finnhub", "fmp", "twelvedata", "polygon", "alphavantage", "baostock")
+    VALID_PROVIDERS = (
+        "ifind", "mootdx", "tencent", "tushare", "akshare", "finnhub", "fmp",
+        "twelvedata", "polygon", "alphavantage", "baostock", "tickflow",
+    )
     assert prov.provider in VALID_PROVIDERS, \
         f"Unexpected provider: {prov.provider}"
     assert prov.trust_score > 0, f"Trust score should be > 0, got {prov.trust_score}"

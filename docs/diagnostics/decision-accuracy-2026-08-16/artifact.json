@@ -1,0 +1,264 @@
+{
+  "surface": "report",
+  "manifest": {
+    "version": 1,
+    "surface": "report",
+    "title": "Adaptive Investment 决策准确率口径诊断",
+    "description": "核对中性候选、方向建议、结果回填和 Dashboard 准确率口径。",
+    "generatedAt": "2026-08-16T10:44:04+08:00",
+    "cards": [
+      {
+        "id": "studies_card",
+        "description": "决策日志中的全部股票评估，包括中性候选。",
+        "dataset": "headline",
+        "sourceId": "decision_summary_sql",
+        "metrics": [
+          { "label": "累计评估", "field": "total_studies", "format": "number" }
+        ]
+      },
+      {
+        "id": "recommendations_card",
+        "description": "明确给出 BUY 或 SELL 方向、可进入选股准确率分母的建议。",
+        "dataset": "headline",
+        "sourceId": "decision_summary_sql",
+        "metrics": [
+          { "label": "BUY/SELL 建议", "field": "directional_recommendations", "format": "number" }
+        ]
+      },
+      {
+        "id": "neutral_observed_card",
+        "description": "已有真实收益结果的中性观察；只用于中性区间校准，不用于方向准确率。",
+        "dataset": "headline",
+        "sourceId": "decision_summary_sql",
+        "metrics": [
+          { "label": "中性观察", "field": "neutral_observed", "format": "number" }
+        ]
+      },
+      {
+        "id": "verified_directional_card",
+        "description": "已经走完 5 个交易日验证窗口的 BUY/SELL 建议。",
+        "dataset": "headline",
+        "sourceId": "decision_summary_sql",
+        "metrics": [
+          { "label": "方向样本已验证", "field": "verified_directional", "format": "number" }
+        ]
+      }
+    ],
+    "charts": [
+      {
+        "id": "learning_stage_chart",
+        "title": "决策学习链路各阶段样本量",
+        "subtitle": "同一数据库快照；1 日样本用于快速反馈，5 日样本用于正式方向准确率。",
+        "type": "bar",
+        "dataset": "learning_stages",
+        "sourceId": "learning_stage_sql",
+        "valueFormat": "number",
+        "encodings": {
+          "x": { "field": "stage", "type": "ordinal", "label": "学习阶段" },
+          "y": { "field": "count", "type": "quantitative", "label": "样本数" },
+          "tooltip": [
+            { "field": "scope", "type": "text", "label": "用途" },
+            { "field": "count", "type": "quantitative", "label": "样本数", "format": "number" }
+          ]
+        }
+      }
+    ],
+    "tables": [
+      {
+        "id": "direction_audit_table",
+        "title": "按决策方向核对分母",
+        "subtitle": "neutral 的区间匹配率与 BUY/SELL 的方向准确率是两个不同指标。",
+        "dataset": "direction_audit",
+        "sourceId": "direction_audit_sql",
+        "defaultSort": { "field": "total", "direction": "desc" },
+        "columns": [
+          { "field": "direction", "label": "方向", "type": "text" },
+          { "field": "total", "label": "总记录", "format": "number" },
+          { "field": "observed", "label": "已有结果", "format": "number" },
+          { "field": "matched", "label": "匹配", "format": "number" },
+          { "field": "match_rate", "label": "匹配率", "format": "percent" },
+          { "field": "metric_scope", "label": "指标用途", "type": "text" }
+        ]
+      }
+    ],
+    "sources": [
+      {
+        "id": "decision_summary_sql",
+        "label": "SQLite 决策日志汇总",
+        "path": "src/infrastructure/storage/market_data.db"
+      },
+      {
+        "id": "direction_audit_sql",
+        "label": "SQLite 决策方向分组",
+        "path": "src/infrastructure/storage/market_data.db"
+      },
+      {
+        "id": "learning_stage_sql",
+        "label": "SQLite 决策学习阶段",
+        "path": "src/infrastructure/storage/market_data.db"
+      }
+    ],
+    "blocks": [
+      {
+        "id": "title",
+        "type": "markdown",
+        "body": "# Adaptive Investment 决策准确率口径诊断"
+      },
+      {
+        "id": "executive_summary",
+        "type": "markdown",
+        "sourceId": "decision_summary_sql",
+        "body": "## 结论\n\nDashboard 原先显示的 **223 条已验证、0% 准确率**不是选股失败结论。223 条全部是 `neutral` 中性观察。修复上线并手动触发真实回填后，首条到期 BUY 已正确完成正式验证；当前方向准确率为 **1/1（100%）**，但样本仍过小，只能视为初始结果。"
+      },
+      {
+        "id": "headline_metrics",
+        "type": "metric-strip",
+        "cardIds": [
+          "studies_card",
+          "recommendations_card",
+          "neutral_observed_card",
+          "verified_directional_card"
+        ]
+      },
+      {
+        "id": "learning_stage",
+        "type": "chart",
+        "chartId": "learning_stage_chart"
+      },
+      {
+        "id": "root_cause",
+        "type": "markdown",
+        "sourceId": "decision_summary_sql",
+        "body": "## 根因\n\n系统此前把候选扫描中的 `neutral` 记录也标为 outcome known，周报和部分可信度接口又使用全部已观察记录作为“已验证决策”的文案分母。准确率计算函数虽已只统计 BUY/SELL，但界面仍把无样本时的数值 `0` 渲染为 `0%`，最终造成口径冲突。"
+      },
+      {
+        "id": "direction_audit",
+        "type": "table",
+        "tableId": "direction_audit_table"
+      },
+      {
+        "id": "fixes",
+        "type": "markdown",
+        "body": "## 已完成修复\n\n- 周报、月报、可信度、用户画像和策略排行统一只用 BUY/SELL 结果计算方向准确率。\n- 无到期方向样本时，API 返回 `collecting_samples`，Dashboard 显示“待验证”。\n- 1 日学习和 5 日正式回填队列只处理 BUY/SELL，防止扩大股票池后数百条中性候选占满队列。\n- 历史中性观察保留作审计，没有删除或改写。\n- 真实回填已验证：1 条正式 BUY 完成、14 条下一交易日反馈新增、0 条失败。\n- 后端完整单元测试与 VS Code 插件编译均通过。"
+      },
+      {
+        "id": "recommendations",
+        "type": "markdown",
+        "body": "## 后续观察\n\n首条 BUY 已完成 5 个交易日验证，剩余建议会按交易日窗口继续回填。接下来应检查方向样本数是否持续增加、策略排行是否只出现有 BUY/SELL 结果的层级。建议至少积累 20 条正式方向样本后再据此评价模型准确率或调整长期参数。"
+      },
+      {
+        "id": "caveats",
+        "type": "markdown",
+        "body": "## 边界与说明\n\n当前没有 SELL 建议，正式 BUY 结果也只有 1 条，因此 100% 不能解释为稳定模型水平。阶段图只说明样本如何收敛，精确的方向分母仍以核对表为准。中性匹配率衡量“是否保持在相对基准的窄幅区间”，不能解释为选股命中率。"
+      }
+    ]
+  },
+  "snapshot": {
+    "version": 1,
+    "generatedAt": "2026-08-16T10:44:04+08:00",
+    "status": "ready",
+    "datasets": {
+      "headline": [
+        {
+          "total_studies": 1022,
+          "directional_recommendations": 39,
+          "neutral_observed": 223,
+          "verified_directional": 1
+        }
+      ],
+      "direction_audit": [
+        {
+          "direction": "neutral",
+          "total": 983,
+          "observed": 223,
+          "matched": 6,
+          "match_rate": 0.027,
+          "metric_scope": "中性区间校准，不计入方向准确率"
+        },
+        {
+          "direction": "buy",
+          "total": 39,
+          "observed": 1,
+          "matched": 1,
+          "match_rate": 1.0,
+          "metric_scope": "方向准确率（初始样本）"
+        }
+      ],
+      "learning_stages": [
+        {
+          "stage": "1 累计评估",
+          "count": 1022,
+          "scope": "候选扫描与研究记录"
+        },
+        {
+          "stage": "2 BUY/SELL 建议",
+          "count": 39,
+          "scope": "明确方向建议"
+        },
+        {
+          "stage": "3 下一交易日反馈",
+          "count": 33,
+          "scope": "快速自适应学习"
+        },
+        {
+          "stage": "4 五日正式验证",
+          "count": 1,
+          "scope": "方向准确率"
+        }
+      ]
+    }
+  },
+  "sources": [
+    {
+      "id": "decision_summary_sql",
+      "label": "SQLite 决策日志汇总",
+      "path": "src/infrastructure/storage/market_data.db",
+      "query": {
+        "engine": "sqlite",
+        "language": "sql",
+        "sql": "SELECT COUNT(*) AS total_studies, SUM(CASE WHEN LOWER(TRIM(COALESCE(direction, ''))) IN ('buy','sell') THEN 1 ELSE 0 END) AS directional_recommendations, SUM(CASE WHEN outcome_known=1 AND LOWER(TRIM(COALESCE(direction, ''))) NOT IN ('buy','sell') THEN 1 ELSE 0 END) AS neutral_observed, SUM(CASE WHEN outcome_known=1 AND LOWER(TRIM(COALESCE(direction, ''))) IN ('buy','sell') THEN 1 ELSE 0 END) AS verified_directional FROM decision_journal;",
+        "description": "汇总全部评估、明确方向建议、中性观察和已验证方向样本。",
+        "executed_at": "2026-08-16T10:44:04+08:00",
+        "tables_used": ["decision_journal"],
+        "filters": ["BUY/SELL 通过规范化后的 direction 字段识别"],
+        "metric_definitions": [
+          "方向准确率只使用 outcome_known=1 且 direction 为 buy 或 sell 的记录。",
+          "中性观察保留作审计，但不进入方向准确率分母。"
+        ]
+      }
+    },
+    {
+      "id": "direction_audit_sql",
+      "label": "SQLite 决策方向分组",
+      "path": "src/infrastructure/storage/market_data.db",
+      "query": {
+        "engine": "sqlite",
+        "language": "sql",
+        "sql": "SELECT LOWER(COALESCE(NULLIF(TRIM(direction), ''), 'neutral')) AS direction, COUNT(*) AS total, SUM(CASE WHEN outcome_known=1 THEN 1 ELSE 0 END) AS observed, SUM(CASE WHEN outcome_known=1 AND was_correct=1 THEN 1 ELSE 0 END) AS matched FROM decision_journal GROUP BY LOWER(COALESCE(NULLIF(TRIM(direction), ''), 'neutral')) ORDER BY total DESC;",
+        "description": "按方向核对日志总量、已有结果和匹配数量。",
+        "executed_at": "2026-08-16T10:44:04+08:00",
+        "tables_used": ["decision_journal"],
+        "metric_definitions": [
+          "neutral 的 matched 表示 5 日超额收益落在中性带内；buy/sell 的 matched 才表示方向正确。"
+        ]
+      }
+    },
+    {
+      "id": "learning_stage_sql",
+      "label": "SQLite 决策学习阶段",
+      "path": "src/infrastructure/storage/market_data.db",
+      "query": {
+        "engine": "sqlite",
+        "language": "sql",
+        "sql": "SELECT '1 累计评估' AS stage, COUNT(*) AS count FROM decision_journal UNION ALL SELECT '2 BUY/SELL 建议', COUNT(*) FROM decision_journal WHERE LOWER(TRIM(COALESCE(direction, ''))) IN ('buy','sell') UNION ALL SELECT '3 下一交易日反馈', COUNT(*) FROM market_learning_observation WHERE horizon_days=1 AND LOWER(TRIM(COALESCE(direction, ''))) IN ('buy','sell') UNION ALL SELECT '4 五日正式验证', COUNT(*) FROM decision_journal WHERE outcome_known=1 AND LOWER(TRIM(COALESCE(direction, ''))) IN ('buy','sell');",
+        "description": "按学习链路阶段汇总候选评估、方向建议、1 日反馈和 5 日正式验证样本。",
+        "executed_at": "2026-08-16T10:44:04+08:00",
+        "tables_used": ["decision_journal", "market_learning_observation"],
+        "metric_definitions": [
+          "下一交易日反馈只统计 horizon_days=1 的 BUY/SELL 观察。",
+          "五日正式验证只统计 outcome_known=1 的 BUY/SELL 决策。"
+        ]
+      }
+    }
+  ]
+}

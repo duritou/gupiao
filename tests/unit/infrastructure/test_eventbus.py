@@ -15,6 +15,7 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class TestPayload(BaseEventPayload):
+    __test__ = False
     value: str = ""
 
 

@@ -7,7 +7,7 @@ Provides:
   1. Stock universe (A-share list with basic info)
   2. Daily bars (OHLCV from baostock, cached)
   3. Batch quotes (latest close for multiple stocks)
-  4. Computed signals (MACD/RSI/KDJ/MA/Volume from real K-lines)
+  4. Computed signals (MACD/RSI/KDJ/MA/Volume/BOLL from real K-lines)
 
 Design principles:
   - T-1 data is acceptable. This is a research system, not HFT.
@@ -48,6 +48,7 @@ class RealSignalResult:
     kdj_score: float = 50.0
     ma_score: float = 50.0
     volume_score: float = 50.0
+    boll_score: float = 50.0
     # Fusion
     fusion_score: float = 50.0
     direction: str = "neutral"   # buy / sell / neutral
@@ -79,6 +80,19 @@ class RealDataProvider:
                 and (datetime.now() - self._universe_cache_time).seconds < 3600):
             return self._universe_cache
 
+        # Prefer synchronized local symbols. Returning a smaller analyzable
+        # pool is better than blocking a page refresh on sequential downloads.
+        try:
+            from src.infrastructure.storage.market_database import market_db
+            local_universe = market_db.get_stock_universe(min_bars=20, limit=min_count)
+            if local_universe:
+                self._universe_cache = local_universe
+                self._universe_cache_time = datetime.now()
+                self._universe_cache_min_count = min_count
+                return local_universe
+        except Exception:
+            pass
+
         # 同步进行中时跳过 baostock(避免与 sync 长 session 互踢),返回已有缓存
         from src.infrastructure.market_data.baostock_lock import is_sync_in_progress
         if is_sync_in_progress():
@@ -94,18 +108,28 @@ class RealDataProvider:
                 raise RuntimeError(f"baostock login failed: {lg.error_msg}")
 
             try:
-                query_date = dt_date.today().strftime("%Y-%m-%d")
-                rs = await asyncio.to_thread(bs.query_all_stock, day=query_date)
-                while rs.error_code == '0' and rs.next():
-                    item = dict(zip(rs.fields, rs.get_row_data()))
-                    raw_code = item.get("code", "")
-                    if not raw_code.startswith(("sh.", "sz.")):
-                        continue
-                    if item.get("tradeStatus") not in ("", "1"):
-                        continue
-                    normalized = f"{raw_code[3:]}.{'SH' if raw_code.startswith('sh.') else 'SZ'}"
-                    universe.append({"code": normalized, "name": item.get("code_name", normalized)})
-                    if len(universe) >= min_count:
+                # BaoStock returns an empty universe before today's session data
+                # is published. Walk backwards to the latest populated trading day.
+                for days_back in range(10):
+                    query_date = (dt_date.today() - timedelta(days=days_back)).strftime("%Y-%m-%d")
+                    rs = await asyncio.to_thread(bs.query_all_stock, day=query_date)
+                    day_universe: list[dict] = []
+                    while rs.error_code == '0' and rs.next():
+                        item = dict(zip(rs.fields, rs.get_row_data()))
+                        raw_code = item.get("code", "")
+                        if not raw_code.startswith(("sh.", "sz.")):
+                            continue
+                        if item.get("tradeStatus") not in ("", "1"):
+                            continue
+                        normalized = f"{raw_code[3:]}.{'SH' if raw_code.startswith('sh.') else 'SZ'}"
+                        day_universe.append({
+                            "code": normalized,
+                            "name": item.get("code_name", normalized),
+                        })
+                        if len(day_universe) >= min_count:
+                            break
+                    if day_universe:
+                        universe = day_universe
                         break
             finally:
                 await asyncio.to_thread(bs.logout)
@@ -125,42 +149,59 @@ class RealDataProvider:
     # ================================================================
 
     async def get_daily_bars(
-        self, code: str, days: int = 250
+        self, code: str, days: int = 250, prefer_remote: bool = False,
+        adjustment_mode: str | None = None,
     ) -> list[dict] | None:
-        """Get daily OHLCV bars 鈥?local DB first, API as fallback."""
-        # 1. Try local DB (instant) — 含新鲜度校验
+        """Get daily OHLCV bars with an explicit remote-first daily mode.
+
+        Interactive pages keep the fast local-first behavior.  The scheduled
+        learning pipeline passes ``prefer_remote=True`` so each daily decision
+        attempts a fresh provider read; SQLite then serves only as cache/fallback.
+        """
+        # 1. Load the auditable fallback, but do not return it early in remote mode.
         local = None
         try:
             from src.infrastructure.storage.market_database import market_db
-            local = market_db.get_daily_bars(code, limit=days)
-            if local and len(local) >= 20:
-                # 新鲜度:最新数据在 3 天内才直接用本地(容忍周末/短假),否则走 API fallback
+            local = await asyncio.to_thread(
+                market_db.get_daily_bars, code, limit=days
+            )
+            if not adjustment_mode and not prefer_remote and local and len(local) >= 20:
+                # 新鲜度:允许 5 个日历日的本地缓存，覆盖周末/短假及一次
+                # 公共行情源故障；技术数据日期仍会写入决策证据。纸面成交
+                # 不使用这里的价格，仍由信号后的独立实时行情校验。
                 from datetime import date as dt_date
                 try:
                     latest = dt_date.fromisoformat(local[-1]["date"])
-                    if (dt_date.today() - latest).days <= 3:
+                    if (dt_date.today() - latest).days <= 5:
                         return local
                 except Exception:
                     return local  # 日期解析失败,保守沿用本地数据
         except Exception:
             pass
 
-        # 2. Cache check
-        cache_key = f"{code}:{days}"
+        # 2. Short in-process cache prevents duplicate remote reads in one run.
+        cache_key = f"{code}:{days}:{adjustment_mode or 'any'}"
         cached = self._kline_cache.get(cache_key)
         if cached:
             data, ts = cached
             if (datetime.now() - ts).seconds < 300:
                 return data
 
-        # 3. API fallback
+        # 3. Live provider request (primary in scheduled learning mode).
         from src.infrastructure.market_data.source_manager import source_manager
-        klines, prov = await source_manager.get_kline(code, count=days)
+        klines, prov = await source_manager.get_kline(
+            code, count=days, adjustment_mode=adjustment_mode,
+        )
         if klines:
+            if adjustment_mode and any(
+                str(bar.get("adjustment_mode") or "") != adjustment_mode
+                for bar in klines
+            ):
+                return None
             self._kline_cache[cache_key] = (klines, datetime.now())
             return klines
         # API 也失败:有本地旧数据(即便过时)总比无数据好
-        return local if local else None
+        return local if local and not adjustment_mode else None
 
     async def get_batch_daily_bars(
         self, codes: list[str], days: int = 250
@@ -228,7 +269,7 @@ class RealDataProvider:
         name: str,
         klines: list[dict],
     ) -> RealSignalResult:
-        """Compute MACD/RSI/KDJ/MA/Volume signals from real K-line data.
+        """Compute MACD/RSI/KDJ/MA/Volume/BOLL from real K-line data.
 
         All signals are computed deterministically from OHLCV data.
         No random numbers. No mock data.
@@ -250,6 +291,7 @@ class RealDataProvider:
         kdj_score = self._compute_kdj_signal(closes, highs, lows)
         ma_score = self._compute_ma_signal(closes)
         volume_score = self._compute_volume_signal(volumes, closes)
+        boll_score = self._compute_boll_signal(closes)
 
         # Fusion: weighted average
         weights = {"macd": 0.30, "rsi": 0.20, "kdj": 0.15, "ma": 0.20, "volume": 0.15}
@@ -271,6 +313,7 @@ class RealDataProvider:
             kdj_score=round(kdj_score, 1),
             ma_score=round(ma_score, 1),
             volume_score=round(volume_score, 1),
+            boll_score=round(boll_score, 1),
             fusion_score=round(fusion, 1),
             direction=direction,
             confidence=round(confidence, 3),
@@ -494,6 +537,39 @@ class RealDataProvider:
 
         return max(0, min(100, score))
 
+    def _compute_boll_signal(self, closes: list[float]) -> float:
+        """Score the latest close against a 20-day, two-sigma BOLL channel.
+
+        A price near the lower band is a potential mean-reversion buy signal;
+        a price near the upper band is a potential overbought sell signal.
+        BOLL is exposed as context but intentionally does not alter the legacy
+        five-factor fusion score.
+        """
+        period = 20
+        if len(closes) < period:
+            return 50.0
+
+        window = closes[-period:]
+        middle = sum(window) / period
+        variance = sum((price - middle) ** 2 for price in window) / period
+        deviation = variance ** 0.5
+        upper = middle + 2 * deviation
+        lower = middle - 2 * deviation
+        width = upper - lower
+        position = (closes[-1] - lower) / width if width > 0 else 0.5
+
+        score = 50.0
+        if position < 0.2:
+            score += 15
+        elif position > 0.8:
+            score -= 10
+
+        bandwidth_pct = width / middle * 100 if middle > 0 else 0.0
+        if bandwidth_pct < 5:
+            score += 5
+
+        return max(0, min(100, score))
+
     # ================================================================
     # Utilities
     # ================================================================
@@ -514,4 +590,3 @@ class RealDataProvider:
 
 # Singleton
 real_data = RealDataProvider()
-

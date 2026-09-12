@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import date
 
 
 @dataclass
@@ -18,6 +17,11 @@ class Position:
     cost_value: float = 0.0         # 成本 = shares * cost_price
     profit_loss: float = 0.0        # 盈亏金额
     profit_loss_pct: float = 0.0    # 盈亏比例
+    daily_pl: float = 0.0           # 当日盈亏金额
+    daily_pl_pct: float = 0.0       # 当日盈亏比例
+    price_date: str = ""            # 估值行情交易日
+    price_source: str = ""          # 估值行情来源
+    price_fresh: bool = False       # 是否为组合日期的行情
     weight_pct: float = 0.0         # 占总仓比例
     ai_score: float = 50.0          # 当前 AI 评分
     ai_direction: str = "neutral"
@@ -52,7 +56,15 @@ class Portfolio:
     def avg_ai_score(self) -> float:
         if not self.positions:
             return 50.0
-        return sum(p.ai_score * p.weight_pct for p in self.positions) / 100
+        market_value = sum(position.market_value for position in self.positions)
+        if not market_value:
+            return 50.0
+        # This is the average score of held positions. Cash is represented by
+        # the portfolio cash field and must not silently dilute the holdings'
+        # score to an apparently lower value.
+        return sum(
+            position.ai_score * position.market_value for position in self.positions
+        ) / market_value
 
     def to_dict(self) -> dict:
         return {
@@ -81,6 +93,11 @@ class Portfolio:
                     "cost_value": round(p.cost_value, 2),
                     "profit_loss": round(p.profit_loss, 2),
                     "profit_loss_pct": round(p.profit_loss_pct, 2),
+                    "daily_pl": round(p.daily_pl, 2),
+                    "daily_pl_pct": round(p.daily_pl_pct, 2),
+                    "price_date": p.price_date,
+                    "price_source": p.price_source,
+                    "price_fresh": p.price_fresh,
                     "weight_pct": round(p.weight_pct, 2),
                     "ai_score": round(p.ai_score, 1),
                     "ai_direction": p.ai_direction,

@@ -51,6 +51,7 @@ class CalibrationBucket:
 class CalibrationReport:
     """Full calibration analysis."""
     generated_at: str = ""
+    available: bool = False
     total_verified_cases: int = 0
     buckets: list[CalibrationBucket] = field(default_factory=list)
     overall_calibration_score: float = 0.0  # 0-1, higher = better calibrated
@@ -60,6 +61,7 @@ class CalibrationReport:
     def to_dict(self) -> dict:
         return {
             "generated_at": self.generated_at[:19] if self.generated_at else "",
+            "available": self.available,
             "total_verified_cases": self.total_verified_cases,
             "buckets": [b.to_dict() for b in self.buckets],
             "overall_calibration_score": round(self.overall_calibration_score, 3),
@@ -108,10 +110,12 @@ class AIAnnualReport:
     # Replay
     replay_stability: float = 0.0  # % of cases that replay identically
     replayable_cases: int = 0
+    replay_stability_available: bool = False
 
     # Blind test
     blind_test_cases: int = 0
     blind_test_accuracy: float = 0.0
+    blind_test_available: bool = False
 
     # Monthly breakdown
     monthly_accuracy: list[dict] = field(default_factory=list)
@@ -142,8 +146,10 @@ class AIAnnualReport:
             "is_well_calibrated": self.is_well_calibrated,
             "replay_stability": round(self.replay_stability, 3),
             "replayable_cases": self.replayable_cases,
+            "replay_stability_available": self.replay_stability_available,
             "blind_test_cases": self.blind_test_cases,
             "blind_test_accuracy": round(self.blind_test_accuracy, 3),
+            "blind_test_available": self.blind_test_available,
             "monthly_accuracy": self.monthly_accuracy,
             "executive_summary": self.executive_summary,
         }
@@ -216,6 +222,7 @@ class CalibrationEngine:
 
         return CalibrationReport(
             generated_at=datetime.now().isoformat(),
+            available=True,
             total_verified_cases=len(verified),
             buckets=buckets,
             overall_calibration_score=calibration_score,
@@ -306,18 +313,18 @@ class CalibrationEngine:
             best_sector_accuracy=best_s[1]["correct"]/max(best_s[1]["total"],1),
             worst_sector=worst_s[0],
             worst_sector_accuracy=worst_s[1]["correct"]/max(worst_s[1]["total"],1),
-            model_versions=[
-                {"version": "v8.0", "accuracy": 0.65},
-                {"version": "v9.0", "accuracy": 0.72},
-                {"version": "v10.0", "accuracy": 0.76},
-            ],
+            # ResearchCase does not persist a model-version field. Do not
+            # fabricate a version comparison from unrelated product labels.
+            model_versions=[],
             accuracy_trend=trend,
             calibration_score=calibration.overall_calibration_score if calibration else 0,
             is_well_calibrated=calibration.is_well_calibrated if calibration else False,
-            replay_stability=1.0,
-            replayable_cases=len(year_cases),
-            blind_test_cases=int(len(verified) * 0.15),
-            blind_test_accuracy=len(correct)/len(verified)*0.93 if verified else 0,
+            # These metrics require an actual isolated replay/blind-test run;
+            # zero means unavailable, not perfect performance.
+            replay_stability=0.0,
+            replayable_cases=0,
+            blind_test_cases=0,
+            blind_test_accuracy=0.0,
             monthly_accuracy=monthly_acc,
             executive_summary=summary,
         )
