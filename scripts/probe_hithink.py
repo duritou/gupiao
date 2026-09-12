@@ -85,7 +85,9 @@ def _probe_callers(code: str) -> dict[str, Callable[[], Awaitable[Any]]]:
         "limit_break_pool": lambda: hithink_provider.fetch_limit_pool(
             "break", today, page=1, size=50
         ),
-        "dragon_tiger": lambda: hithink_provider.fetch_dragon_tiger(today),
+        # Omit the date so weekends/holidays resolve to the latest available
+        # trading day instead of being classified as a provider failure.
+        "dragon_tiger": lambda: hithink_provider.fetch_dragon_tiger(),
     }
 
 
@@ -151,7 +153,7 @@ def _probe_callers_for_provider(
         ),
         "limit_up_pool": lambda: provider.fetch_limit_pool("up", today, page=1, size=50),
         "limit_break_pool": lambda: provider.fetch_limit_pool("break", today, page=1, size=50),
-        "dragon_tiger": lambda: provider.fetch_dragon_tiger(today),
+        "dragon_tiger": lambda: provider.fetch_dragon_tiger(),
     }
 
 

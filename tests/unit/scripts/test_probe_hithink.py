@@ -49,7 +49,7 @@ class _FakeProvider:
     async def fetch_limit_pool(self, kind, date, page, size):
         return self._payload("limit_up_pool" if kind == "up" else "limit_break_pool")
 
-    async def fetch_dragon_tiger(self, date):
+    async def fetch_dragon_tiger(self, date=None):
         return self._payload("dragon_tiger")
 
 

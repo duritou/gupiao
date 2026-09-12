@@ -44,6 +44,7 @@
 | HiThink 全量单元回归 | `test-reports/unit-20260912-hithink-full-unit.md`：854 passed | 覆盖评分、排序、Top N、交易门槛、学习链路及 HiThink 新增组件；未观察到单元级回归 |
 | HiThink 全量集成回归 | `test-reports/integration-20260912-hithink-regression.md`：19 passed | 算法回归门禁、候选流、补齐链路、完整交易周期和学习闭环通过 |
 | HiThink 在线多标的矩阵 | `test-reports/canary-20260912-hithink-live-matrix.md`：32/32 成功 | 8 标的 × 4 capability 单次验证；最近已完成财报期修正后无失败 |
+| HiThink 特色能力周末补测 | `test-reports/canary-20260912-hithink-live-matrix.md`：3/3 成功 | 涨停池/炸板池允许合法空集；龙虎榜省略日期取最近交易日，避免周末误报 |
 
 ## 分阶段状态
 
