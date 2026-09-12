@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.REVIEW_PROJECTS = void 0;
+exports.REVIEW_LEARNING_GUIDE = exports.REVIEW_PROJECTS = void 0;
 exports.validDate = validDate;
 exports.parseArtifact = parseArtifact;
 exports.escapeHtml = escapeHtml;
@@ -14,6 +14,22 @@ exports.REVIEW_PROJECTS = [
     'MisakaMikoto128/china-astock-quant',
     'fkchaos/a-share-quant-sim',
     'yangchas/AShare-Runtime-Engine',
+];
+exports.REVIEW_LEARNING_GUIDE = [
+    { project: 'guoyaohua/limit-up-sniper', learn: '首板、涨停基因、盘中确认、盘后复盘、错失机会分析',
+        evaluation: '最适合学习短线复盘框架；作者说明迁移数据约 12 个交易日，不能证明盈利能力。' },
+    { project: 'Zeeechenn/MingCang', learn: '研究→信号→持仓→复盘→记忆的闭环',
+        evaluation: '适合借鉴 AI 学习机制；强调结果验证、人工确认和影子评估，不直接把观点变成交易信号。' },
+    { project: 'NNNightglow/replay', learn: '指数、板块、个股、情绪、历史回放',
+        evaluation: '适合学习盘后复盘界面和历史场景重建；stars 只代表热度，不代表收益。' },
+    { project: 'dfqddd/A-Stock-Analysis', learn: '大盘、板块、资金流、情绪、每日自动复盘',
+        evaluation: '适合参考数据采集和报告模板，策略有效性需要自行验证。' },
+    { project: 'MisakaMikoto128/china-astock-quant', learn: 'T+1、100 股整手、手续费、滑点、模拟盘、walk-forward',
+        evaluation: '适合增强交易执行和回测真实性；仍需防范未来函数和生存者偏差。' },
+    { project: 'fkchaos/a-share-quant-sim', learn: '回测、walk-forward、纸面交易共用同一策略代码',
+        evaluation: '适合借鉴研究和模拟使用同一套逻辑，减少两套实现造成的偏差。' },
+    { project: 'yangchas/AShare-Runtime-Engine', learn: '盘前、竞价、开盘、盘中、盘后、夜间复盘的阶段化运行',
+        evaluation: '更偏运行时架构，不是收益策略。' },
 ];
 function validDate(value) {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(value))

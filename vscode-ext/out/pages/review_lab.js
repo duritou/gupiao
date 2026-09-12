@@ -2,6 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.buildReviewLabPage = buildReviewLabPage;
 const layout_1 = require("../webview/layout");
+const model_1 = require("../review-lab/model");
 function escapeHtml(value) {
     return String(value ?? '--').replace(/[&<>"']/g, char => ({
         '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
@@ -38,12 +39,17 @@ ${learning.length ? `<ul>${learning.map((item) => `<li style="margin:6px 0">${es
         : `<div class="empty-state"><div class="icon">🧪</div><h2>暂无最新测试复盘</h2><p>没有生成结果，不会调用主流程补采或虚构结论。</p></div>`;
     const history = runs.length ? runs.map(run => `<tr><td>${escapeHtml(run)}</td><td><button class="btn btn-sm" onclick="openReviewHistory('${escapeHtml(run)}')">查看</button></td></tr>`).join('')
         : '<tr><td colspan="2" class="text-muted">暂无历史记录</td></tr>';
+    const learningGuide = `<div class="card" style="margin:0 24px 16px"><h3>项目学习方向与评价</h3>
+<p class="text-sm text-muted">以下是方法借鉴清单，不是这些仓库实际运行后的收益结论。</p>
+<div style="overflow-x:auto"><table><thead><tr><th>项目</th><th>适合学习什么</th><th>评价与边界</th></tr></thead><tbody>
+${model_1.REVIEW_LEARNING_GUIDE.map(item => `<tr><td style="min-width:190px">${escapeHtml(item.project)}</td><td>${escapeHtml(item.learn)}</td><td>${escapeHtml(item.evaluation)}</td></tr>`).join('')}
+</tbody></table></div></div>`;
     const content = `<div style="padding:22px 24px 8px"><div class="flex-between" style="align-items:flex-start;gap:16px;flex-wrap:wrap">
 <div><h1 style="font-size:20px;color:#A78BFA;margin-bottom:4px">测试复盘 · 最新结果</h1>
 <div style="font-size:12px;color:#8b949e">独立只读模块 · 仅供参考 · 不参与主系统选股、交易或学习</div></div>
 <span style="font-size:11px;color:#22C55E;border:1px solid #14532D;background:#052E16;padding:4px 8px;border-radius:999px">✓ Reference Only</span></div></div>
 <div style="padding:0 24px 8px"><button class="btn btn-primary" onclick="openReviewLatest()">显示最新</button><button class="btn" style="margin-left:8px" onclick="refreshReviewLab()">刷新</button></div>
-${latestBlock}<div class="card" style="margin:0 24px 24px"><h3>历史记录</h3><p class="text-sm text-muted">历史运行只读保存；不会覆盖最新结果，也不会回写生产数据库。</p>
+${latestBlock}${learningGuide}<div class="card" style="margin:0 24px 24px"><h3>历史记录</h3><p class="text-sm text-muted">历史运行只读保存；不会覆盖最新结果，也不会回写生产数据库。</p>
 <table><thead><tr><th>运行 ID</th><th>操作</th></tr></thead><tbody>${history}</tbody></table></div>`;
     const extraScript = `function openReviewHistory(runId){vscode.postMessage({command:'reviewLabHistory',runId});}
 function openReviewLatest(){vscode.postMessage({command:'navigate',page:'review_lab'});}
