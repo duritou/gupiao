@@ -14,13 +14,14 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from src.review_lab.analysis import build_learning_summary, build_project_reviews  # noqa: E402
+from src.review_lab.narrative import build_narrative, enrich_project_reviews  # noqa: E402
 from src.review_lab.replay import replay  # noqa: E402
 from src.review_lab.store import lab_root  # noqa: E402
 
 
 def _load_snapshot(
     connection: sqlite3.Connection, requested_date: str | None
-) -> tuple[list[dict[str, Any]], list[str], str]:
+) -> tuple[list[dict[str, Any]], list[str], str, str | None]:
     """Read three sessions with one read-only query and return rows, dates and target."""
     target_date = requested_date or str(
         connection.execute("SELECT max(trade_date) FROM market_daily").fetchone()[0]
@@ -40,7 +41,7 @@ def _load_snapshot(
         dict(row)
         for row in connection.execute(
             f"SELECT md.ts_code,md.trade_date,md.open,md.high,md.low,md.close,md.pre_close,"
-            f"md.change_pct,md.volume,md.amount,md.turnover,sb.name "
+            f"md.change_pct,md.volume,md.amount,md.turnover,sb.name,sb.industry "
             f"FROM market_daily md LEFT JOIN stock_basic sb ON sb.ts_code = md.ts_code "
             f"WHERE md.trade_date IN ({placeholders}) ORDER BY md.trade_date,md.ts_code",
             dates,
@@ -48,7 +49,10 @@ def _load_snapshot(
     ]
     if not rows:
         raise ValueError("Required historical review inputs are empty; no provider fallback")
-    return rows, dates, target_date
+    indicator_latest = connection.execute("SELECT max(trade_date) FROM indicator_daily").fetchone()[
+        0
+    ]
+    return rows, dates, target_date, str(indicator_latest) if indicator_latest else None
 
 
 def _replay_inputs(rows: list[dict[str, Any]], dates: list[str]) -> list[dict[str, Any]]:
@@ -74,12 +78,19 @@ def main() -> None:
     connection.set_progress_handler(lambda: int(time.monotonic() - started > 5), 1000)
     connection.row_factory = sqlite3.Row
     try:
-        rows, dates, target_date = _load_snapshot(connection, requested_date)
+        rows, dates, target_date, indicator_latest = _load_snapshot(connection, requested_date)
     finally:
         connection.close()
     encoded = json.dumps(rows, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()
     replay_result = replay(_replay_inputs(rows, dates))
     project_reviews = build_project_reviews(rows, dates, target_date, replay_result)
+    narrative = build_narrative(rows, dates, target_date, project_reviews, replay_result)
+    narrative["quality"]["indicator_daily_latest"] = indicator_latest
+    if indicator_latest and indicator_latest != target_date:
+        narrative["interpretations"].append(
+            f"风险：指标表最新日期为 {indicator_latest}，未把它冒充成周五指标，也未用于本次结论。"
+        )
+    project_reviews = enrich_project_reviews(project_reviews, narrative)
     target_rows = [row for row in rows if row["trade_date"] == target_date]
     counts = {date: sum(1 for row in rows if row["trade_date"] == date) for date in dates}
     result: dict[str, Any] = {
@@ -99,8 +110,10 @@ def main() -> None:
             "rows_by_date": counts,
             "target_rows": len(target_rows),
             "selected_replay_rows": len(_replay_inputs(rows, dates)),
+            "indicator_daily_latest": indicator_latest,
         },
         "project_reviews": project_reviews,
+        "narrative": narrative,
         "learning": build_learning_summary(project_reviews, target_date),
     }
     run_id = "friday-" + uuid.uuid4().hex

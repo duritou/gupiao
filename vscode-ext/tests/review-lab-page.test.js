@@ -51,3 +51,27 @@ test('review lab renders seven project-specific observations and escapes text', 
     assert.match(html, /发现 0&lt;script&gt;/);
     assert.doesNotMatch(html, /发现 0<script>/);
 });
+
+test('review lab leads with narrative facts, evidence, and next-session checks', () => {
+    const html = buildReviewLabPage({
+        latest: { date: '2026-09-11', run_id: 'friday-' + 'd'.repeat(32), net_pnl: -12.3,
+            trades: [], rejected: [], learning: [], input_sha256: 'fixture', source: 'local',
+            execution: 'assumed', fee_assumptions: 'fixture', project_reviews: [],
+            narrative: {
+                headline: '市场宽度偏弱', facts: ['643 只上涨（事实）'],
+                interpretations: ['推断：当天更接近普跌环境'],
+                next_checks: ['下一交易日待验证：上涨家数是否回升'],
+                evidence: [{ symbol: '000001.SZ', name: '平安银行', industry: '银行',
+                    side: '强势样本', change_pct: 2.1, amount: 100000000, turnover: 1.2 }],
+                industry_views: [{ view: '平均涨跌靠前', items: [{ industry: '银行', universe: 20,
+                    breadth_pct: 60, mean_change_pct: 1.1, amount: 1000000000 }] }],
+                quality: { null_core_rows: 0, extreme_change_rows: 1, industry_coverage_pct: 93.7 },
+            },
+        }, runs: [],
+    });
+    assert.match(html, /先看结论，再看数字/);
+    assert.match(html, /市场宽度偏弱/);
+    assert.match(html, /下一交易日待验证/);
+    assert.match(html, /证据股票/);
+    assert.match(html, /行业主线与弱项/);
+});
