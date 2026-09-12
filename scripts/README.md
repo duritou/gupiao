@@ -48,6 +48,19 @@
 
 加 `--strict` 时，任一选定数据源不可用会返回退出码 1，适合接入外部监控。
 
+### HiThink 有界 canary 探测
+
+`probe_hithink.py` 按 capability 串行发起只读请求，只输出脱敏的成功率、行数、
+数据日期、延迟、request id 和运行计数；不会保存响应原文、请求头或 API Key：
+
+```cmd
+<venv_python> scripts\probe_hithink.py --code 600519.SH --capability snapshot --capability valuation --output reports\hithink-probe.json
+```
+
+未配置 HiThink 凭据时返回退出码 2；单项失败不会阻止其他 capability 继续探测。
+探测结果只能作为 canary 观测，未满足验收矩阵中的连续交易日、样本量和跨源一致性
+门禁前，不得据此把盘中报价切换为主数据源。
+
 ### 构建历史回放快照
 
 先从本地决策日志和 `market_daily` 生成两个策略的同日快照，再交给历史门禁：
