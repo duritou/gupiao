@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import date
 from types import SimpleNamespace
 
 import pytest
@@ -50,6 +51,11 @@ class _FakeProvider:
 
     async def fetch_dragon_tiger(self, date):
         return self._payload("dragon_tiger")
+
+
+def test_probe_uses_latest_completed_financial_quarter():
+    assert probe_hithink._report_for_today(date(2026, 9, 12)) == "2026-2"
+    assert probe_hithink._report_for_today(date(2026, 1, 5)) == "2025-4"
 
 
 @pytest.mark.asyncio

@@ -15,7 +15,7 @@ import json
 import sys
 import time
 from collections.abc import Awaitable, Callable
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 from typing import Any
 
@@ -34,9 +34,13 @@ _CAPABILITIES = (
 )
 
 
-def _report_for_today() -> str:
-    today = datetime.now()
-    return f"{today.year}-{(today.month - 1) // 3 + 1}"
+def _report_for_today(today: date | None = None) -> str:
+    """Use the latest completed quarter instead of the in-progress one."""
+    current = today or datetime.now().date()
+    quarter = (current.month - 1) // 3 + 1
+    if quarter == 1:
+        return f"{current.year - 1}-4"
+    return f"{current.year}-{quarter - 1}"
 
 
 def _classify_error(exc: Exception) -> str:

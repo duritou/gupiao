@@ -103,7 +103,7 @@
 
 ## 7. 全链路回归与隔离验收
 
-- [x] `tests/unit/` | 全量回归 853 passed，覆盖选股公式、排序、65 分研究资格、Top N、买卖门槛、资金流四态和学习规则 | 优先级(P0)
+- [x] `tests/unit/` | 全量回归 854 passed，覆盖选股公式、排序、65 分研究资格、Top N、买卖门槛、资金流四态和学习规则 | 优先级(P0)
 - [x] `tests/integration/` | 全量回归 19 passed，覆盖冷启动、补齐、provider 失败、完整交易周期、学习闭环和 API 路由验收 | 优先级(P0)
 - [ ] `vscode-ext/tests/` | 若系统页展示 provider 状态，验证缺字段、degraded、fallback 和旧后端兼容 | 优先级(P1)
 - [ ] `test-reports/hithink-integration-20260912/` | 输出 baseline、unit、integration、canary、consistency、rollback 六类报告；大结果只记录路径、行数和哈希 | 优先级(P0)
