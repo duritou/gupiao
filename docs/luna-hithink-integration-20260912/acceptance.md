@@ -6,8 +6,8 @@
 - 工作区：`adaptive-investment-intelligence`
 - 开工分支：`codex/pre-hithink-optimization-20260912`
 - 优化前备份提交：`75759e1`
-- 当前方案提交：`d7c8026`
-- 当前源码 HEAD：`d7c8026`（日线/财务 fallback、静态质量检查、基础设施回归已提交）
+- 当前方案提交：`511db00`
+- 当前源码 HEAD：`511db00`（日线/财务 fallback、财务指标一致性审计、基础设施回归已提交）
 - 远程备份：`origin/codex/pre-hithink-optimization-20260912`
 - 工作区状态：已有 197 项未跟踪运行产物/临时文件；本轮未删除、未纳入 HiThink 方案提交
 - 默认数据库路径：`data/sqlite/quant.db`（实际运行路径仍以用户级 `ADAPTIVE_DATABASE_URL` 为准）
@@ -48,7 +48,7 @@
 | Phase 2 REST 适配器 | `complete` | 独立 client/contracts/provider 三层已提交，并由估值/龙虎榜、discovery 和 SourceManager 日线 fallback 使用 |
 | Phase 3 适配器契约测试 | `complete` | `test-reports/unit-20260912-hithink-provider.md`：16 passed；仅合成响应 |
 | Phase 4 低风险能力接入 | `in_progress` | 估值/龙虎榜 route 已支持 primary/shadow/fallback；涨停池、炸板池、龙虎榜 discovery 已接入 shadow，市场消歧和专用特色 API 仍待补齐 |
-| Phase 5 日线/财务校验 | `in_progress` | HiThink 日线 fallback 已提交；财务三表只补缺不覆盖的合并规则已实现并通过合成测试，跨源一致性仍待补齐 |
+| Phase 5 日线/财务校验 | `in_progress` | HiThink 日线 fallback、财务三表只补缺不覆盖、EPS/ROE/ROA/同比一致性审计均已实现；修订版本、全量跨源统计仍待补齐 |
 | Phase 6 交易日 canary | `pending` | 至少 3 个完整交易日、300 个受控样本 |
 | Phase 7 全链路回归 | `pending` | 重点验证评分、排序、Top N、交易门槛不变 |
 | Phase 8 发布/回滚 | `pending` | 未授权不重启生产、不切 active runtime |
@@ -63,4 +63,4 @@
 
 ## 本阶段结论
 
-Phase 0–3 已完成，Phase 4 已完成估值/龙虎榜路由和 RemoteMarketDiscovery 特色数据的可切换入口；Phase 5 已完成日线 fallback 和财务“只补空缺、不覆盖”最小接入。当前默认 shadow/validator：HiThink 观察写入 `provider_observations`，日线/财务只在满足开关和失败条件时进入真实 fallback，不改变候选、排序、分数、Top N 或交易门槛；下一步补齐财务指标校验、跨源一致性摘要和交易日 canary。
+Phase 0–3 已完成，Phase 4 已完成估值/龙虎榜路由和 RemoteMarketDiscovery 特色数据的可切换入口；Phase 5 已完成日线 fallback、财务“只补空缺、不覆盖”和财务指标一致性审计最小接入。当前默认 shadow/validator：HiThink 观察写入 `provider_observations`，日线/财务只在满足开关和失败条件时进入真实 fallback，不改变候选、排序、分数、Top N 或交易门槛；下一步补齐市场代码消歧、全量跨源一致性摘要和交易日 canary。
