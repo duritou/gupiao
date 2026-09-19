@@ -5,6 +5,7 @@ from src.ai_os.market_learning import multi_horizon_learning_adjustment
 from src.ai_os.paper_execution_service import PaperExecutionService
 from src.explain import outcome_backfiller
 from src.infrastructure.storage.market_database import MarketDatabase
+from config.settings import settings  # noqa: E402
 
 
 def _decision(code: str, day: str, price: float, direction: str = "buy") -> dict:
@@ -28,7 +29,7 @@ def _decision(code: str, day: str, price: float, direction: str = "buy") -> dict
         "deep_analysis_available": True,
         "deep_rating": "Buy",
         "deep_provider": "codex_cli",
-        "deep_model": "gpt-5.6-terra",
+        "deep_model": settings.CODEX_MODEL,
         "final_review_available": True,
         "final_review_verdict": "approve",
         "final_buy_approved": True,

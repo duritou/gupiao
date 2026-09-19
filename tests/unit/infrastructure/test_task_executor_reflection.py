@@ -16,7 +16,7 @@ async def test_ai_reflection_uses_codex_review_provider_and_persists_metadata(
     saved = {}
     monkeypatch.setattr(settings, "DEEPSEEK_API_KEY", "sk-test-non-placeholder")
     monkeypatch.setattr(settings, "AI_REVIEW_PROVIDER", "codex_cli")
-    monkeypatch.setattr(settings, "CODEX_MODEL", "gpt-5.6-terra")
+    monkeypatch.setattr(settings, "AI_FAST_MODEL", "gpt-5.6-luna")
     monkeypatch.setattr(
         market_db,
         "get_paper_portfolio",
@@ -61,6 +61,10 @@ async def test_ai_reflection_uses_codex_review_provider_and_persists_metadata(
     assert saved["evidence"]["ai_model"] == "gpt-5.6-terra"
     assert generate.await_args.kwargs["primary_provider"] == "codex_cli"
     assert generate.await_args.kwargs["allow_fallback"] is False
+    # Reflection is routine work, so it must ask for the fast model.  Without
+    # this the test only ever asserted against its own mocked response, and
+    # would pass no matter which model the caller requested.
+    assert generate.await_args.kwargs["model"] == settings.AI_FAST_MODEL
     assert "20%" in generate.await_args.kwargs["prompt"]
     assert "Codex-Terra" in generate.await_args.kwargs["prompt"]
 
@@ -68,7 +72,7 @@ async def test_ai_reflection_uses_codex_review_provider_and_persists_metadata(
 @pytest.mark.asyncio
 async def test_ai_reflection_bounds_large_decision_evidence(monkeypatch):
     monkeypatch.setattr(settings, "AI_REVIEW_PROVIDER", "codex_cli")
-    monkeypatch.setattr(settings, "CODEX_MODEL", "gpt-5.6-terra")
+    monkeypatch.setattr(settings, "AI_FAST_MODEL", "gpt-5.6-luna")
     monkeypatch.setattr(market_db, "get_paper_portfolio", lambda: {
         "total_value": 100000.0, "total_pl": 0.0, "positions": [],
     })

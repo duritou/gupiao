@@ -1294,6 +1294,7 @@ class TaskExecutor:
                 system_prompt="你是量化策略复盘员，只能基于输入事实，不提供保证收益的承诺。",
                 primary_provider=settings.AI_REVIEW_PROVIDER,
                 allow_fallback=False,
+                model=settings.AI_FAST_MODEL,
             )
             reflection = result.text
             ai_status = "ok"

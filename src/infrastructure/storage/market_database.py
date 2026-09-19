@@ -6297,7 +6297,13 @@ class MarketDatabase:
             except (TypeError, json.JSONDecodeError):
                 analysis = {}
             cached_provider = str(analysis.get("deep_provider") or "codex_cli")
-            cached_model = str(analysis.get("deep_model") or "gpt-5.6-terra")
+            # Falls back to the configured model rather than a literal: this
+            # default was hardcoded to the old model name, so changing
+            # CODEX_MODEL silently made every row without a recorded deep_model
+            # stop matching the caller's filter.
+            from config.settings import settings
+
+            cached_model = str(analysis.get("deep_model") or settings.CODEX_MODEL)
             if provider and cached_provider != provider:
                 continue
             if model and cached_model != model:

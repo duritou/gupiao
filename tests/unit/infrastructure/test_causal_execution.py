@@ -20,15 +20,16 @@ from src.ai_os.pipeline_runner import (
 from src.ai_os.task_executor import market_data_covers_latest_completed_day
 from src.ai_os.trading_calendar import CompletedTradingDayStatus
 from src.infrastructure.storage.market_database import MarketDatabase, market_db
+from config.settings import settings  # noqa: E402
 
 
 def _codex_approval() -> dict:
     return {
         "deep_provider": "codex_cli",
-        "deep_model": "gpt-5.6-terra",
+        "deep_model": settings.CODEX_MODEL,
         "final_buy_approved": True,
         "final_review_provider": "codex_cli",
-        "final_review_model": "gpt-5.6-terra",
+        "final_review_model": settings.CODEX_MODEL,
     }
 
 
@@ -125,7 +126,7 @@ def test_paper_strategy_fails_closed_without_tradingagents_buy(tmp_path):
         "deep_analysis_available": True,
         "deep_rating": "Hold",
         "deep_provider": "codex_cli",
-        "deep_model": "gpt-5.6-terra",
+        "deep_model": settings.CODEX_MODEL,
     }
 
     result = database.run_paper_strategy(

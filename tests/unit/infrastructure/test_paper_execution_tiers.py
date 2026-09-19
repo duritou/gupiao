@@ -1,6 +1,7 @@
 import pytest
 
 from src.infrastructure.storage.market_database import MarketDatabase
+from config.settings import settings  # noqa: E402
 
 
 def _missing_probe(code: str, day: str, *, price: float = 10.0) -> dict:
@@ -45,7 +46,7 @@ def _approved_buy(code: str, day: str, *, price: float = 10.5) -> dict:
         "deep_analysis_available": True,
         "deep_rating": "Overweight",
         "deep_provider": "codex_cli",
-        "deep_model": "gpt-5.6-terra",
+        "deep_model": settings.CODEX_MODEL,
         "final_buy_approved": True,
         "final_review_available": True,
         "final_review_verdict": "approve",

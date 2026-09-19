@@ -4,6 +4,7 @@ import pytest
 
 from src.infrastructure.ai.codex_cli import CodexCLIError
 from src.infrastructure.ai.router import AIFallbackEligibleError, AIProviderError, AIRouter
+from config.settings import settings  # noqa: E402
 
 
 @pytest.mark.asyncio
@@ -179,7 +180,7 @@ async def test_codex_cli_can_be_selected_as_review_primary(monkeypatch):
     result = await router.generate("review", primary_provider="codex_cli")
 
     assert result.provider == "codex_cli"
-    assert result.model == "gpt-5.6-terra"
+    assert result.model == settings.CODEX_MODEL
     assert result.fallback_used is False
     cli.assert_awaited_once()
     deepseek.assert_not_awaited()

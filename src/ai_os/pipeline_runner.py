@@ -284,6 +284,7 @@ async def _apply_ai_preselection(
             system_prompt=system_prompt,
             primary_provider=settings.AI_PRIMARY_PROVIDER,
             allow_fallback=False,
+            model=settings.AI_FAST_MODEL,
         )
     except Exception as exc:
         return 0, False, str(exc)[:160]

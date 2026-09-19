@@ -46,7 +46,21 @@ class Settings(BaseSettings):
     # ---- AI routing ----
     AI_PRIMARY_PROVIDER: Literal["deepseek", "codex_cli"] = "codex_cli"
     AI_REVIEW_PROVIDER: Literal["deepseek", "codex_cli"] = "codex_cli"
-    CODEX_MODEL: str = "gpt-5.6-terra"
+    # Model for work that has to reason: the six-role deep research and the
+    # final buy review.  trading_policy.deep_buy_rejection_reason compares a
+    # decision's recorded deep_model against this exact value, so it must stay
+    # the model the deep analyser is configured with.
+    CODEX_MODEL: str = runtime_value("CODEX_MODEL", "gpt-6-astra")
+    # Model for everything else -- candidate preselection and post-hoc
+    # reflection.  Those are high-volume and low-judgement, and no gate reads
+    # their recorded model, so they can run cheaper without changing what the
+    # system decides.
+    #
+    # Named after the convention config/runtime.env already used for the
+    # vibe and tradingagents stacks (AI_DEEP_MODEL / AI_FAST_MODEL), rather
+    # than a new CODEX_-prefixed variable: the setting is provider-agnostic
+    # and the pair already existed, unused, in that file.
+    AI_FAST_MODEL: str = runtime_value("AI_FAST_MODEL", "gpt-5.6-luna")
     CODEX_CLI_PATH: str = "codex"
     CODEX_REASONING_EFFORT: Literal["minimal", "low", "medium", "high"] = "low"
     CODEX_TIMEOUT_SECONDS: float = 120.0

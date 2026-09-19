@@ -4,15 +4,16 @@ import pytest
 
 from src.ai_os.portfolio_marking import refresh_paper_portfolio_quotes
 from src.infrastructure.storage.market_database import MarketDatabase
+from config.settings import settings  # noqa: E402
 
 
 def _codex_approval() -> dict:
     return {
         "deep_provider": "codex_cli",
-        "deep_model": "gpt-5.6-terra",
+        "deep_model": settings.CODEX_MODEL,
         "final_buy_approved": True,
         "final_review_provider": "codex_cli",
-        "final_review_model": "gpt-5.6-terra",
+        "final_review_model": settings.CODEX_MODEL,
     }
 
 

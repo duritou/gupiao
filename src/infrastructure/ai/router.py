@@ -53,6 +53,7 @@ class AIRouter:
         allow_fallback: bool = False,
         deepseek_attempts: int | None = None,
         primary_provider: str | None = None,
+        model: str | None = None,
     ) -> AIResponse:
         provider = str(primary_provider or settings.AI_PRIMARY_PROVIDER).strip().lower()
         if provider == "codex_cli":
@@ -61,6 +62,7 @@ class AIRouter:
                 system_prompt,
                 allow_fallback=allow_fallback,
                 deepseek_attempts=deepseek_attempts,
+                model=model,
             )
         if provider != "deepseek":
             raise AIProviderError(f"Unsupported AI primary provider: {provider}")
@@ -155,13 +157,18 @@ class AIRouter:
         *,
         allow_fallback: bool,
         deepseek_attempts: int | None,
+        model: str | None = None,
     ) -> AIResponse:
+        # Defaults to the reasoning model; callers doing routine work pass
+        # settings.AI_FAST_MODEL.  The response reports the model actually
+        # requested, because callers record it and the buy gate compares it.
+        selected = str(model or settings.CODEX_MODEL)
         try:
             text = await invoke_codex_cli(
                 prompt,
                 system_prompt,
                 configured_path=settings.CODEX_CLI_PATH,
-                model=settings.CODEX_MODEL,
+                model=selected,
                 reasoning_effort=settings.CODEX_REASONING_EFFORT,
                 timeout_seconds=settings.CODEX_TIMEOUT_SECONDS,
                 max_output_tokens=settings.CODEX_MAX_OUTPUT_TOKENS,
@@ -169,7 +176,7 @@ class AIRouter:
             return AIResponse(
                 text=text,
                 provider="codex_cli",
-                model=settings.CODEX_MODEL,
+                model=selected,
             )
         except CodexCLIError as primary_error:
             # The scheduled stock loop is Codex-only. Keep the historical
