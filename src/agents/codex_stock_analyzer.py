@@ -514,7 +514,7 @@ async def _analyze_one(
     response = await ai_router.generate(
         prompt=prompt,
         system_prompt=system_prompt,
-        primary_provider="codex_cli",
+        primary_provider=settings.AI_PRIMARY_PROVIDER,
         allow_fallback=False,
     )
     parsed = _extract_object(response.text)
