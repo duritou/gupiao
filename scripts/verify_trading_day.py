@@ -71,6 +71,21 @@ async def verify(code: str, *, require_ifind: bool) -> int:
     else:
         print(f"market-data: unavailable ({provenance.error_message})", flush=True)
 
+    # Historical bars, carried over from the older root-level script this
+    # replaces.  Informational only: a live quote already proves the session is
+    # reachable, and failing here would change when the scheduled job alarms --
+    # a decision for whoever owns that alarm, not a side effect of this probe.
+    kline = await asyncio.to_thread(ifind.get_kline, code, count=3)
+    if kline:
+        latest = kline[-1]
+        print(
+            f"ifind-kline: OK {len(kline)} bars, latest "
+            f"{latest.get('date')} close={latest.get('close')}",
+            flush=True,
+        )
+    else:
+        print("ifind-kline: no data", flush=True)
+
     if require_ifind and (ifind_quote is None or not ifind_quote.price):
         return 2
     return 0 if fallback_quote is not None else 1
