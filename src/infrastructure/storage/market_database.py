@@ -27,6 +27,13 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
+from src.ai_os.numeric_policy import finite_or
+from src.ai_os.price_limit_policy import (
+    at_limit_down,
+    at_limit_up,
+    price_limit_pct,
+    resolve_change_pct,
+)
 from src.ai_os.causal_execution import (
     CHINA_TZ,
     in_a_share_session,
@@ -4556,6 +4563,11 @@ class MarketDatabase:
                 r["stock_code"]: dict(r)
                 for r in conn.execute("SELECT * FROM paper_position WHERE shares > 0")
             }
+            # Codes exited earlier in this same cycle.  The buy loop runs after
+            # the exit loops and only skips `code in positions`, so a name sold
+            # a moment ago could be bought straight back at the other side of
+            # the spread by the same decision that just closed it.
+            sold_codes: set[str] = set()
             for code, position in positions.items():
                 if str(position.get("industry") or "").strip():
                     continue
@@ -4746,9 +4758,9 @@ class MarketDatabase:
                 if quote_pair is None:
                     continue
                 d, price = quote_pair
-                limit_pct = 20.0 if code.startswith(("300", "301", "688", "689")) else 10.0
+                limit_pct = price_limit_pct(code, is_st=bool(d.get("is_st")))
                 quote = self.get_latest_quote(code) or {}
-                change_pct = float(d.get("market_change_pct") or quote.get("change_pct") or 0)
+                change_pct = resolve_change_pct(d, quote, trade_date)
                 eligible = not p.get("eligible_sell_date") or trade_date > p["eligible_sell_date"]
                 holding_days = _trading_days_held(
                     conn,
@@ -4888,6 +4900,7 @@ class MarketDatabase:
                         "price_source": meta["price_source"],
                     })
                     positions.pop(code, None)
+                    sold_codes.add(code)
 
             # Bring legacy or market-appreciated holdings back under the hard
             # 20% cap as soon as A-share T+1 and limit rules permit a sale.
@@ -4909,15 +4922,9 @@ class MarketDatabase:
                     or trade_date > p["eligible_sell_date"]
                 )
                 quote = self.get_latest_quote(code) or {}
-                limit_pct = (
-                    20.0
-                    if code.startswith(("300", "301", "688", "689"))
-                    else 10.0
-                )
-                change_pct = float(
-                    d.get("market_change_pct") or quote.get("change_pct") or 0
-                )
-                if not eligible or change_pct <= -limit_pct + 0.2:
+                limit_pct = price_limit_pct(code, is_st=bool(d.get("is_st")))
+                change_pct = resolve_change_pct(d, quote, trade_date)
+                if not eligible or at_limit_down(change_pct, limit_pct):
                     continue
                 sell_price = quantize_price(price * 0.999)
                 value = shares * sell_price
@@ -4930,6 +4937,7 @@ class MarketDatabase:
                         "DELETE FROM paper_position WHERE stock_code=?", (code,)
                     )
                     positions.pop(code, None)
+                    sold_codes.add(code)
                 else:
                     conn.execute(
                         """UPDATE paper_position SET shares=?, updated_at=?
@@ -5022,14 +5030,12 @@ class MarketDatabase:
                     d, price = quote_pair
                     eligible = not p.get("eligible_sell_date") or trade_date > p["eligible_sell_date"]
                     quote = self.get_latest_quote(code) or {}
-                    limit_pct = 20.0 if code.startswith(("300", "301", "688", "689")) else 10.0
-                    change_pct = float(
-                        d.get("market_change_pct") or quote.get("change_pct") or 0
-                    )
+                    limit_pct = price_limit_pct(code, is_st=bool(d.get("is_st")))
+                    change_pct = resolve_change_pct(d, quote, trade_date)
                     if (
                         not eligible
                         or price <= 0
-                        or change_pct <= -limit_pct + 0.2
+                        or at_limit_down(change_pct, limit_pct)
                     ):
                         continue
                     sell_price = quantize_price(price * 0.999)
@@ -5048,6 +5054,7 @@ class MarketDatabase:
                     if remaining <= 0:
                         conn.execute("DELETE FROM paper_position WHERE stock_code=?", (code,))
                         positions.pop(code, None)
+                        sold_codes.add(code)
                     else:
                         conn.execute(
                             """UPDATE paper_position SET shares=?, updated_at=?
@@ -5147,12 +5154,10 @@ class MarketDatabase:
                     continue
                 if price <= 0 or price < float(p.get("avg_cost") or 0):
                     continue
-                limit_pct = 20.0 if code.startswith(("300", "301", "688", "689")) else 10.0
+                limit_pct = price_limit_pct(code, is_st=bool(d.get("is_st")))
                 quote = self.get_latest_quote(code) or {}
-                change_pct = float(
-                    d.get("market_change_pct") or quote.get("change_pct") or 0
-                )
-                if change_pct >= limit_pct - 0.2:
+                change_pct = resolve_change_pct(d, quote, trade_date)
+                if at_limit_up(change_pct, limit_pct):
                     continue
                 buy_price = quantize_price(price * 1.001)
                 target_shares = int((marked_value * position_cap_pct) // buy_price // 100) * 100
@@ -5331,8 +5336,8 @@ class MarketDatabase:
                 if len(positions) >= PAPER_MAX_POSITIONS:
                     break
                 code = str(d.get("stock_code") or "")
-                score = float(d.get("ai_score") or 50)
-                if code in positions:
+                score = finite_or(d.get("ai_score"), 50.0)
+                if code in positions or code in sold_codes:
                     continue
                 deep_approved = is_deep_buy_approved(d)
                 flow_entry = evaluate_entry_execution(
@@ -5446,11 +5451,9 @@ class MarketDatabase:
                 if price <= 0:
                     continue
                 quote = self.get_latest_quote(code) or {}
-                limit_pct = 20.0 if code.startswith(("300", "301", "688", "689")) else 10.0
-                change_pct = float(
-                    d.get("market_change_pct") or quote.get("change_pct") or 0
-                )
-                if change_pct >= limit_pct - 0.2:
+                limit_pct = price_limit_pct(code, is_st=bool(d.get("is_st")))
+                change_pct = resolve_change_pct(d, quote, trade_date)
+                if at_limit_up(change_pct, limit_pct):
                     continue
                 buy_price = quantize_price(price * 1.001)
                 min_cash_reserve = marked_value * PAPER_MIN_CASH_RESERVE_PCT
@@ -6366,18 +6369,35 @@ class MarketDatabase:
         Scans can contain hundreds of neutral candidates.  They are retained in
         the journal, but cannot teach the directional stock-selection model and
         must not crowd real recommendations out of this bounded queue.
+
+        One row per ``(decision_date, stock_code)``: several scans run each day
+        and the journal keeps a row per scan, so the same call would otherwise
+        be observed -- and learned from -- once per scan.  That inflated
+        ``observations`` and let a single day's event clear the minimum-sample
+        threshold in ``market_learning``.  The latest row for the day is the one
+        used, matching the "latest write wins" rule the execution path applies.
         """
         with self._get_conn() as conn:
             rows = conn.execute(
-                """SELECT d.*
-                   FROM decision_journal d
-                   LEFT JOIN market_learning_observation o
-                     ON o.decision_id=d.id AND o.horizon_days=?
-                   WHERE o.id IS NULL
-                     AND d.decision_date < date('now')
-                     AND LOWER(TRIM(COALESCE(d.direction, ''))) IN ('buy', 'sell')
-                   ORDER BY d.decision_date, d.id
-                   LIMIT ?""",
+                """WITH ranked AS (
+                       SELECT d.*,
+                              ROW_NUMBER() OVER (
+                                  PARTITION BY d.decision_date, d.stock_code
+                                  ORDER BY d.id DESC
+                              ) AS scan_rank
+                         FROM decision_journal d
+                        WHERE d.decision_date < date('now')
+                          AND LOWER(TRIM(COALESCE(d.direction, '')))
+                              IN ('buy', 'sell')
+                   )
+                   SELECT r.*
+                     FROM ranked r
+                     LEFT JOIN market_learning_observation o
+                       ON o.decision_id=r.id AND o.horizon_days=?
+                    WHERE r.scan_rank = 1
+                      AND o.id IS NULL
+                    ORDER BY r.decision_date, r.id
+                    LIMIT ?""",
                 (horizon_days, limit),
             ).fetchall()
         return [dict(row) for row in rows]

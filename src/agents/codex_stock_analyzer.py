@@ -15,6 +15,7 @@ from config.settings import settings
 from src.ai_os.deep_research_identity import deep_input_fingerprint
 from src.agents.evidence_dossier import EvidenceDossierCache, collect_evidence_dossier
 from src.ai_os.evidence_policy import assess_evidence
+from src.ai_os.numeric_policy import clamp_finite
 from src.infrastructure.ai import ai_router
 from src.infrastructure.ai.codex_cli import codex_cli_status
 
@@ -522,7 +523,11 @@ async def _analyze_one(
         raise RuntimeError("Codex returned an invalid rating")
     direction, default_score = _RATING_SIGNAL[rating]
     try:
-        score = max(0.0, min(100.0, float(parsed.get("score", default_score))))
+        # A NaN here would clamp to 100, i.e. garbage input becomes a top
+        # score; non-finite values fall back to the rating's own default.
+        score = clamp_finite(
+            parsed.get("score", default_score), 0.0, 100.0, default_score
+        )
     except (TypeError, ValueError):
         score = default_score
     if direction == "buy":

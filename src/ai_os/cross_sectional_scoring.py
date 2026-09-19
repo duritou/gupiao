@@ -6,10 +6,16 @@ import json
 from statistics import mean
 
 from src.ai_os.execution_policy import classify_execution_flow, flow_execution_metadata
+from src.ai_os.numeric_policy import clamp_finite
 
 
 def _clamp(value: float) -> float:
-    return max(0.0, min(100.0, value))
+    """Bound a score to 0-100, treating a non-finite value as neutral.
+
+    A bare ``min``/``max`` cannot bound NaN -- it returns the NaN itself or,
+    at the edges, the bound -- so the finiteness check has to come first.
+    """
+    return clamp_finite(value, 0.0, 100.0, 50.0)
 
 
 def _percentile_ranks(values: list[float]) -> list[float]:
@@ -164,6 +170,13 @@ def apply_cross_sectional_scores(
             + 0.30 * strategy_scores["volume"]
         )
         confirmations = sum(score >= 60 for score in strategy_scores.values())
+        # Counted over the same three strategy scores as `confirmations`.  The
+        # sell side used to be counted over the five raw indicators instead
+        # (max 5 against max 3), so comparing the two systematically reported
+        # more bearish than bullish signals and rejected viable candidates.
+        bearish_confirmations = sum(
+            score <= 40 for score in strategy_scores.values()
+        )
         learning_adjustment = float(decision.get("learning_adjustment") or 0)
         learning_score = _clamp(50 + learning_adjustment * 4)
         discovery_available = bool(decision.get("market_sources"))
@@ -216,6 +229,7 @@ def apply_cross_sectional_scores(
             else "neutral"
         )
         decision["buy_signals"] = confirmations
+        decision["sell_signals"] = bearish_confirmations
         decision["flow_status"] = flow_status(decision)
         decision.update(flow_execution_metadata(decision))
         decision["non_flow_gates_passed"] = non_flow_gates_passed

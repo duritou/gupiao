@@ -34,6 +34,12 @@ from src.ai_os.candidate_allocator import (
 )
 from src.ai_os.causal_execution import CHINA_TZ
 from src.ai_os.deep_research_identity import deep_input_fingerprint
+from src.ai_os.numeric_policy import (
+    clamp_finite,
+    finite_or,
+    round_finite,
+    strict_json_loads,
+)
 from src.ai_os.cross_sectional_scoring import flow_positive, flow_status
 from src.ai_os.execution_policy import (
     evaluate_entry_execution,
@@ -101,7 +107,7 @@ def _apply_deep_score(decision: dict[str, Any], deep: dict[str, Any]) -> None:
     """Store the deep score separately while retaining ranking audit fields."""
     if not deep.get("available"):
         return
-    score = round(float(deep.get("score") or 0), 1)
+    score = round_finite(deep.get("score"), 1, 0.0)
     decision["deep_base_score"] = round(
         float(decision.get("ai_score") or decision.get("ranking_score") or 0), 1
     )
@@ -150,18 +156,57 @@ def _deep_analysis_plan(
     return reusable_cache, missing_candidates, skipped_count
 
 
+def _json_array_spans(text: str) -> list[str]:
+    """Return top-level ``[...]`` substrings, respecting string literals.
+
+    The previous implementation used a greedy ``\\[[\\s\\S]*\\]`` search, which
+    spans from the first ``[`` to the last ``]`` in the whole reply.  A model
+    that wrote "结果如下：[{...}] 以上。" produced a candidate that included the
+    trailing prose and failed to parse, and any stray bracket in the preamble
+    broke it the same way.
+    """
+    spans: list[str] = []
+    start: int | None = None
+    depth = 0
+    in_string = False
+    escaped = False
+    for index, char in enumerate(text):
+        if in_string:
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == '"':
+                in_string = False
+            continue
+        if char == '"':
+            in_string = True
+        elif char == "[":
+            if depth == 0:
+                start = index
+            depth += 1
+        elif char == "]" and depth > 0:
+            depth -= 1
+            if depth == 0 and start is not None:
+                spans.append(text[start:index + 1])
+                start = None
+    return spans
+
+
 def _extract_json_items(text: str) -> list[dict]:
-    """Extract a JSON list from a concise model response."""
+    """Extract a JSON list from a concise model response.
+
+    Parsing is strict: the bare ``NaN``/``Infinity`` literals that
+    ``json.loads`` accepts by default are rejected here, because a non-finite
+    score would otherwise reach the arithmetic in the callers.
+    """
     raw = str(text or "").strip()
     if raw.startswith("```"):
         raw = re.sub(r"^```(?:json)?\s*|\s*```$", "", raw, flags=re.IGNORECASE)
-    candidates = [raw]
-    match = re.search(r"\[[\s\S]*\]", raw)
-    if match:
-        candidates.append(match.group(0))
+    candidates = [raw, *_json_array_spans(raw)]
     for candidate in candidates:
         try:
-            payload = json.loads(candidate)
+            payload = strict_json_loads(candidate)
         except (TypeError, ValueError, json.JSONDecodeError):
             continue
         if isinstance(payload, dict):
@@ -398,7 +443,11 @@ async def _apply_ai_preselection(
         if not decision:
             continue
         try:
-            adjustment = max(-10.0, min(10.0, float(item.get("score_adjustment", 0))))
+            # min/max cannot bound NaN, and `min(10.0, nan)` is 10.0 -- i.e. a
+            # non-finite adjustment would take the maximum bonus, not zero.
+            adjustment = clamp_finite(
+                item.get("score_adjustment", 0), -10.0, 10.0, 0.0
+            )
         except (TypeError, ValueError):
             adjustment = 0.0
         direction = str(item.get("direction") or "neutral").lower()
@@ -412,7 +461,11 @@ async def _apply_ai_preselection(
         decision["ai_preselection_direction"] = direction
         decision["ai_preselection_reason"] = str(item.get("reason") or "")[:240]
         decision["ai_score"] = round(
-            max(0.0, min(100.0, float(decision["ai_score"]) + adjustment)), 1
+            clamp_finite(
+                finite_or(decision.get("ai_score"), 50.0) + adjustment,
+                0.0, 100.0, 50.0,
+            ),
+            1,
         )
         decision["preselection_adjusted_score"] = decision["ai_score"]
         decision["ranking_score"] = decision["ai_score"]
@@ -627,7 +680,7 @@ def _serialize_recommendation(decision: dict) -> dict:
     return {
         "stock_code": decision["stock_code"],
         "stock_name": decision["stock_name"],
-        "ai_score": round(float(decision.get("ai_score") or 0), 1),
+        "ai_score": round_finite(decision.get("ai_score"), 1, 0.0),
         "action_score": round(
             float(decision.get("action_score") or decision.get("ai_score") or 0),
             1,

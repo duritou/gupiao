@@ -6,6 +6,7 @@ import json
 from typing import Any
 
 from src.ai_os.evidence_policy import assess_evidence
+from src.ai_os.numeric_policy import clamp_finite
 
 MARKET_DATA_BLOCK_REASONS = frozenset({
     "market_context_missing",
@@ -216,7 +217,7 @@ def apply_score_guard(
     decision["market_evidence_sources"] = list(evidence_assessment.market_sources)
     decision["market_evidence_reasons"] = list(evidence_assessment.reasons)
     decision["execution_evidence_complete"] = not reasons and not review_blocked
-    decision["ai_score"] = round(max(0.0, min(100.0, guarded_score)), 1)
+    decision["ai_score"] = round(clamp_finite(guarded_score, 0.0, 100.0, 50.0), 1)
     decision["fusion_score"] = decision["ai_score"]
     decision["action_score"] = decision["ai_score"]
     decision["decision_status"] = classify_decision_status(decision)

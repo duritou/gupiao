@@ -263,6 +263,9 @@ def momentum_probe_candidate_rejection_reason(decision: dict[str, Any]) -> str:
     )
     if discovery_score < PAPER_MOMENTUM_PROBE_MIN_DISCOVERY_SCORE:
         return "momentum_probe_discovery_score_too_low"
+    # Both counts come from cross_sectional_scoring and cover the same three
+    # strategy scores.  They must stay on one scale: comparing a 3-point count
+    # against a 5-point one biases every check toward "bearish".
     buy_signals = int(decision.get("buy_signals") or 0)
     sell_signals = int(decision.get("sell_signals") or 0)
     if buy_signals < 1:
