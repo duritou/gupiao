@@ -10,10 +10,7 @@ AI Research Terminal
 ├── 2. Watchlist          (自选股 · 实时监控)
 │   └── → Research Page   (点击任意股票)
 │
-├── 3. Market Map         (行业热力图)
-│   └── → Research Page   (点击行业 → 龙头股)
-│
-├── 4. Research           (个股深度研究)
+├── 3. Research           (个股深度研究)
 │   ├── Tab: AI 分析
 │   ├── Tab: K线 (分时/日K/周K/月K)
 │   ├── Tab: 资金流向
@@ -21,19 +18,19 @@ AI Research Terminal
 │   ├── Tab: 新闻/公告/研报
 │   └── Tab: 知识库
 │
-├── 5. Compare            (多股对比)
+├── 4. Compare            (多股对比)
 │
-├── 6. Timeline           (评分演变)
+├── 5. Timeline           (评分演变)
 │
-├── 7. Alert Center       (预警中心)
+├── 6. Alert Center       (预警中心)
 │
-├── 8. Backtest           (策略回测)
+├── 7. Backtest           (策略回测)
 │
-├── 9. Daily Brief        (每日简报)
+├── 8. Daily Brief        (每日简报)
 │
-├── 10. Knowledge Base    (知识库管理)
+├── 9. Knowledge Base     (知识库管理)
 │
-└── 11. Settings          (设置)
+└── 10. Settings          (设置)
     ├── API 配置
     ├── 信号权重
     ├── Prompt 管理
@@ -49,7 +46,6 @@ AI Research Terminal
 ┌─────────────────┐
 │  📊 Dashboard    │  ← 默认页
 │  ⭐ Watchlist    │  ← 最高频
-│  🗺 Market Map   │
 │  🔬 Research     │  ← 核心页
 │  ⚖ Compare      │
 │  📈 Timeline     │
@@ -124,10 +120,9 @@ User Sees UI
 |--------|------|
 | `Alt+1` | Dashboard |
 | `Alt+2` | Watchlist |
-| `Alt+3` | Market Map |
-| `Alt+4` | Research |
-| `Alt+5` | Compare |
-| `Alt+6` | Alerts |
+| `Alt+3` | Research |
+| `Alt+4` | Compare |
+| `Alt+5` | Alerts |
 | `/` | 搜索股票 |
 | `Esc` | 关闭弹窗 / 返回 |
 | `Ctrl+R` | 手动刷新当前页 |

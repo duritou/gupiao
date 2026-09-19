@@ -123,6 +123,29 @@ async def get_ai_os_status():
     }
 
 
+@router.get("/latest-run")
+async def get_latest_pipeline_run():
+    """Return the small pipeline identity payload used by clients to refresh."""
+    from src.infrastructure.storage.market_database import market_db
+
+    audit = await asyncio.to_thread(market_db.get_latest_pipeline_run_audit)
+    if not audit:
+        return {
+            "run_id": "",
+            "decision_date": "",
+            "target_trade_date": "",
+            "acceptance_status": "unverified",
+        }
+    return {
+        "run_id": str(audit.get("run_id") or ""),
+        "decision_date": str(audit.get("decision_date") or ""),
+        "target_trade_date": str(audit.get("target_trade_date") or ""),
+        "acceptance_status": str(audit.get("acceptance_status") or "unverified"),
+        "process_status": str(audit.get("process_status") or "unverified"),
+        "persistence_status": str(audit.get("persistence_status") or "unverified"),
+    }
+
+
 @router.get("/schedule")
 async def get_schedule():
     schedule = get_daily_schedule()

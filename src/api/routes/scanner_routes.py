@@ -64,11 +64,18 @@ async def latest_scanner_result(
     latest_audit = await asyncio.to_thread(
         market_db.get_latest_pipeline_run_audit
     )
-    continuity_watchlist = build_continuity_watchlist(
-        decisions,
-        latest,
-        current_date=latest_date,
-    )
+    continuity_watchlist = [
+        item
+        for item in build_continuity_watchlist(
+            decisions,
+            latest,
+            current_date=latest_date,
+        )
+        # A name already present in the current run is not a carry-forward
+        # record.  Keeping it here makes older clients render a prior label
+        # beside a current technical row and can look like a stale buy signal.
+        if item.get("current_rank") is None
+    ]
     publishable = [
         item for item in latest if is_publishable_recommendation(item)
     ]

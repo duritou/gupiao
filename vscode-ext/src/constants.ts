@@ -23,8 +23,20 @@ function readRuntimeEnv(): Record<string, string> {
 }
 
 const runtime = readRuntimeEnv();
-export const ADAPTIVE_API_HOST = process.env.ADAPTIVE_API_HOST || runtime.ADAPTIVE_API_HOST || '127.0.0.1';
-export const ADAPTIVE_API_PORT = Number(process.env.ADAPTIVE_API_PORT || runtime.ADAPTIVE_API_PORT || 8888);
+const releaseInfoPath = path.resolve(__dirname, '../release-info.json');
+const releaseInfo: Record<string, string | number> = fs.existsSync(releaseInfoPath)
+    ? JSON.parse(fs.readFileSync(releaseInfoPath, 'utf8')) : {};
+export const ADAPTIVE_API_HOST = process.env.ADAPTIVE_API_HOST
+    || runtime.ADAPTIVE_API_HOST || String(releaseInfo.api_host || '127.0.0.1');
+export const ADAPTIVE_API_PORT = Number(process.env.ADAPTIVE_API_PORT
+    || runtime.ADAPTIVE_API_PORT || releaseInfo.api_port || 8888);
+export const INVESTMENT_WORKSPACE_ROOT = process.env.INVESTMENT_WORKSPACE_ROOT
+    || runtime.INVESTMENT_WORKSPACE_ROOT || '';
+export const ADAPTIVE_BACKEND_ROOT = process.env.ADAPTIVE_BACKEND_ROOT
+    || runtime.ADAPTIVE_BACKEND_ROOT
+    || (INVESTMENT_WORKSPACE_ROOT
+        ? path.resolve(INVESTMENT_WORKSPACE_ROOT, 'adaptive-investment-intelligence')
+        : '');
 export const BASE_URL = `http://${ADAPTIVE_API_HOST}:${ADAPTIVE_API_PORT}/api/v1`;
 
 export const NAV_ITEMS: { id: string; label: string }[] = [
@@ -36,9 +48,7 @@ export const NAV_ITEMS: { id: string; label: string }[] = [
     { id: 'profile', label: 'My Profile' },
     { id: 'aios', label: 'AI OS' },
     { id: 'replay', label: 'Replay' },
-    { id: 'review_lab', label: '测试复盘' },
-    { id: 'marketmap', label: 'Market Map' },
-    { id: 'compare', label: 'Compare' },
+    { id: 'review_lab', label: '公众号复盘' },
     { id: 'timeline', label: 'Timeline' },
     { id: 'alerts', label: 'Alerts' },
     { id: 'backtest', label: 'Backtest' },
@@ -48,7 +58,7 @@ export const NAV_ITEMS: { id: string; label: string }[] = [
 export const PAGE_TITLES: Record<string, string> = {
     dashboard: 'Dashboard', portfolio: 'Portfolio', watchlist: 'Watchlist',
     journal: 'Decision Journal', resume: 'AI Resume', profile: 'AI Profile', aios: 'AI OS', replay: 'Replay Engine',
-    marketmap: 'Market Map', compare: 'Compare', timeline: 'Timeline', review_lab: '测试复盘 · 最新结果',
+    timeline: 'Timeline', review_lab: '公众号复盘 · 方法论',
     alerts: 'Alert Center', backtest: 'Backtest', dailybrief: 'Daily Brief',
 };
 
@@ -106,9 +116,6 @@ input:focus,select:focus{outline:none;border-color:#58a6ff}
 .evidence-card .ev-source{color:#58a6ff;font-size:11px;margin-top:4px}
 .evidence-card .cred-bar{height:3px;border-radius:2px;background:#21262d;margin-top:4px}
 .evidence-card .cred-fill{height:3px;border-radius:2px}
-.compare-table{display:grid;gap:1px;background:#30363d;border:1px solid #30363d;border-radius:8px;overflow:hidden}
-.compare-row{display:grid;background:#161b22;padding:12px 16px}
-.compare-cell{padding:8px;text-align:center}
 .timeline-chart{font-family:'Courier New',monospace;background:#0d1117;border:1px solid #30363d;border-radius:8px;padding:16px;overflow-x:auto;white-space:pre;line-height:1.6}
 .section-title{font-size:16px;font-weight:600;color:#58a6ff;margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid #21262d}
 .toast{position:fixed;top:16px;right:16px;padding:12px 20px;border-radius:8px;font-size:13px;z-index:1000;animation:slideIn 0.3s ease}

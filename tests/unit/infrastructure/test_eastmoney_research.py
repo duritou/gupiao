@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from src.api.routes import dragon_tiger_routes, reports_routes, unified_research_routes
+from src.api.routes import unified_research_routes
 from src.infrastructure.market_data import eastmoney_billboard, eastmoney_common, eastmoney_reports
 
 
@@ -119,30 +119,6 @@ def test_parse_reports_adds_compatibility_fields():
     assert reports[0]["publish_date"] == "2026-08-28"
     assert reports[0]["institution"] == "测试证券"
     assert reports[0]["pdfUrl"].endswith("H3_A123_1.pdf")
-
-
-@pytest.mark.asyncio
-async def test_routes_prefer_native_sources(monkeypatch):
-    native_board = {"data": {"records": [{"date": "2026-08-29"}]}, "_meta": {"provider": "eastmoney"}}
-    native_reports = {"reports": [{"id": "A123"}], "count": 1, "_meta": {"provider": "eastmoney"}}
-    monkeypatch.setattr(dragon_tiger_routes, "fetch_eastmoney_dragon_tiger", AsyncMock(return_value=native_board))
-    monkeypatch.setattr(reports_routes, "fetch_eastmoney_reports", AsyncMock(return_value=native_reports))
-
-    class Provider:
-        async def get_dragon_tiger(self, code):
-            raise AssertionError(code)
-
-        async def get_reports(self, code):
-            raise AssertionError(code)
-
-    monkeypatch.setattr(dragon_tiger_routes, "get_vibe_provider", lambda: Provider())
-    monkeypatch.setattr(reports_routes, "get_vibe_provider", lambda: Provider())
-
-    board = await dragon_tiger_routes.get_dragon_tiger("600519")
-    reports = await reports_routes.get_reports("600519")
-
-    assert board["_meta"]["provider"] == "eastmoney"
-    assert reports["reports"][0]["id"] == "A123"
 
 
 @pytest.mark.asyncio

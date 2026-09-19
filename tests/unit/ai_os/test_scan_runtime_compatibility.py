@@ -5,8 +5,8 @@ from src.ai_os.scheduler import SchedulePhase, get_recoverable_phases
 
 
 def test_pre_market_recovery_leaves_exact_scheduled_checkpoint_to_cron():
-    assert get_recoverable_phases(datetime(2026, 8, 17, 1, 0)) == []
-    assert get_recoverable_phases(datetime(2026, 8, 17, 1, 1)) == [
+    assert get_recoverable_phases(datetime(2026, 8, 17, 6, 0)) == []
+    assert get_recoverable_phases(datetime(2026, 8, 17, 6, 1)) == [
         SchedulePhase.PRE_MARKET,
     ]
 

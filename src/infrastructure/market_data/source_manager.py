@@ -85,6 +85,30 @@ TUSHARE_TOKEN = os.getenv("TUSHARE_TOKEN", "")
 RESEARCH_QUOTE_ATTEMPT_TIMEOUT_SECONDS = 8.0
 
 
+def _read_url_bytes(request: Any, timeout: float) -> bytes:
+    """Open and fully consume an urllib response outside the event loop."""
+    import urllib.request
+
+    response = urllib.request.urlopen(request, None, timeout)
+    try:
+        return response.read()
+    finally:
+        close = getattr(response, "close", None)
+        if callable(close):
+            close()
+
+
+async def _fetch_url_bytes(
+    request: Any,
+    timeout: float = _AKSHARE_TIMEOUT,
+) -> bytes:
+    """Bound the complete HTTP exchange, including the response-body read."""
+    return await asyncio.wait_for(
+        asyncio.to_thread(_read_url_bytes, request, timeout),
+        timeout=timeout,
+    )
+
+
 def _exception_detail(exc: BaseException, limit: int = 160) -> str:
     """Preserve exception type when providers return an empty message."""
     detail = str(exc).strip() or repr(exc)
@@ -747,10 +771,12 @@ class SourceManager:
         probe_results = []
         probes = []
         from src.infrastructure.market_data.tickflow_provider import is_configured
+        from config.settings import settings
         if is_configured():
             probes.append(("tickflow", self._try_tickflow_quote))
+        if bool(getattr(settings, "TUSHARE_REALTIME_PROBE_ENABLED", False)):
+            probes.append(("tushare", self._try_tushare_quote))
         probes.extend((
-            ("tushare", self._try_tushare_quote),
             ("tencent", self._try_tencent_quote),
             ("sina", self._try_sina_quote),
         ))
@@ -933,15 +959,16 @@ class SourceManager:
                 endpoint=cached_provenance.endpoint if cached_provenance else "",
             )
 
-        # Prefer the complete Tushare close snapshot. Local breadth is a
-        # fallback because it may lag or contain a partial historical batch.
-        result, prov = await self._try_tushare_breadth()
+        # Dashboard reads should be local-first. A cold remote full-market
+        # snapshot can take tens of seconds and used to make the whole API
+        # appear offline. Scheduled completion jobs still refresh this store.
+        result, prov = await self._try_local_market_breadth()
         if result is not None:
             self.cache.set(cache_key, result)
             self._cache_provenance[cache_key] = prov
             return result, prov
 
-        result, prov = await self._try_local_market_breadth()
+        result, prov = await self._try_tushare_breadth()
         if result is not None:
             self.cache.set(cache_key, result)
             self._cache_provenance[cache_key] = prov
@@ -2461,14 +2488,11 @@ class SourceManager:
 
         try:
             import urllib.request
+
             # 上证sh000001 深成指sz399001 创业板sz399006 科创50 sh000688
             url = "https://qt.gtimg.cn/q=sh000001,sz399001,sz399006,sh000688"
             req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
-            resp = await asyncio.wait_for(
-                asyncio.to_thread(urllib.request.urlopen, req, None, 8),
-                timeout=_AKSHARE_TIMEOUT,
-            )
-            data = resp.read().decode("gbk")
+            data = (await _fetch_url_bytes(req)).decode("gbk")
 
             wanted = {"上证指数", "深证成指", "创业板指", "科创50"}
             result = []
@@ -2524,15 +2548,12 @@ class SourceManager:
 
         try:
             import urllib.request
+
             raw = code.replace(".SH", "").replace(".SZ", "").replace(".BJ", "")
             prefix = "sh" if raw.startswith(("6", "9")) else ("bj" if raw.startswith("8") else "sz")
             url = f"https://qt.gtimg.cn/q={prefix}{raw}"
             req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
-            resp = await asyncio.wait_for(
-                asyncio.to_thread(urllib.request.urlopen, req, None, 8),
-                timeout=_AKSHARE_TIMEOUT,
-            )
-            vals = resp.read().decode("gbk").split('"')[1].split("~")
+            vals = (await _fetch_url_bytes(req)).decode("gbk").split('"')[1].split("~")
             if len(vals) < 53:
                 raise ValueError("Tencent quote truncated")
 
@@ -2629,11 +2650,7 @@ class SourceManager:
             n = max(count, 640)
             url = f"https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param={prefix}{raw},day,2020-01-01,,{n},qfq"
             req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
-            resp = await asyncio.wait_for(
-                asyncio.to_thread(urllib.request.urlopen, req, None, 8),
-                timeout=_AKSHARE_TIMEOUT,
-            )
-            d = json.loads(resp.read().decode("utf-8"))
+            d = json.loads((await _fetch_url_bytes(req)).decode("utf-8"))
             inner = d.get("data", {}).get(f"{prefix}{raw}", {})
             kdata = inner.get("qfqday") or inner.get("day") or []
             if not kdata:
@@ -2821,11 +2838,7 @@ class SourceManager:
                     "Referer": "https://finance.sina.com.cn/",
                 },
             )
-            resp = await asyncio.wait_for(
-                asyncio.to_thread(urllib.request.urlopen, req, None, 8),
-                timeout=_AKSHARE_TIMEOUT,
-            )
-            text = resp.read().decode("gb18030", errors="replace")
+            text = (await _fetch_url_bytes(req)).decode("gb18030", errors="replace")
             if '="' not in text:
                 raise ValueError("Sina quote response is malformed")
             values = text.split('="', 1)[1].rsplit('"', 1)[0].split(",")
@@ -2947,11 +2960,7 @@ class SourceManager:
                     "Referer": "https://finance.sina.com.cn/",
                 },
             )
-            resp = await asyncio.wait_for(
-                asyncio.to_thread(urllib.request.urlopen, req, None, 8),
-                timeout=_AKSHARE_TIMEOUT,
-            )
-            rows = json.loads(resp.read().decode("utf-8"))
+            rows = json.loads((await _fetch_url_bytes(req)).decode("utf-8"))
             if not isinstance(rows, list) or not rows:
                 raise ValueError("Sina returned no K-line rows")
 
@@ -3392,8 +3401,7 @@ class SourceManager:
             )
             req = urllib.request.Request(quote_url)
             req.add_header("User-Agent", "QuantAI/1.0")
-            resp = await asyncio.to_thread(urllib.request.urlopen, req, None, 10)
-            q = _json.loads(resp.read().decode())
+            q = _json.loads((await _fetch_url_bytes(req, 10.0)).decode())
 
             if q.get("error"):
                 raise ValueError(f"Finnhub API error: {q.get('error')}")
@@ -3417,8 +3425,7 @@ class SourceManager:
                 )
                 req2 = urllib.request.Request(profile_url)
                 req2.add_header("User-Agent", "QuantAI/1.0")
-                resp2 = await asyncio.to_thread(urllib.request.urlopen, req2, None, 10)
-                profile = _json.loads(resp2.read().decode())
+                profile = _json.loads((await _fetch_url_bytes(req2, 10.0)).decode())
                 if profile.get("name"):
                     stock_name = profile["name"]
             except Exception:
@@ -3505,8 +3512,7 @@ class SourceManager:
             )
             req = urllib.request.Request(url)
             req.add_header("User-Agent", "QuantAI/1.0")
-            resp = await asyncio.to_thread(urllib.request.urlopen, req, None, 10)
-            data = _json.loads(resp.read().decode())
+            data = _json.loads((await _fetch_url_bytes(req, 10.0)).decode())
 
             if data.get("s") == "no_data":
                 raise ValueError(f"No candle data for {symbol}")
@@ -3609,8 +3615,7 @@ class SourceManager:
             quote_url = f"{FMP_BASE_URL}/quote/{symbol}?apikey={FMP_API_KEY}"
             req = urllib.request.Request(quote_url)
             req.add_header("User-Agent", "QuantAI/1.0")
-            resp = await asyncio.to_thread(urllib.request.urlopen, req, None, 10)
-            quotes = _json.loads(resp.read().decode())
+            quotes = _json.loads((await _fetch_url_bytes(req, 10.0)).decode())
 
             if not quotes or not isinstance(quotes, list) or len(quotes) == 0:
                 raise ValueError(f"No quote data for {symbol}")
@@ -3708,8 +3713,7 @@ class SourceManager:
             )
             req = urllib.request.Request(url)
             req.add_header("User-Agent", "QuantAI/1.0")
-            resp = await asyncio.to_thread(urllib.request.urlopen, req, None, 10)
-            data = _json.loads(resp.read().decode())
+            data = _json.loads((await _fetch_url_bytes(req, 10.0)).decode())
 
             if not data or "historical" not in data:
                 raise ValueError(f"No historical data for {symbol}")
@@ -3802,8 +3806,7 @@ class SourceManager:
             )
             req = urllib.request.Request(url)
             req.add_header("User-Agent", "QuantAI/1.0")
-            resp = await asyncio.to_thread(urllib.request.urlopen, req, None, 10)
-            q = _json.loads(resp.read().decode())
+            q = _json.loads((await _fetch_url_bytes(req, 10.0)).decode())
 
             if q.get("code") and q.get("code") != 200:
                 raise ValueError(f"Twelve Data error: {q.get('message', q)}")
@@ -3890,8 +3893,7 @@ class SourceManager:
             )
             req = urllib.request.Request(url)
             req.add_header("User-Agent", "QuantAI/1.0")
-            resp = await asyncio.to_thread(urllib.request.urlopen, req, None, 10)
-            data = _json.loads(resp.read().decode())
+            data = _json.loads((await _fetch_url_bytes(req, 10.0)).decode())
 
             if data.get("code") and data.get("code") != 200:
                 raise ValueError(f"Twelve Data error: {data.get('message', data)}")
@@ -3983,8 +3985,7 @@ class SourceManager:
             )
             req = urllib.request.Request(url)
             req.add_header("User-Agent", "QuantAI/1.0")
-            resp = await asyncio.to_thread(urllib.request.urlopen, req, None, 10)
-            data = _json.loads(resp.read().decode())
+            data = _json.loads((await _fetch_url_bytes(req, 10.0)).decode())
 
             if data.get("status") == "ERROR":
                 raise ValueError(f"Polygon.io error: {data.get('error', 'unknown')}")
@@ -4075,8 +4076,7 @@ class SourceManager:
             )
             req = urllib.request.Request(url)
             req.add_header("User-Agent", "QuantAI/1.0")
-            resp = await asyncio.to_thread(urllib.request.urlopen, req, None, 10)
-            data = _json.loads(resp.read().decode())
+            data = _json.loads((await _fetch_url_bytes(req, 10.0)).decode())
 
             if data.get("status") == "ERROR":
                 raise ValueError(f"Polygon.io error: {data.get('error', 'unknown')}")
@@ -4176,10 +4176,7 @@ class SourceManager:
 
             req = urllib.request.Request(url)
             req.add_header("User-Agent", "QuantAI/1.0")
-            resp = await asyncio.to_thread(
-                urllib.request.urlopen, req, None, 10
-            )
-            data = _json.loads(resp.read().decode())
+            data = _json.loads((await _fetch_url_bytes(req, 10.0)).decode())
 
             # Check for rate limit / error
             if "Note" in data:
@@ -4278,10 +4275,7 @@ class SourceManager:
 
             req = urllib.request.Request(url)
             req.add_header("User-Agent", "QuantAI/1.0")
-            resp = await asyncio.to_thread(
-                urllib.request.urlopen, req, None, 10
-            )
-            data = _json.loads(resp.read().decode())
+            data = _json.loads((await _fetch_url_bytes(req, 10.0)).decode())
 
             if "Note" in data:
                 raise ValueError("Alpha Vantage rate limit: thank you for using Alpha Vantage")

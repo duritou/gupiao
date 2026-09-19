@@ -16,15 +16,17 @@ from time import monotonic
 from typing import Any
 
 from fastapi import APIRouter
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 router = APIRouter(tags=["signals"], prefix="/signals")
 _SIGNAL_CACHE_TTL_SECONDS = 300
+_SIGNAL_ITEM_TIMEOUT_SECONDS = 4.0
+_SIGNAL_BATCH_CONCURRENCY = 8
 _signal_cache: dict[str, tuple[float, dict[str, Any]]] = {}
 
 
 class BatchRequest(BaseModel):
-    codes: list[str]
+    codes: list[str] = Field(max_length=50)
     force: bool = False
 
 
@@ -104,21 +106,32 @@ async def compute_batch(req: BatchRequest):
     from src.api.routes.journal_utils import stock_name_from_journal
     from src.infrastructure.market_data.real_data_provider import real_data
 
-    results = []
-    for code in req.codes:
+    semaphore = asyncio.Semaphore(_SIGNAL_BATCH_CONCURRENCY)
+
+    async def compute_one(code: str) -> dict[str, Any]:
         cached = _signal_cache.get(code)
         if not req.force and cached and monotonic() - cached[0] < _SIGNAL_CACHE_TTL_SECONDS:
             cache_age = monotonic() - cached[0]
-            results.append({
+            return {
                 **cached[1],
                 "cached": True,
                 "cache_age_seconds": round(cache_age, 1),
-            })
-            continue
+            }
 
-        name = await asyncio.to_thread(stock_name_from_journal, code)
         try:
-            bars = await real_data.get_daily_bars(code, days=250)
+            name = await asyncio.wait_for(
+                asyncio.to_thread(stock_name_from_journal, code), timeout=1.0
+            )
+        except asyncio.TimeoutError:
+            name = code
+        try:
+            async with semaphore:
+                bars = await asyncio.wait_for(
+                    asyncio.to_thread(
+                        lambda: asyncio.run(real_data.get_daily_bars(code, days=250))
+                    ),
+                    timeout=_SIGNAL_ITEM_TIMEOUT_SECONDS,
+                )
             if bars and len(bars) >= 20:
                 sig = await asyncio.to_thread(
                     real_data.compute_signals, code, name, bars
@@ -141,7 +154,7 @@ async def compute_batch(req: BatchRequest):
                     "低" if sig.confidence >= 0.7 else
                     "中" if sig.confidence >= 0.5 else "高"
                 )
-                results.append({
+                result = {
                     "stock_code": code,
                     "stock_name": name,
                     "fusion_score": sig.fusion_score,
@@ -162,22 +175,33 @@ async def compute_batch(req: BatchRequest):
                     "trend_arrow": arrow,
                     "top_signal": f"{top}信号",
                     "risk_level": risk,
-                })
+                }
             else:
-                results.append({
+                result = {
                     "stock_code": code,
                     "stock_name": name,
                     "error": "数据不足",
                     "data_days": len(bars) if bars else 0,
-                })
+                }
+        except asyncio.TimeoutError:
+            result = {
+                "stock_code": code,
+                "stock_name": name,
+                "error": f"信号计算超过 {_SIGNAL_ITEM_TIMEOUT_SECONDS:.0f} 秒，已降级",
+            }
         except Exception as e:
-            results.append({
+            result = {
                 "stock_code": code,
                 "stock_name": name,
                 "error": str(e)[:100],
-            })
-        if results:
-            _signal_cache[code] = (monotonic(), results[-1])
+            }
+        _signal_cache[code] = (monotonic(), result)
+        return result
+
+    normalized_codes = list(
+        dict.fromkeys(code.strip().upper() for code in req.codes if code.strip())
+    )
+    results = await asyncio.gather(*(compute_one(code) for code in normalized_codes))
 
     return {
         "signals": results,

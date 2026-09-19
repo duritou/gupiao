@@ -4,6 +4,7 @@ param(
     [switch]$PrepareOnly,
     [switch]$VerifyOnly,
     [switch]$RecoverUnresponsive,
+    [switch]$AllowTradingWindowOverride,
     [string]$PreparedManifest = ''
 )
 
@@ -12,7 +13,20 @@ $projectRoot = Split-Path -Parent $PSScriptRoot
 $workspaceRoot = Split-Path -Parent $projectRoot
 $pythonPath = Join-Path $projectRoot '.venv\Scripts\python.exe'
 $taskName = 'QuantAI_AdaptiveBackend'
-$port = 8888
+$runtimeConfigPath = Join-Path $workspaceRoot 'config\runtime.env'
+function Get-RuntimeValue([string]$Key, [string]$Fallback) {
+    if (-not (Test-Path -LiteralPath $runtimeConfigPath -PathType Leaf)) { return $Fallback }
+    foreach ($line in Get-Content -LiteralPath $runtimeConfigPath) {
+        $text = $line.Trim()
+        if (-not $text -or $text.StartsWith('#') -or $text.IndexOf('=') -lt 1) { continue }
+        $index = $text.IndexOf('=')
+        if ($text.Substring(0, $index).Trim() -eq $Key) {
+            return $text.Substring($index + 1).Trim().Trim('"').Trim("'")
+        }
+    }
+    return $Fallback
+}
+$port = [int](Get-RuntimeValue 'ADAPTIVE_API_PORT' '8888')
 $runtimeRoot = Join-Path $projectRoot 'runtime'
 $releaseRoot = Join-Path $runtimeRoot 'releases'
 $activeManifest = Join-Path $runtimeRoot 'active-manifest.json'
@@ -40,8 +54,6 @@ $report = [ordered]@{
     port_released = $false
     runtime_verified = $false
     scanner_behavior_verified = $false
-    financial_period_counts = $null
-    flow_row_count = $null
     rollback_attempted = $false
     rollback_verified = $false
     rollback_unavailable = $false
@@ -82,10 +94,19 @@ function Get-ProcessRecord([int]$ProcessId) {
 }
 
 function Assert-ExpectedApi([object]$ProcessRecord) {
-    if (-not $ProcessRecord -or $ProcessRecord.Name -notmatch '^python(w)?\.exe$' -or
-        $ProcessRecord.CommandLine -notmatch 'scripts[\\/]run_api\.py') {
-        throw '8888 is not owned by the expected Adaptive run_api.py process.'
+    if (-not $ProcessRecord -or $ProcessRecord.Name -notmatch '^python(w)?\.exe$') {
+        throw "port $port is not owned by the expected Adaptive run_api.py process."
     }
+    if ($ProcessRecord.CommandLine -match 'scripts[\\/]run_api\.py') { return }
+
+    # Processes launched by Task Scheduler run in a protected session, so a
+    # non-elevated deploy cannot read their command line. Recovery is still safe
+    # when the listener belongs to the verified PowerShell -> svchost watchdog
+    # chain used by the managed backend task.
+    $verifiedWatchdogs = @(Get-VerifiedWatchdogAncestors ([int]$ProcessRecord.ProcessId))
+    if ($RecoverUnresponsive -and $verifiedWatchdogs.Count -gt 0) { return }
+
+    throw "port $port is not owned by the expected Adaptive run_api.py process."
 }
 
 function Get-VerifiedWatchdogAncestors([int]$ProcessId) {
@@ -173,6 +194,7 @@ function Stop-ManagedWatchdogs {
 }
 
 function Assert-OffHours {
+    if ($AllowTradingWindowOverride) { return }
     $chinaNow = [TimeZoneInfo]::ConvertTimeBySystemTimeZoneId((Get-Date), 'China Standard Time')
     if ($chinaNow.DayOfWeek -notin @('Saturday', 'Sunday') -and
         $chinaNow.TimeOfDay -ge [TimeSpan]::FromHours(8.5) -and
@@ -396,14 +418,6 @@ try {
     }
     $report.scanner_behavior_verified = $true
 
-    $financials = Invoke-RestMethod "http://127.0.0.1:$port/api/v1/financials?code=300523.SZ" -TimeoutSec 30
-    if ($financials._meta.source_layer -ne 'adaptive_tushare_history' -or
-        -not $financials._meta.history_complete) { throw 'financial route verification failed' }
-    $report.financial_period_counts = $financials._meta.period_counts
-    $flow = Invoke-RestMethod "http://127.0.0.1:$port/api/v1/fundflow?code=300523.SZ" -TimeoutSec 30
-    if ($flow._meta.source_layer -ne 'adaptive_tushare_flow_history' -or
-        $flow.data.row_count -lt 20) { throw 'fund flow route verification failed' }
-    $report.flow_row_count = $flow.data.row_count
     & code.cmd --install-extension $bundle.frontend_vsix --force
     if ($LASTEXITCODE -ne 0) { throw 'frontend extension installation failed' }
     $installedRoot = Join-Path $env:USERPROFILE ".vscode/extensions/quantai.quantai-research-terminal-$($bundle.product_version)"

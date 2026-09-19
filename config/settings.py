@@ -16,6 +16,7 @@ from investment_common import load_runtime_env, runtime_value  # noqa: E402
 load_runtime_env(_PROJECT_ROOT)
 
 _HITHINK_MODE = Literal["disabled", "shadow", "fallback", "validator", "primary"]
+_DATA_ROOT = Path(runtime_value("INVESTMENT_DATA_ROOT", str(_PROJECT_ROOT / "data")))
 
 
 class Settings(BaseSettings):
@@ -50,7 +51,12 @@ class Settings(BaseSettings):
     CODEX_REASONING_EFFORT: Literal["minimal", "low", "medium", "high"] = "low"
     CODEX_TIMEOUT_SECONDS: float = 120.0
     CODEX_MAX_OUTPUT_TOKENS: int = 2000
-    CODEX_ANALYSIS_MAX_CONCURRENCY: int = 2
+    # The Codex CLI shares one local login/runtime queue.  Parallel deep
+    # research turns can wait on that queue until the per-turn timeout, which
+    # exhausts the morning research deadline and leaves no publishable result.
+    # Keep the research calls serialized; this changes only throughput, never
+    # the selector, scores, thresholds, or candidate set.
+    CODEX_ANALYSIS_MAX_CONCURRENCY: int = 1
 
     # Legacy manual provider settings. The scheduled closed loop is Codex-only.
     DEEPSEEK_API_KEY: str | None = None
@@ -210,9 +216,17 @@ class Settings(BaseSettings):
     # timestamp moves strictly past the final signal.
     PAPER_EXECUTION_QUOTE_ATTEMPTS: int = 8
     PAPER_EXECUTION_QUOTE_RETRY_DELAY_SECONDS: float = 1.25
+    # Startup health probes must not spend Tushare's small rt_min daily quota.
+    # Realtime execution uses TickFlow/Tencent/Sina and explicitly excludes
+    # Tushare; enable this only for a deliberate provider audit.
+    TUSHARE_REALTIME_PROBE_ENABLED: bool = False
     # Flow-missing exploration is an execution-layer fallback only. It never
     # changes scanner scores, ranking, or the normal buy gate.
     PAPER_EXPLORATION_ENABLED: bool = True
+    # Conditional paper-only lane: rechecks persisted watchlist candidates
+    # against a fresh intraday quote every minute.  It never changes the
+    # scanner, normal Buy gate, or live-trading permissions.
+    PAPER_CONDITIONAL_BUY_ENABLED: bool = True
     LIVE_EXPLORATION_ENABLED: bool = False
     PAPER_EXPLORATION_POSITION_PCT: float = 0.02
     PAPER_EXPLORATION_MAX_POSITION_PCT: float = 0.03
@@ -254,6 +268,37 @@ class Settings(BaseSettings):
     # ---- Knowledge ----
     KNOWLEDGE_HOT_RELOAD: bool = True
     KNOWLEDGE_WATCH_INTERVAL: float = 2.0
+    # Optional WeChat public-account RSS bridge (for example, a local WechRss
+    # instance).  It stays disabled until the operator supplies a feed URL, so
+    # existing installations have no new network dependency.
+    WECHAT_RSS_ENABLED: bool = False
+    WECHAT_RSS_URL: str = ""
+    WECHAT_RSS_TIMEOUT_SECONDS: float = 20.0
+    WECHAT_RSS_MAX_ARTICLES: int = 50
+    WECHAT_RSS_MAX_SOURCES: int = 50
+    WECHAT_RSS_SOURCES_URL: str = ""
+    WECHAT_RSS_RISK_COOLDOWN_HOURS: float = 24.0
+    # Optional, bounded enrichment of the newest articles from their public
+    # URLs.  Zero keeps the metadata-only bridge behavior.
+    WECHAT_RSS_CONTENT_LIMIT: int = 0
+    WECHAT_RSS_CONTENT_INTERVAL_SECONDS: float = 1.0
+    WECHAT_RSS_SYNC_HOUR: int = 6
+    WECHAT_RSS_SYNC_MINUTE: int = 30
+    # Methodology learning is an isolated, read-only artifact.  It is never
+    # written to the production learning_log or used to change trade gates.
+    WECHAT_RSS_AI_ENABLED: bool = False
+    WECHAT_RSS_AI_MAX_ARTICLES: int = 20
+    WECHAT_RSS_AI_MAX_SOURCES: int = 20
+    WECHAT_RSS_AI_TIMEOUT_SECONDS: float = 180.0
+    WECHAT_RSS_AI_MAX_OUTPUT_TOKENS: int = 2500
+    # Keep公众号方法论学习 on its own model lane so changing it never
+    # alters the model used by the trading/research pipeline.
+    WECHAT_RSS_AI_MODEL: str = "gpt-6-astra"
+    WECHAT_RSS_AI_REASONING_EFFORT: Literal["minimal", "low", "medium", "high"] = "low"
+    WECHAT_ARTICLES_DIR: str = runtime_value(
+        "ADAPTIVE_WECHAT_ARTICLES_DIR",
+        str(_DATA_ROOT / "wechat" / "articles"),
+    )
 
     # ---- Prompt Registry ----
     PROMPT_REGISTRY_CACHE_SIZE: int = 100

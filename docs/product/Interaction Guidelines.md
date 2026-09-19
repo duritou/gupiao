@@ -24,13 +24,12 @@
 |--------|------|
 | `Alt+1` | Dashboard |
 | `Alt+2` | Watchlist |
-| `Alt+3` | Market Map |
-| `Alt+4` | Research |
-| `Alt+5` | Compare |
-| `Alt+6` | Timeline |
-| `Alt+7` | Alerts |
-| `Alt+8` | Backtest |
-| `Alt+9` | Daily Brief |
+| `Alt+3` | Research |
+| `Alt+4` | Compare |
+| `Alt+5` | Timeline |
+| `Alt+6` | Alerts |
+| `Alt+7` | Backtest |
+| `Alt+8` | Daily Brief |
 | `/` | 聚焦搜索框 |
 | `Esc` | 关闭弹窗 / 取消操作 / 返回 |
 | `Ctrl+R` | 手动刷新当前页 |

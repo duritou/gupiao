@@ -82,7 +82,6 @@ function navigate(page) { vscode.postMessage({command:'navigate',page}); }
 function analyzeStock(code) { vscode.postMessage({command:'analyze',code}); }
 function addToWatchlist() { vscode.postMessage({command:'addWatch'}); }
 function removeFromWatchlist(code) { vscode.postMessage({command:'removeWatch',code}); }
-function compareStocks() { vscode.postMessage({command:'compare'}); }
 function showTimeline() { vscode.postMessage({command:'timeline'}); }
 </script>
 <script>${extraScript}</script>

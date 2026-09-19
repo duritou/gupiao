@@ -15,16 +15,8 @@
   "contributes": {
     "commands": [
       {
-        "command": "quantai.reviewLabHistorical",
-        "title": "AIIP: 测试复盘 · 历史闭环结果"
-      },
-      {
-        "command": "quantai.reviewLabSimulate",
-        "title": "AIIP: 测试复盘 · 立即合成模拟（不调用生产）"
-      },
-      {
         "command": "quantai.reviewLab",
-        "title": "AIIP: 测试复盘（仅供参考）"
+        "title": "AIIP: 公众号复盘 · 方法论"
       },
       {
         "command": "quantai.terminal",
@@ -59,14 +51,6 @@
         "title": "AIIP: 自选股"
       },
       {
-        "command": "quantai.marketmap",
-        "title": "AIIP: 行业热力图"
-      },
-      {
-        "command": "quantai.compare",
-        "title": "AIIP: 股票对比"
-      },
-      {
         "command": "quantai.timeline",
         "title": "AIIP: 评分演变"
       },
@@ -81,34 +65,6 @@
       {
         "command": "quantai.dailybrief",
         "title": "AIIP: 每日简报"
-      },
-      {
-        "command": "quantai.newsradar",
-        "title": "AIIP: 新闻雷达"
-      },
-      {
-        "command": "quantai.reports",
-        "title": "AIIP: 研报管理"
-      },
-      {
-        "command": "quantai.announcements",
-        "title": "AIIP: 公告中心"
-      },
-      {
-        "command": "quantai.financials",
-        "title": "AIIP: 财务数据"
-      },
-      {
-        "command": "quantai.valuation",
-        "title": "AIIP: 估值数据"
-      },
-      {
-        "command": "quantai.fundflow",
-        "title": "AIIP: 资金流向"
-      },
-      {
-        "command": "quantai.dragonTiger",
-        "title": "AIIP: 龙虎榜"
       },
       {
         "command": "quantai.aios",
@@ -137,14 +93,6 @@
       {
         "command": "quantai.scan",
         "title": "AIIP: 全市场扫描"
-      },
-      {
-        "command": "quantai.analyze",
-        "title": "AIIP: 分析股票"
-      },
-      {
-        "command": "quantai.research",
-        "title": "AIIP: 运行研究管线"
       },
       {
         "command": "quantai.knowledge",

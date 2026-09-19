@@ -30,8 +30,19 @@ function buildDailyBriefPage(data) {
     const brief = data.brief || {};
     const sentiment = brief.market_sentiment || {};
     const marketRegime = brief.market_regime || {};
-    const hotSectors = brief.hot_sectors || [];
-    const opportunities = brief.top_opportunities || [];
+    const pipelineAcceptance = brief.pipeline_acceptance || {};
+    const pipelineRunId = String(pipelineAcceptance.run_id || '').trim();
+    const decisionDate = String(brief.decision_date || pipelineAcceptance.decision_date || brief.date || '').trim();
+    const opportunities = (brief.top_opportunities || []).filter((item) => {
+        if (item.recommendation_tier === 'technical_watchlist')
+            return false;
+        if (decisionDate && item.decision_date && item.decision_date !== decisionDate)
+            return false;
+        if (pipelineRunId && item.run_id && item.run_id !== pipelineRunId)
+            return false;
+        return true;
+    });
+    const patternWatchlist = brief.pattern_watchlist || [];
     const risks = brief.risk_warnings || [];
     const shortTermSentiment = brief.short_term_sentiment || {};
     const topVolumeStocks = brief.top_volume_stocks || [];
@@ -69,7 +80,6 @@ function buildDailyBriefPage(data) {
         : state === 'empty'
             ? '暂无市场概况数据。'
             : '市场概况暂不可用。';
-    const hotSectorFallback = state === 'collecting' ? '数据收集中，热点板块尚未返回。' : '暂无热点板块数据。';
     const oneLinerFallback = state === 'collecting'
         ? '市场数据正在收集，暂未形成今日结论。'
         : state === 'empty'
@@ -88,8 +98,9 @@ function buildDailyBriefPage(data) {
 <div style="margin-top:12px;font-size:24px;color:#d2991d">${starStr}</div>
 <div style="font-size:14px;color:#8b949e;margin-top:4px">市场情绪: ${sentiment.label || '未知'}</div>
 <div style="font-size:12px;color:${dataStatus.degraded || hasStaleData ? '#d29922' : '#3fb950'};margin-top:8px">
-${statusText} · 市场 ${components.market ? '✓' : '✗'} · 板块 ${components.sectors_live ? '✓' : '✗'} · 决策日志 ${components.decision_journal ? '✓' : '✗'} · Vibe ${components.vibe_sentiment || components.vibe_volume ? '✓' : '✗'}
+${statusText} · 市场 ${components.market ? '✓' : '✗'} · 决策日志 ${components.decision_journal ? '✓' : '✗'} · Vibe ${components.vibe_sentiment || components.vibe_volume ? '✓' : '✗'}
 </div>
+${decisionDate ? `<div style="font-size:11px;color:#8b949e;margin-top:5px">决策日期 ${escapeHtml(decisionDate)}${pipelineRunId ? ` · 批次 ${escapeHtml(pipelineRunId.slice(0, 12))}` : ''}</div>` : ''}
 ${stateBanner ? `<div style="font-size:12px;margin-top:10px">${stateBanner}</div>` : ''}
 </div>
 
@@ -100,11 +111,6 @@ ${regimeCard}
 <p class="text-muted mt-8">${sentiment.score > 0 ? `情绪${sentiment.score}分 · ${sentiment.score >= 70 ? '偏乐观' : '偏中性'}` : '市场情绪数据不可用'}</p>
 </div>
 
-<div class="card"><h3>🔥 今日热点</h3>
-<div class="flex-row gap-8" style="flex-wrap:wrap">
-${hotSectors.map((s) => `<span class="tag tag-up" style="font-size:14px;padding:6px 14px">${'★'.repeat(s.stars || 1)} ${s.name} ${s.score}</span>`).join('') || `<span class="text-muted">${hotSectorFallback}</span>`}
-</div></div>
-
 <div class="card"><h3>💡 今日机会</h3>
 ${opportunities.map((o, i) => `
 <div class="stock-row" onclick="analyzeStock('${o.stock_code}')">
@@ -113,6 +119,28 @@ ${opportunities.map((o, i) => `
 <span class="${(0, score_display_1.scoreTone)((0, score_display_1.finiteScore)(o.score))}" style="font-weight:700;font-size:18px">${(0, score_display_1.scoreText)(o.score, '分')}</span><br>
 <span class="tag tag-up">${o.direction === 'buy' ? 'Strong Buy' : 'Buy'}</span>
 </div></div>`).join('') || '<p class="text-muted">暂无机会推荐</p>'}
+</div>
+
+<div class="card" style="border-left:3px solid #d29922"><h3>📐 两阳夹一阴 · 额外观察</h3>
+<p class="text-muted" style="font-size:12px;margin-bottom:12px">这部分不替换原流程5只股票，也不会直接触发买入。</p>
+${patternWatchlist.map((item, i) => {
+        const change = Number(item.change_pct || 0);
+        const changeColor = change >= 0 ? '#3fb950' : '#f85149';
+        const latestFlow = Number(item.latest_main_net || 0) / 10000;
+        const fiveFlow = Number(item.five_day_main_net || 0) / 10000;
+        const volumeRatio = Number(item.volume_ratio_latest_vs_middle || 0);
+        const dates = (item.pattern_dates || []).map((value) => escapeHtml(value)).join(' → ');
+        return `
+<div class="stock-row" onclick="analyzeStock('${escapeHtml(item.stock_code || '')}')">
+<div><span class="stock-name">#${i + 1} ${escapeHtml(item.stock_name || item.stock_code)}</span><br>
+<span class="stock-code">${escapeHtml(item.stock_code || '')} · ${escapeHtml(item.data_date || '')}</span><br>
+<span style="font-size:11px;color:#8b949e">${dates}</span></div>
+<div style="text-align:right;font-size:12px">
+<span style="font-weight:700;color:${changeColor}">${change >= 0 ? '+' : ''}${change.toFixed(2)}%</span><br>
+<span style="color:#8b949e">放量 ${volumeRatio.toFixed(2)}倍</span><br>
+<span style="color:#8b949e">资金 +${latestFlow.toFixed(0)}万 / 5日 +${fiveFlow.toFixed(0)}万</span>
+</div></div>`;
+    }).join('') || '<p class="text-muted">暂无通过数据完整性核验的形态候选</p>'}
 </div>
 
 <div class="card"><h3>⚠ 风险提示</h3>

@@ -36,7 +36,6 @@ var __importStar = (this && this.__importStar) || (function () {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.StatusProvider = exports.TerminalNavProvider = void 0;
 const vscode = __importStar(require("vscode"));
-const client_1 = require("../api/client");
 const constants_1 = require("../constants");
 function navItem(label, cmd, icon) {
     const item = new vscode.TreeItem(label, vscode.TreeItemCollapsibleState.None);
@@ -62,23 +61,13 @@ class TerminalNavProvider {
             navItem('AI OS · 系统运行', 'quantai.aios', 'pulse'),
             navItem('Task Monitor · 任务监控', 'quantai.taskmonitor', 'checklist'),
             navItem('Replay · 时间机器', 'quantai.replay', 'history'),
-            navItem('测试复盘 · 最新结果', 'quantai.reviewLab', 'beaker'),
+            navItem('公众号复盘 · 方法论', 'quantai.reviewLab', 'book'),
             navItem('System Health · 系统健康', 'quantai.health', 'pulse'),
             navItem('Data Connectors · 数据连接', 'quantai.connectors', 'plug'),
             navItem('Alert Center · 预警', 'quantai.alerts', 'bell'),
-            navItem('Market Map · 行业热力图', 'quantai.marketmap', 'graph'),
-            navItem('Compare · 股票对比', 'quantai.compare', 'symbol-numeric'),
             navItem('Timeline · 评分演变', 'quantai.timeline', 'history'),
             navItem('Backtest · 策略验证', 'quantai.backtest', 'history'),
             navItem('Daily Brief · 日报', 'quantai.dailybrief', 'book'),
-            navItem('News Radar · 新闻雷达', 'quantai.newsradar', 'rss'),
-            navItem('Research Reports · 研报管理', 'quantai.reports', 'file-text'),
-            navItem('Announcements · 公告中心', 'quantai.announcements', 'megaphone'),
-            navItem('Financials · 财务数据', 'quantai.financials', 'graph-line'),
-            navItem('Valuation · 估值数据', 'quantai.valuation', 'symbol-misc'),
-            navItem('Fund Flow · 资金流向', 'quantai.fundflow', 'arrow-both'),
-            navItem('Dragon Tiger · 龙虎榜', 'quantai.dragonTiger', 'flame'),
-            navItem('分析股票...', 'quantai.research', 'search'),
             navItem('+ 添加自选', 'quantai.addWatch', 'add'),
             navItem('重启后端服务', 'quantai.restartServer', 'debug-restart'),
         ];
@@ -88,20 +77,10 @@ exports.TerminalNavProvider = TerminalNavProvider;
 class StatusProvider {
     _onDidChangeTreeData = new vscode.EventEmitter();
     onDidChangeTreeData = this._onDidChangeTreeData.event;
-    _pollTimer;
     aiipOnline = null;
     healthFailureStreak = 0;
-    constructor() {
-        this._pollTimer = setInterval(() => { void this.pollHealth(); }, 3000);
-        void this.pollHealth();
-    }
-    refresh() { this._onDidChangeTreeData.fire(); }
-    dispose() {
-        clearInterval(this._pollTimer);
-        this._onDidChangeTreeData.dispose();
-    }
-    async pollHealth() {
-        const online = await (0, client_1.healthCheck)().catch(() => false);
+    /** The extension owns the single health probe; the sidebar only renders it. */
+    setBackendOnline(online) {
         if (online) {
             this.healthFailureStreak = 0;
             if (this.aiipOnline === true)
@@ -119,10 +98,12 @@ class StatusProvider {
         }
         this.refresh();
     }
+    refresh() { this._onDidChangeTreeData.fire(); }
+    dispose() {
+        this._onDidChangeTreeData.dispose();
+    }
     getTreeItem(el) { return el; }
     async getChildren() {
-        if (this.aiipOnline === null)
-            await this.pollHealth();
         const aiipOnline = this.aiipOnline === true;
         const aiipLabel = this.aiipOnline === null
             ? 'AIIP: 检测中'

@@ -2,11 +2,9 @@
 
 import asyncio
 import logging
-import math
 import time
 from datetime import date, datetime
 
-import httpx
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
@@ -15,44 +13,17 @@ from src.ai_os.market_regime import classify_market_regime
 from src.infrastructure.market_data.hithink_contracts import normalize_thscode
 from src.infrastructure.market_data.hithink_provider import hithink_provider
 from src.infrastructure.market_data.manifest_loader import manifest_loader
-from src.infrastructure.market_data.provider_resilience import (
-    parse_retry_after,
-    record_provider_failure,
-    record_provider_success,
-    reserve_provider_request,
-)
 from src.infrastructure.market_data.registry import get_source_summary, get_sources_by_layer
-from src.infrastructure.market_data.source_manager import source_manager
+from src.infrastructure.market_data.source_manager import DataProvenance, source_manager
 
 router = APIRouter(tags=["market"], prefix="/market")
 logger = logging.getLogger(__name__)
 
 
-_SECTOR_URL = "https://push2.eastmoney.com/api/qt/clist/get"
-_SECTOR_CACHE_TTL_SECONDS = 120.0
-_SECTOR_FAILURE_CACHE_SECONDS = 30.0
 _OVERVIEW_CACHE_TTL_SECONDS = 30.0
-_SECTOR_NAMES = [
-    "食品饮料", "医药生物", "电子", "计算机", "电力设备", "机械设备",
-    "汽车", "化工", "银行", "非银金融", "房地产", "建筑装饰",
-]
-_SECTOR_ETF_PROXIES = {
-    "sh512480": "半导体",
-    "sz159819": "人工智能",
-    "sh562500": "机器人",
-    "sh516160": "新能源",
-    "sh512010": "医药生物",
-    "sz159928": "消费",
-    "sh512880": "证券",
-    "sh512800": "银行",
-    "sh512660": "国防军工",
-    "sz159825": "农业",
-    "sh515880": "通信",
-    "sh512720": "计算机",
-}
-_sector_cache: dict | None = None
-_sector_cache_expires_at = 0.0
-_sector_refresh_task: asyncio.Task[None] | None = None
+_OVERVIEW_PROVIDER_TIMEOUT_SECONDS = 10.0
+_DASHBOARD_QUOTE_TIMEOUT_SECONDS = 4.0
+_DASHBOARD_QUOTE_CONCURRENCY = 8
 _overview_cache: tuple[float, dict] | None = None
 _overview_lock = asyncio.Lock()
 
@@ -129,14 +100,43 @@ async def _build_market_overview(*, require_intraday: bool = False) -> dict:
     """Market overview with explicit data provenance."""
     # P0+: indices 与 breadth 并行获取。akshare 风控时各吃 8s 超时,
     # 串行需 ~16s, 并行降到 ~8s (日报 build_real_brief 内部调本接口, 一并提速)。
-    index_fetch = (
-        source_manager.get_intraday_index_quotes()
-        if require_intraday else source_manager.get_index_quotes()
+    index_call = (
+        source_manager.get_intraday_index_quotes
+        if require_intraday else source_manager.get_index_quotes
     )
-    breadth_fetch = (
-        source_manager.get_intraday_market_breadth()
-        if require_intraday else source_manager.get_market_breadth()
+    breadth_call = (
+        source_manager.get_intraday_market_breadth
+        if require_intraday else source_manager.get_market_breadth
     )
+    # Some third-party SDKs perform blocking work before their first await.
+    # Run the complete provider coroutine on a worker loop so a wedged SDK can
+    # never freeze FastAPI's health and dashboard routes.
+    async def bounded_fetch(fetch, label: str):
+        """Keep one slow provider from making the dashboard look offline."""
+        try:
+            return await asyncio.wait_for(
+                asyncio.to_thread(lambda: asyncio.run(fetch())),
+                timeout=_OVERVIEW_PROVIDER_TIMEOUT_SECONDS,
+            )
+        except asyncio.TimeoutError:
+            logger.warning("market overview provider timed out: %s", label)
+            return None, DataProvenance(
+                provider="none",
+                source_name=label,
+                fetched_at=datetime.now().isoformat(),
+                error_message=f"{label}超时",
+            )
+        except Exception as exc:
+            logger.warning("market overview provider failed: %s: %s", label, exc)
+            return None, DataProvenance(
+                provider="none",
+                source_name=label,
+                fetched_at=datetime.now().isoformat(),
+                error_message=str(exc)[:240],
+            )
+
+    index_fetch = bounded_fetch(index_call, "指数行情")
+    breadth_fetch = bounded_fetch(breadth_call, "涨跌统计")
     (indices, idx_prov), (breadth, breadth_prov) = await asyncio.gather(
         index_fetch,
         breadth_fetch,
@@ -180,7 +180,6 @@ async def _build_market_overview(*, require_intraday: bool = False) -> dict:
             "limit_down": 0,
             "total_volume": 0,
         },
-        "hot_sectors": [],
         "risk_summary": [],
         "northbound": {"net_flow": 0, "direction": "neutral"},
         "total_volume": breadth.get("total_volume", 0) if breadth else 0,
@@ -232,9 +231,34 @@ async def market_quotes(req: QuoteBatchRequest):
     normalized_codes = list(
         dict.fromkeys(code.strip().upper() for code in req.codes if code.strip())
     )
-    fetched = await asyncio.gather(
-        *(source_manager.get_realtime_quote(code) for code in normalized_codes)
-    )
+    semaphore = asyncio.Semaphore(_DASHBOARD_QUOTE_CONCURRENCY)
+
+    async def fetch_quote(code: str):
+        async def run():
+            async with semaphore:
+                return await asyncio.to_thread(
+                    lambda: asyncio.run(source_manager.get_realtime_quote(code))
+                )
+
+        try:
+            return await asyncio.wait_for(
+                run(),
+                timeout=_DASHBOARD_QUOTE_TIMEOUT_SECONDS,
+            )
+        except asyncio.TimeoutError:
+            from src.infrastructure.market_data.source_manager import DataProvenance
+
+            return None, DataProvenance(
+                provider="none",
+                source_name="实时报价超时",
+                fetched_at=datetime.now().isoformat(),
+                error_message=(
+                    f"报价在 {_DASHBOARD_QUOTE_TIMEOUT_SECONDS:.0f} 秒内未返回，"
+                    "Dashboard 已降级"
+                ),
+            )
+
+    fetched = await asyncio.gather(*(fetch_quote(code) for code in normalized_codes))
     quotes = []
     for code, (quote, provenance) in zip(normalized_codes, fetched, strict=False):
         item = dict(quote or {})
@@ -292,322 +316,6 @@ async def symbol_search(
             "rollout_mode": mode,
         },
     }
-
-
-def _sector_fallback(*, refreshing: bool, error: str = "") -> dict:
-    """Return an honest, fast placeholder without inventing market movement."""
-    fallback_result = [
-        {
-            "name": sector,
-            "score": 50,
-            "change_pct": 0.0,
-            "stars": 3,
-            "status": "暂无数据",
-        }
-        for sector in _SECTOR_NAMES
-    ]
-    if refreshing:
-        message = "正在后台刷新实时板块数据，页面可继续使用"
-    else:
-        message = "实时板块数据暂时不可用，显示参考板块列表"
-    return {
-        "sectors": fallback_result,
-        "data_source": "static_fallback",
-        "is_live": False,
-        "refreshing": refreshing,
-        "stale": False,
-        "message": message,
-        "error": error[:240],
-        "fetched_at": datetime.now().isoformat(timespec="seconds"),
-    }
-
-
-def _sector_score(change_pct: float) -> tuple[float, int, str]:
-    score = round(max(10.0, min(99.0, 50.0 + change_pct * 10.0)), 1)
-    stars = (
-        5 if score >= 80 else
-        4 if score >= 65 else
-        3 if score >= 45 else
-        2 if score >= 25 else
-        1
-    )
-    status = "强势" if score >= 70 else "震荡" if score >= 40 else "弱势"
-    return score, stars, status
-
-
-async def _fetch_eastmoney_sector_payload() -> dict:
-    """Fetch one bounded Eastmoney snapshot without an uncancellable worker thread."""
-    params = {
-        "pn": "1",
-        "pz": "100",
-        "po": "1",
-        "np": "1",
-        "ut": "bd1d9ddb04089700cf9c27f6f7426281",
-        "fltt": "2",
-        "invt": "2",
-        "fid": "f3",
-        "fs": "m:90 t:3 f:!50",
-        "fields": "f3,f12,f14",
-    }
-    # TLS setup to this public host is occasionally slower than 1.5 seconds on
-    # Windows.  The refresh already runs behind a stale-cache boundary, so a
-    # bounded 4/6 second connect/read budget improves success without freezing
-    # the Market Map UI.
-    timeout = httpx.Timeout(connect=4.0, read=6.0, write=2.0, pool=1.0)
-    headers = {
-        "Accept": "application/json,text/plain,*/*",
-        "Referer": "https://quote.eastmoney.com/center/boardlist.html",
-        "User-Agent": (
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-            "AppleWebKit/537.36 Chrome/124.0 Safari/537.36"
-        ),
-    }
-    wait = reserve_provider_request(
-        "eastmoney",
-        min_interval_seconds=settings.EASTMONEY_MIN_INTERVAL_SECONDS,
-        jitter_seconds=settings.EASTMONEY_JITTER_SECONDS,
-    )
-    if wait > 0:
-        await asyncio.sleep(wait)
-    try:
-        async with httpx.AsyncClient(
-            timeout=timeout,
-            headers=headers,
-            follow_redirects=True,
-            trust_env=False,
-            limits=httpx.Limits(
-                max_connections=1,
-                max_keepalive_connections=1,
-                keepalive_expiry=15.0,
-            ),
-        ) as client:
-            response = await client.get(_SECTOR_URL, params=params)
-            if response.status_code in {403, 429}:
-                retry_after = parse_retry_after(
-                    response.headers.get("Retry-After"),
-                    maximum_seconds=settings.REMOTE_MARKET_RETRY_AFTER_MAX_SECONDS,
-                )
-                record_provider_failure(
-                    "eastmoney",
-                    f"sector HTTP {response.status_code}",
-                    failure_threshold=settings.EASTMONEY_FAILURE_THRESHOLD,
-                    cooldown_seconds=settings.EASTMONEY_COOLDOWN_SECONDS,
-                    immediate=True,
-                    retry_after_seconds=retry_after,
-                )
-            response.raise_for_status()
-            body = response.json()
-    except (httpx.HTTPError, ValueError) as exc:
-        if not (
-            isinstance(exc, httpx.HTTPStatusError)
-            and exc.response.status_code in {403, 429}
-        ):
-            record_provider_failure(
-                "eastmoney",
-                f"sector {type(exc).__name__}: {exc}",
-                failure_threshold=settings.EASTMONEY_FAILURE_THRESHOLD,
-                cooldown_seconds=settings.EASTMONEY_COOLDOWN_SECONDS,
-            )
-        raise
-    record_provider_success("eastmoney")
-
-    rows = (body.get("data") or {}).get("diff") or []
-    sectors = []
-    for row in rows:
-        name = str(row.get("f14") or "").strip()
-        try:
-            change_pct = float(row.get("f3"))
-        except (TypeError, ValueError):
-            continue
-        if not name or not math.isfinite(change_pct):
-            continue
-        score, stars, status = _sector_score(change_pct)
-        sectors.append({
-            "name": name,
-            "score": score,
-            "change_pct": round(change_pct, 2),
-            "stars": stars,
-            "status": status,
-        })
-    if not sectors:
-        raise ValueError("provider returned no sector rows")
-    sectors.sort(key=lambda item: item["change_pct"], reverse=True)
-    return {
-        "sectors": sectors[:12],
-        "data_source": "eastmoney_async",
-        "is_live": True,
-        "is_proxy": False,
-        "refreshing": False,
-        "stale": False,
-        "message": "",
-        "error": "",
-        "fetched_at": datetime.now().isoformat(timespec="seconds"),
-    }
-
-
-def _parse_tencent_sector_proxy(raw: bytes) -> dict:
-    """Build an honest sector proxy map from one Tencent ETF quote response."""
-    text = raw.decode("gb18030", errors="replace")
-    sectors = []
-    data_dates = []
-    for line in text.split(";"):
-        if "=" not in line or '"' not in line:
-            continue
-        key, payload = line.split("=", 1)
-        symbol = key.strip().removeprefix("v_").lower()
-        sector_name = _SECTOR_ETF_PROXIES.get(symbol)
-        values = payload.split('"', 2)[1].split("~")
-        if not sector_name or len(values) <= 32:
-            continue
-        try:
-            change_pct = float(values[32])
-        except (TypeError, ValueError):
-            continue
-        if not math.isfinite(change_pct):
-            continue
-        exchange_timestamp = values[30].strip() if len(values) > 30 else ""
-        if len(exchange_timestamp) >= 8 and exchange_timestamp[:8].isdigit():
-            data_dates.append(
-                f"{exchange_timestamp[:4]}-{exchange_timestamp[4:6]}-"
-                f"{exchange_timestamp[6:8]}"
-            )
-        score, stars, status = _sector_score(change_pct)
-        sectors.append({
-            "name": sector_name,
-            "score": score,
-            "change_pct": round(change_pct, 2),
-            "stars": stars,
-            "status": status,
-            "proxy_symbol": symbol,
-            "proxy_name": values[1].strip() if len(values) > 1 else "",
-        })
-    if not sectors:
-        raise ValueError("Tencent returned no usable sector ETF quotes")
-    sectors.sort(key=lambda item: item["change_pct"], reverse=True)
-    data_date = max(data_dates, default="")
-    date_note = f"，行情日期 {data_date}" if data_date else ""
-    return {
-        "sectors": sectors,
-        "data_source": "tencent_sector_etf_proxy",
-        "is_live": True,
-        "is_proxy": True,
-        "refreshing": False,
-        "stale": False,
-        "message": (
-            "东方财富板块接口暂不可用，已自动切换为腾讯行业 ETF 最新快照"
-            f"（行业代理指标{date_note}）"
-        ),
-        "error": "",
-        "data_date": data_date,
-        "fetched_at": datetime.now().isoformat(timespec="seconds"),
-    }
-
-
-async def _fetch_tencent_sector_proxy_payload() -> dict:
-    symbols = ",".join(_SECTOR_ETF_PROXIES)
-    timeout = httpx.Timeout(connect=1.5, read=2.5, write=1.5, pool=1.0)
-    headers = {
-        "Accept": "*/*",
-        "Referer": "https://gu.qq.com/",
-        "User-Agent": (
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-            "AppleWebKit/537.36 Chrome/124.0 Safari/537.36"
-        ),
-    }
-    wait = reserve_provider_request(
-        "qt.gtimg.cn",
-        min_interval_seconds=settings.PUBLIC_DATA_MIN_INTERVAL_SECONDS,
-        jitter_seconds=settings.PUBLIC_DATA_JITTER_SECONDS,
-    )
-    if wait > 0:
-        await asyncio.sleep(wait)
-    try:
-        async with httpx.AsyncClient(
-            timeout=timeout,
-            headers=headers,
-            follow_redirects=True,
-            trust_env=False,
-            limits=httpx.Limits(
-                max_connections=1,
-                max_keepalive_connections=1,
-                keepalive_expiry=15.0,
-            ),
-        ) as client:
-            response = await client.get(f"https://qt.gtimg.cn/q={symbols}")
-            response.raise_for_status()
-    except httpx.HTTPError as exc:
-        record_provider_failure(
-            "qt.gtimg.cn",
-            f"sector proxy {type(exc).__name__}: {exc}",
-            failure_threshold=settings.PUBLIC_DATA_FAILURE_THRESHOLD,
-            cooldown_seconds=settings.PUBLIC_DATA_COOLDOWN_SECONDS,
-        )
-        raise
-    record_provider_success("qt.gtimg.cn")
-    return _parse_tencent_sector_proxy(response.content)
-
-
-async def _fetch_live_sector_payload() -> dict:
-    """Prefer full boards, then use a clearly labelled real ETF proxy snapshot."""
-    try:
-        return await _fetch_eastmoney_sector_payload()
-    except Exception as eastmoney_error:
-        logger.info("Eastmoney sectors unavailable; trying Tencent proxy: %s", eastmoney_error)
-        try:
-            return await _fetch_tencent_sector_proxy_payload()
-        except Exception as tencent_error:
-            raise RuntimeError(
-                "sector providers unavailable: "
-                f"eastmoney={eastmoney_error}; tencent={tencent_error}"
-            ) from tencent_error
-
-
-async def _refresh_sector_cache() -> None:
-    global _sector_cache, _sector_cache_expires_at
-    try:
-        _sector_cache = await _fetch_live_sector_payload()
-        _sector_cache_expires_at = time.monotonic() + _SECTOR_CACHE_TTL_SECONDS
-    except Exception as exc:
-        logger.warning("Market Map sector refresh failed: %s", exc)
-        _sector_cache = _sector_fallback(refreshing=False, error=str(exc))
-        _sector_cache_expires_at = time.monotonic() + _SECTOR_FAILURE_CACHE_SECONDS
-
-
-def _clear_sector_refresh_task(task: asyncio.Task[None]) -> None:
-    global _sector_refresh_task
-    if _sector_refresh_task is task:
-        _sector_refresh_task = None
-
-
-def _schedule_sector_refresh() -> None:
-    global _sector_refresh_task
-    if _sector_refresh_task is not None and not _sector_refresh_task.done():
-        return
-    task = asyncio.create_task(_refresh_sector_cache())
-    _sector_refresh_task = task
-    task.add_done_callback(_clear_sector_refresh_task)
-
-
-@router.get("/sectors")
-async def market_sectors(refresh: bool = False):
-    """Return sector performance immediately and refresh it safely in the background."""
-    global _sector_cache_expires_at
-    now = time.monotonic()
-    if refresh:
-        _sector_cache_expires_at = 0.0
-    if _sector_cache is not None and now < _sector_cache_expires_at:
-        return dict(_sector_cache)
-
-    _schedule_sector_refresh()
-    if _sector_cache is not None:
-        payload = dict(_sector_cache)
-        payload.update({
-            "refreshing": True,
-            "stale": True,
-            "message": "正在后台刷新，当前显示上次可用数据",
-        })
-        return payload
-    return _sector_fallback(refreshing=True)
 
 
 @router.get("/data-status")

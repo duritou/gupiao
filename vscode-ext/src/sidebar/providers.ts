@@ -1,7 +1,6 @@
 /** Sidebar tree data providers. */
 
 import * as vscode from 'vscode';
-import { healthCheck } from '../api/client';
 import { BASE_URL } from '../constants';
 
 function navItem(label: string, cmd: string, icon: string): vscode.TreeItem {
@@ -25,23 +24,13 @@ export class TerminalNavProvider implements vscode.TreeDataProvider<vscode.TreeI
             navItem('AI OS · 系统运行', 'quantai.aios', 'pulse'),
             navItem('Task Monitor · 任务监控', 'quantai.taskmonitor', 'checklist'),
             navItem('Replay · 时间机器', 'quantai.replay', 'history'),
-            navItem('测试复盘 · 最新结果', 'quantai.reviewLab', 'beaker'),
+            navItem('公众号复盘 · 方法论', 'quantai.reviewLab', 'book'),
             navItem('System Health · 系统健康', 'quantai.health', 'pulse'),
             navItem('Data Connectors · 数据连接', 'quantai.connectors', 'plug'),
             navItem('Alert Center · 预警', 'quantai.alerts', 'bell'),
-            navItem('Market Map · 行业热力图', 'quantai.marketmap', 'graph'),
-            navItem('Compare · 股票对比', 'quantai.compare', 'symbol-numeric'),
             navItem('Timeline · 评分演变', 'quantai.timeline', 'history'),
             navItem('Backtest · 策略验证', 'quantai.backtest', 'history'),
             navItem('Daily Brief · 日报', 'quantai.dailybrief', 'book'),
-            navItem('News Radar · 新闻雷达', 'quantai.newsradar', 'rss'),
-            navItem('Research Reports · 研报管理', 'quantai.reports', 'file-text'),
-            navItem('Announcements · 公告中心', 'quantai.announcements', 'megaphone'),
-            navItem('Financials · 财务数据', 'quantai.financials', 'graph-line'),
-            navItem('Valuation · 估值数据', 'quantai.valuation', 'symbol-misc'),
-            navItem('Fund Flow · 资金流向', 'quantai.fundflow', 'arrow-both'),
-            navItem('Dragon Tiger · 龙虎榜', 'quantai.dragonTiger', 'flame'),
-            navItem('分析股票...', 'quantai.research', 'search'),
             navItem('+ 添加自选', 'quantai.addWatch', 'add'),
             navItem('重启后端服务', 'quantai.restartServer', 'debug-restart'),
         ];
@@ -53,23 +42,11 @@ export class StatusProvider implements vscode.TreeDataProvider<vscode.TreeItem> 
         vscode.TreeItem | undefined | null | void
     >();
     readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
-    private readonly _pollTimer: ReturnType<typeof setInterval>;
     private aiipOnline: boolean | null = null;
     private healthFailureStreak = 0;
 
-    constructor() {
-        this._pollTimer = setInterval(() => { void this.pollHealth(); }, 3000);
-        void this.pollHealth();
-    }
-
-    refresh(): void { this._onDidChangeTreeData.fire(); }
-    dispose(): void {
-        clearInterval(this._pollTimer);
-        this._onDidChangeTreeData.dispose();
-    }
-
-    private async pollHealth(): Promise<void> {
-        const online = await healthCheck().catch(() => false);
+    /** The extension owns the single health probe; the sidebar only renders it. */
+    setBackendOnline(online: boolean): void {
         if (online) {
             this.healthFailureStreak = 0;
             if (this.aiipOnline === true) return;
@@ -84,9 +61,13 @@ export class StatusProvider implements vscode.TreeDataProvider<vscode.TreeItem> 
         this.refresh();
     }
 
+    refresh(): void { this._onDidChangeTreeData.fire(); }
+    dispose(): void {
+        this._onDidChangeTreeData.dispose();
+    }
+
     getTreeItem(el: vscode.TreeItem): vscode.TreeItem { return el; }
     async getChildren(): Promise<vscode.TreeItem[]> {
-        if (this.aiipOnline === null) await this.pollHealth();
         const aiipOnline = this.aiipOnline === true;
         const aiipLabel = this.aiipOnline === null
             ? 'AIIP: 检测中'

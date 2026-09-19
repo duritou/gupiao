@@ -20,6 +20,9 @@ PAPER_MOMENTUM_PROBE_MIN_RAW_SCORE = 60.0
 PAPER_MOMENTUM_PROBE_MIN_DISCOVERY_SCORE = 60.0
 PAPER_MOMENTUM_PROBE_MIN_CHANGE_PCT = 0.3
 PAPER_MOMENTUM_PROBE_MAX_CHANGE_PCT = 4.5
+PAPER_CONDITIONAL_BUY_MIN_SCORE = 55.0
+PAPER_CONDITIONAL_BUY_MIN_TECHNICAL_SCORE = 55.0
+PAPER_CONDITIONAL_BUY_MAX_CANDIDATES = 10
 PAPER_NEUTRAL_EXIT_AFTER_DAYS = 5
 PAPER_NEUTRAL_FORCE_EXIT_AFTER_DAYS = 8
 PAPER_NEUTRAL_EXIT_SCORE = 55.0
@@ -298,6 +301,114 @@ def momentum_probe_rejection_reason(decision: dict[str, Any]) -> str:
 def is_momentum_probe_approved(decision: dict[str, Any]) -> bool:
     """Return whether a fresh quote confirms the small observation entry."""
     return momentum_probe_rejection_reason(decision) == ""
+
+
+def _technical_observation(decision: dict[str, Any]) -> tuple[float, int]:
+    """Read the frozen technical evidence used by the conditional lane."""
+    evidence = _decision_evidence(decision)
+    technical = evidence.get("technical") or {}
+    score = float(
+        decision.get("technical_score")
+        or technical.get("score")
+        or technical.get("raw_score")
+        or 0
+    )
+    confirmations = int(
+        decision.get("technical_confirmations")
+        or technical.get("confirmations")
+        or 0
+    )
+    return score, confirmations
+
+
+def conditional_probe_rank(decision: dict[str, Any]) -> float:
+    """Rank conditional candidates without changing the scanner ranking."""
+    technical_score, _ = _technical_observation(decision)
+    return max(momentum_probe_rank(decision), technical_score)
+
+
+def conditional_probe_candidate_rejection_reason(decision: dict[str, Any]) -> str:
+    """Validate a frozen candidate before its minute-by-minute quote check.
+
+    This is deliberately a paper-only observation lane.  It can tolerate
+    missing overnight market context because the next step requires a fresh
+    exchange quote, but it never bypasses a bearish deep result or hard
+    fundamental/data risk.
+    """
+    if not bool(getattr(settings, "PAPER_CONDITIONAL_BUY_ENABLED", True)):
+        return "conditional_probe_disabled"
+    name = str(decision.get("stock_name") or "").strip().upper()
+    if "ST" in name or name.startswith(("N", "C")):
+        return "conditional_probe_restricted_stock"
+    status = str(decision.get("status") or "").strip().lower()
+    if bool(decision.get("is_suspended")) or status in {
+        "suspended", "delisted", "terminated",
+    }:
+        return "conditional_probe_stock_not_tradable"
+    deep_rating = str(decision.get("deep_rating") or "").strip().lower()
+    if deep_rating and deep_rating not in {"hold", "neutral"}:
+        return "conditional_probe_deep_result_is_authoritative"
+    if decision_direction(decision) not in {"neutral", "buy"}:
+        return "conditional_probe_requires_neutral_or_buy"
+
+    evidence = _decision_evidence(decision)
+    guard = evidence.get("score_guard") or {}
+    reasons = set(
+        decision.get("score_guard_reasons")
+        or guard.get("reasons")
+        or []
+    )
+    hard_blocks = {
+        "fundamental_loss_risk",
+        "market_data_degraded",
+        "technical_data_stale",
+        "technical_data_insufficient",
+    }
+    if reasons & hard_blocks:
+        return "conditional_probe_hard_risk_gate_failed"
+    if conditional_probe_rank(decision) < PAPER_CONDITIONAL_BUY_MIN_SCORE:
+        return "conditional_probe_score_too_low"
+    technical_score, confirmations = _technical_observation(decision)
+    if technical_score < PAPER_CONDITIONAL_BUY_MIN_TECHNICAL_SCORE:
+        return "conditional_probe_technical_score_too_low"
+    buy_signals = int(decision.get("buy_signals") or 0)
+    sell_signals = int(decision.get("sell_signals") or 0)
+    if confirmations < 1 or buy_signals < 1:
+        return "conditional_probe_technical_confirmation_too_weak"
+    if sell_signals > buy_signals:
+        return "conditional_probe_technical_balance_negative"
+    return ""
+
+
+def is_conditional_probe_candidate(decision: dict[str, Any]) -> bool:
+    """Return whether a persisted row merits fresh quote coverage."""
+    return conditional_probe_candidate_rejection_reason(decision) == ""
+
+
+def conditional_probe_rejection_reason(decision: dict[str, Any]) -> str:
+    """Require a fresh positive quote before the conditional paper fill."""
+    reason = conditional_probe_candidate_rejection_reason(decision)
+    if reason:
+        return reason
+    price = float(decision.get("market_price") or 0)
+    if price <= 0:
+        return "conditional_probe_market_price_missing"
+    change_pct = float(decision.get("market_change_pct") or 0)
+    if change_pct < PAPER_MOMENTUM_PROBE_MIN_CHANGE_PCT:
+        return "conditional_probe_realtime_strength_too_weak"
+    if change_pct > PAPER_MOMENTUM_PROBE_MAX_CHANGE_PCT:
+        return "conditional_probe_realtime_move_too_extended"
+    if float(decision.get("market_volume_ratio") or 0) < 1.0:
+        return "conditional_probe_realtime_volume_ratio_too_low"
+    active_ratio = decision.get("market_active_volume_ratio")
+    if active_ratio is None or float(active_ratio) <= 0:
+        return "conditional_probe_realtime_buying_not_confirmed"
+    return ""
+
+
+def is_conditional_probe_approved(decision: dict[str, Any]) -> bool:
+    """Return whether the current minute quote triggers the paper lane."""
+    return conditional_probe_rejection_reason(decision) == ""
 
 
 def bounded_position_cap(requested: float | None = None) -> float:

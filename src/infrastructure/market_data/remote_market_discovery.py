@@ -528,6 +528,18 @@ class RemoteMarketDiscovery:
 
     async def fetch_live_quotes(self, codes: list[str]) -> dict[str, dict]:
         """Fetch causal quotes, with the stock skill as a bounded fallback."""
+        # Normalize and de-duplicate within this fetch.  The same symbol can
+        # arrive through the normal, momentum, and conditional lanes; sending
+        # it repeatedly wastes provider capacity and creates avoidable rate
+        # pressure.  No quote is reused across minute ticks, so freshness and
+        # causal timestamp checks remain unchanged.
+        normalized_codes = list(dict.fromkeys(
+            normalized
+            for code in codes
+            if (normalized := normalize_a_share_code(code))
+        ))
+        if not normalized_codes:
+            return {}
         async with httpx.AsyncClient(
             timeout=self.timeout_seconds,
             headers={"User-Agent": UA},
@@ -538,7 +550,10 @@ class RemoteMarketDiscovery:
                 keepalive_expiry=15.0,
             ),
         ) as client:
-            batches = [codes[index:index + 60] for index in range(0, len(codes), 60)]
+            batches = [
+                normalized_codes[index:index + 60]
+                for index in range(0, len(normalized_codes), 60)
+            ]
             # Sequential batches are intentional: five parallel requests to
             # Tencent often trigger disconnects or local socket protection.
             results: list[dict[str, dict] | Exception] = []
@@ -553,10 +568,7 @@ class RemoteMarketDiscovery:
                 if not isinstance(result, Exception)
                 for code, quote in result.items()
             }
-            missing = [
-                code for code in codes
-                if normalize_a_share_code(code) not in quotes
-            ]
+            missing = [code for code in normalized_codes if code not in quotes]
             if missing and self.stock_skill_enabled:
                 from src.infrastructure.market_data.stock_skill_bridge import (
                     fetch_tencent_quotes,
@@ -571,6 +583,61 @@ class RemoteMarketDiscovery:
                         timeout_seconds=self.timeout_seconds,
                     )
                     quotes.update(fallback)
+            # The batch Tencent endpoint occasionally returns a partial set
+            # (or is locally blocked) even while the single-symbol provider
+            # chain is healthy.  Execution must not stop at that partial
+            # response: retry the small intraday candidate set through the
+            # SourceManager's Tencent/TickFlow/Sina chain.  Tushare is
+            # deliberately excluded here because its rt_min endpoint has a
+            # strict daily request budget and is not needed for live quotes.
+            missing = [code for code in normalized_codes if code not in quotes]
+            if missing and len(normalized_codes) <= 30:
+                from src.infrastructure.market_data.source_manager import (
+                    source_manager,
+                )
+
+                semaphore = asyncio.Semaphore(4)
+
+                async def fetch_one(code: str) -> tuple[str, dict | None]:
+                    async with semaphore:
+                        try:
+                            quote, provenance = await source_manager.get_realtime_quote(
+                                code,
+                                excluded_providers={"tushare"},
+                            )
+                        except Exception:
+                            return code, None
+                        if not quote:
+                            return code, None
+                        normalized = dict(quote)
+                        normalized["source"] = str(
+                            normalized.get("source")
+                            or getattr(provenance, "provider", "")
+                            or ""
+                        )
+                        normalized["fetched_at"] = str(
+                            normalized.get("fetched_at")
+                            or getattr(provenance, "fetched_at", "")
+                            or datetime.now(timezone.utc).isoformat()
+                        )
+                        normalized["exchange_timestamp"] = str(
+                            normalized.get("exchange_timestamp")
+                            or normalized.get("exchange_at")
+                            or ""
+                        )
+                        normalized["data_date"] = str(
+                            normalized.get("data_date")
+                            or getattr(provenance, "data_date", "")
+                            or ""
+                        )
+                        return normalize_a_share_code(code), normalized
+
+                fallback_results = await asyncio.gather(
+                    *(fetch_one(code) for code in missing)
+                )
+                for code, quote in fallback_results:
+                    if quote:
+                        quotes[code] = quote
             if not quotes and results:
                 first_error = next(
                     (result for result in results if isinstance(result, Exception)),

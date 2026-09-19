@@ -352,16 +352,6 @@ class AlertIntelligenceEngine:
                     level=AlertLevel.P2 if nb_flow < 0 else AlertLevel.P3,
                 ))
 
-            # Hot sectors
-            for sector in market_data.get("hot_sectors", [])[:3]:
-                if sector.get("score", 50) >= 85:
-                    all_alerts.append(self.generate_from_market(
-                        "板块热点", f"🔥 {sector['name']}板块活跃",
-                        f"{sector['name']}行业评分{sector['score']:.0f}，状态{sector.get('status', '活跃')}。",
-                        sentiment_score=sector.get("score", 50),
-                        level=AlertLevel.P3,
-                    ))
-
         # 4. Scanner top opportunities
         if scanner_candidates:
             for c in scanner_candidates[:3]:

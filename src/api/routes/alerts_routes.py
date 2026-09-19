@@ -4,7 +4,9 @@ Alerts are generated from real AI decisions in the journal.
 Strong signals (fusion >= 80) → P1, moderate (fusion >= 65) → P2.
 """
 
+import asyncio
 from datetime import date
+from time import monotonic
 
 from fastapi import APIRouter, Query
 from pydantic import BaseModel
@@ -12,6 +14,14 @@ from pydantic import BaseModel
 from src.api.routes.journal_utils import latest_per_stock
 
 router = APIRouter(tags=["alerts"], prefix="/alerts")
+
+# Several desktop surfaces ask for the same alert snapshot at nearly the same
+# time (Dashboard, Alert Center, and the proactive notifier).  Keep the cache
+# deliberately short: this removes duplicate journal scans without changing
+# alert freshness or any alert/selection rule.
+_ALERT_CACHE_TTL_SECONDS = 5.0
+_alert_cache: dict[str, tuple[float, list[dict]]] = {}
+_alert_inflight: dict[str, asyncio.Task[list[dict]]] = {}
 
 
 class ActionRequest(BaseModel):
@@ -80,6 +90,30 @@ def _build_alerts_from_journal(decision_date: str = ""):
     return sorted(alerts, key=lambda alert: alert["score"], reverse=True)
 
 
+async def _get_alerts_snapshot(decision_date: str = "") -> list[dict]:
+    """Share one journal scan across concurrent alert endpoints."""
+    cache_key = decision_date or "__recent__"
+    now = monotonic()
+    cached = _alert_cache.get(cache_key)
+    if cached and now - cached[0] < _ALERT_CACHE_TTL_SECONDS:
+        return list(cached[1])
+
+    pending = _alert_inflight.get(cache_key)
+    if pending is None or pending.done():
+        pending = asyncio.create_task(
+            asyncio.to_thread(_build_alerts_from_journal, decision_date)
+        )
+        _alert_inflight[cache_key] = pending
+
+    try:
+        alerts = await pending
+        _alert_cache[cache_key] = (monotonic(), alerts)
+        return list(alerts)
+    finally:
+        if _alert_inflight.get(cache_key) is pending:
+            _alert_inflight.pop(cache_key, None)
+
+
 def _build_today_focus(alerts: list) -> dict:
     """Build today_focus section for Dashboard / Morning Brief."""
     p1 = [a for a in alerts if a["level"] == "P1"]
@@ -108,7 +142,7 @@ def _build_today_focus(alerts: list) -> dict:
 @router.get("/feed")
 async def get_alert_feed():
     """Alert feed from real pipeline decisions."""
-    alerts = _build_alerts_from_journal()
+    alerts = await _get_alerts_snapshot()
     p1 = [a for a in alerts if a["level"] == "P1"]
     return {
         "alerts": alerts[:30],
@@ -122,7 +156,7 @@ async def get_alert_feed():
 
 @router.get("")
 async def get_alerts(level: str = Query(None), limit: int = Query(50, ge=1, le=100)):
-    alerts = _build_alerts_from_journal()
+    alerts = await _get_alerts_snapshot()
     if level:
         alerts = [a for a in alerts if a["level"] == level]
     return {"alerts": alerts[:limit], "total": len(alerts)}
@@ -132,7 +166,7 @@ async def get_alerts(level: str = Query(None), limit: int = Query(50, ge=1, le=1
 async def get_today_alerts():
     """Today's alert summary — for Dashboard Today Focus."""
     today = date.today().isoformat()
-    alerts = _build_alerts_from_journal(today)
+    alerts = await _get_alerts_snapshot(today)
     return {
         "date": today,
         "alerts": alerts[:20],
@@ -145,7 +179,7 @@ async def get_today_alerts():
 
 @router.get("/stats")
 async def get_alert_stats():
-    alerts = _build_alerts_from_journal()
+    alerts = await _get_alerts_snapshot()
     return {
         "total_alerts": len(alerts),
         "by_level": {
@@ -159,10 +193,11 @@ async def get_alert_stats():
 
 @router.get("/recent")
 async def get_recent_alerts(limit: int = Query(50, ge=1, le=100)):
-    return {"alerts": _build_alerts_from_journal()[:limit]}
+    alerts = await _get_alerts_snapshot()
+    return {"alerts": alerts[:limit]}
 
 
 @router.get("/unread-count")
 async def unread_count():
-    alerts = _build_alerts_from_journal(date.today().isoformat())
+    alerts = await _get_alerts_snapshot(date.today().isoformat())
     return {"unread": len(alerts), "urgent": sum(1 for a in alerts if a["level"] == "P1")}

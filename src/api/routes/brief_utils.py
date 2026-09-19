@@ -8,11 +8,8 @@ from datetime import datetime
 from time import monotonic
 from typing import Any
 
-from src.api.routes.journal_utils import (
-    brief_date,
-    get_journal_decisions,
-    recommendation_from_score,
-)
+from src.ai_os.recommendation_quality import is_publishable_recommendation, sort_decisions
+from src.api.routes.journal_utils import brief_date, latest_per_stock, recommendation_from_score
 from src.infrastructure.market_data.vibe_provider import get_vibe_provider
 
 _BRIEF_CACHE_SECONDS = 300
@@ -106,7 +103,8 @@ def _brief_data_state(
 
 
 async def _build_real_brief_uncached(force_refresh: bool = False) -> dict:
-    from src.api.routes.market_routes import market_overview, market_sectors
+    from src.api.routes.market_routes import market_overview
+    from src.infrastructure.storage.market_database import market_db
 
     global _brief_cache
     today = brief_date()
@@ -118,15 +116,31 @@ async def _build_real_brief_uncached(force_refresh: bool = False) -> dict:
     ):
         return {**_brief_cache[2], "cached": True}
 
+    # A brief is a current-run surface.  Reading the most recent journal rows
+    # without a date/run boundary allows a previous technical candidate to be
+    # promoted into today's "opportunities" card after a new pipeline run.
+    pipeline_audit = await _bounded(
+        asyncio.to_thread(market_db.get_latest_pipeline_run_audit),
+        {},
+        _BRIEF_DATABASE_TIMEOUT_SECONDS,
+    )
+    decision_date = str(
+        (pipeline_audit or {}).get("decision_date") or today
+    ).strip()
     decisions = await _bounded(
-        asyncio.to_thread(get_journal_decisions, limit=30),
+        asyncio.to_thread(market_db.get_decisions_for_date, decision_date, 5000),
+        [],
+        _BRIEF_DATABASE_TIMEOUT_SECONDS,
+    )
+    decisions = sort_decisions(latest_per_stock(decisions))
+    pattern_watchlist = await _bounded(
+        asyncio.to_thread(market_db.get_two_yang_one_yin_candidates, 5),
         [],
         _BRIEF_DATABASE_TIMEOUT_SECONDS,
     )
     vibe = get_vibe_provider()
-    market, sectors_payload, sentiment_result, top_volume = await asyncio.gather(
+    market, sentiment_result, top_volume = await asyncio.gather(
         _bounded(market_overview(), {}, 4.0),
-        _bounded(market_sectors(), {}, 3.0),
         _bounded(
             _get_short_term_sentiment(vibe),
             ({}, {"provider": "unavailable", "source_layer": "optional_timeout"}),
@@ -141,25 +155,15 @@ async def _build_real_brief_uncached(force_refresh: bool = False) -> dict:
     sentiment_lite, sentiment_metadata = sentiment_result
     market_available = bool((market.get("_data") or {}).get("available"))
     market_regime = _market_regime_from_overview(market)
-    hot_sectors = sectors_payload.get("sectors", [])[:5]
-    sectors_live = bool(sectors_payload.get("is_live"))
 
     component_status = {
         "market": market_available,
-        "sectors_live": sectors_live,
         "decision_journal": bool(decisions),
         "market_regime": bool((market or {}).get("market_regime")),
         "vibe_sentiment": bool(sentiment_lite),
         "native_sentiment": sentiment_metadata.get("provider") == "eastmoney",
         "vibe_volume": bool(top_volume),
     }
-    from src.infrastructure.storage.market_database import market_db
-
-    pipeline_audit = await _bounded(
-        asyncio.to_thread(market_db.get_latest_pipeline_run_audit),
-        {},
-        _BRIEF_DATABASE_TIMEOUT_SECONDS,
-    )
     pipeline_acceptance = {}
     if isinstance(pipeline_audit, dict):
         pipeline_acceptance = {
@@ -173,6 +177,7 @@ async def _build_real_brief_uncached(force_refresh: bool = False) -> dict:
             "learning_status": pipeline_audit.get("learning_status", "unverified"),
             "reason_codes": pipeline_audit.get("reason_codes") or [],
             "target_trade_date": pipeline_audit.get("target_trade_date", ""),
+            "decision_date": decision_date,
         }
         component_status["pipeline_acceptance"] = (
             pipeline_acceptance.get("acceptance_status") == "pass"
@@ -184,7 +189,11 @@ async def _build_real_brief_uncached(force_refresh: bool = False) -> dict:
     watchlist = []
     risks = []
     considered_stocks = []
-    for d in decisions[:10]:
+    for d in decisions:
+        # Technical-watchlist rows remain available through scanner continuity
+        # views, but they are not today's published research decisions.
+        if not is_publishable_recommendation(d):
+            continue
         score = float(d.get("ai_score") or 50)
         direction = str(d.get("direction") or "neutral")
         stored_recommendation = str(d.get("recommendation") or "").strip()
@@ -227,8 +236,10 @@ async def _build_real_brief_uncached(force_refresh: bool = False) -> dict:
             "ranking_score": round(float(d.get("ranking_score") or score), 1),
             "primary_score": round(float(d.get("primary_score") or score), 1),
             "display_state": d.get("display_state", ""),
+            "recommendation_tier": d.get("recommendation_tier", ""),
+            "run_id": d.get("run_id") or pipeline_acceptance.get("run_id", ""),
         }
-        if len(considered_stocks) < 5 and not bool(d.get("publication_blocked")):
+        if len(considered_stocks) < 5:
             considered_stocks.append(item)
         if score >= 65 and direction == "buy":
             opportunities.append(item)
@@ -256,6 +267,7 @@ async def _build_real_brief_uncached(force_refresh: bool = False) -> dict:
 
     result = {
         "date": today,
+        "decision_date": decision_date,
         "generated_at": datetime.now().isoformat(timespec="seconds"),
         "data_source": "decision_journal + market_overview + vibe_research",
         "data_status": {
@@ -273,9 +285,11 @@ async def _build_real_brief_uncached(force_refresh: bool = False) -> dict:
             f"Market breadth: {market.get('market_breadth', {}).get('up', 0)} up / "
             f"{market.get('market_breadth', {}).get('down', 0)} down."
         ),
-        "hot_sectors": hot_sectors,
         "top_opportunities": opportunities[:8],
         "considered_stocks": considered_stocks,
+        # Additional research-only candidates.  The original five decisions
+        # above remain untouched and continue to drive paper execution.
+        "pattern_watchlist": pattern_watchlist,
         "watchlist": watchlist[:8],
         "risk_warnings": risks[:5],
         "one_liner": one_liner,

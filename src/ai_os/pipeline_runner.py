@@ -53,9 +53,12 @@ from src.ai_os.recommendation_quality import (
 )
 from src.ai_os.strategy_version import create_strategy_run_metadata
 from src.ai_os.trading_policy import (
-    PAPER_MOMENTUM_PROBE_MAX_CANDIDATES,
+    PAPER_CONDITIONAL_BUY_MAX_CANDIDATES,
     PAPER_LIVENESS_LOG_LIMIT,
+    PAPER_MOMENTUM_PROBE_MAX_CANDIDATES,
+    conditional_probe_rank,
     is_deep_buy_approved,
+    is_conditional_probe_candidate,
     is_momentum_probe_candidate,
     momentum_probe_rank,
     paper_liveness_status,
@@ -775,7 +778,7 @@ def _execution_candidates(
             decision.get("actionable")
             if "actionable" in decision
             else is_deep_buy_approved(decision)
-        )
+        ) or is_deep_buy_approved(decision)
         if actionable and code and code not in seen:
             selected.append(decision)
             seen.add(code)
@@ -821,6 +824,27 @@ def _execution_candidates(
         reverse=True,
     )[:PAPER_MOMENTUM_PROBE_MAX_CANDIDATES]
     for decision in legacy_probe_candidates:
+        code = str(decision.get("stock_code") or "").strip().upper()
+        if code and code not in seen:
+            selected.append(decision)
+            seen.add(code)
+    conditional_candidates = sorted(
+        (
+            decision
+            for decision in decisions
+            if (
+                observation_scope is None
+                or str(decision.get("stock_code") or "").strip().upper()
+                in observation_scope
+            )
+            and is_conditional_probe_candidate(decision)
+            and not is_flow_probe_candidate(decision)
+            and not is_momentum_probe_candidate(decision)
+        ),
+        key=conditional_probe_rank,
+        reverse=True,
+    )[:PAPER_CONDITIONAL_BUY_MAX_CANDIDATES]
+    for decision in conditional_candidates:
         code = str(decision.get("stock_code") or "").strip().upper()
         if code and code not in seen:
             selected.append(decision)
@@ -928,6 +952,7 @@ async def _execute_paper_cycle(
     decisions: list[dict],
     *,
     execute_paper_trades: bool,
+    intraday_monitor: bool = False,
 ) -> dict:
     """Mark the portfolio and execute only already-produced decisions.
 
@@ -958,20 +983,71 @@ async def _execute_paper_cycle(
         signal_at=now_iso,
         data_cutoff_at=now_iso,
     )
-    metadata_codes = sorted({
-        str(decision.get("stock_code") or "").strip().upper()
-        for decision in decisions
-        if decision.get("stock_code")
-    })
-    status_snapshot = await asyncio.to_thread(
-        market_db.sync_stock_metadata_snapshot,
-        date.today().isoformat(),
-        codes=metadata_codes,
-    )
+    # The minute monitor only executes a bounded candidate set.  Refreshing
+    # metadata for every persisted scan row here made one cycle longer than a
+    # minute, so APScheduler skipped the next run (max_instances=1).  Keep the
+    # same metadata gate, but scope the refresh to the exact execution lane.
+    if execute_paper_trades and intraday_monitor:
+        held_codes = {
+            str(position.get("stock_code") or "").strip().upper()
+            for position in paper_positions
+            if position.get("stock_code")
+        }
+        monitor_metadata_decisions = _execution_candidates(
+            decisions,
+            held_codes,
+            observation_codes=None,
+        )
+        metadata_codes = sorted({
+            str(decision.get("stock_code") or "").strip().upper()
+            for decision in monitor_metadata_decisions
+            if decision.get("stock_code")
+        })
+    else:
+        metadata_codes = sorted({
+            str(decision.get("stock_code") or "").strip().upper()
+            for decision in decisions
+            if decision.get("stock_code")
+        })
+    metadata_date = date.today().isoformat()
+    # The minute monitor must not call BaoStock for the same metadata on every
+    # tick.  The opening/scan paths keep the authoritative refresh, while the
+    # monitor reuses the point-in-time snapshot and only fills genuinely
+    # missing codes.  An empty candidate set must also avoid the database
+    # method's "codes=None means full universe" behavior.
     current_metadata = await asyncio.to_thread(
         market_db.get_stock_metadata_snapshot,
-        date.today().isoformat(),
+        metadata_date,
     )
+    missing_metadata_codes = [
+        code for code in metadata_codes if code not in current_metadata
+    ]
+    if not metadata_codes:
+        status_snapshot = {
+            "status": "no_execution_candidates",
+            "as_of_date": metadata_date,
+            "stock_count": 0,
+            "stored_count": 0,
+            "errors": [],
+        }
+    elif not intraday_monitor or missing_metadata_codes:
+        status_snapshot = await asyncio.to_thread(
+            market_db.sync_stock_metadata_snapshot,
+            metadata_date,
+            codes=metadata_codes if not intraday_monitor else missing_metadata_codes,
+        )
+        current_metadata = await asyncio.to_thread(
+            market_db.get_stock_metadata_snapshot,
+            metadata_date,
+        )
+    else:
+        status_snapshot = {
+            "status": "cached",
+            "as_of_date": metadata_date,
+            "stock_count": len(metadata_codes),
+            "stored_count": len(metadata_codes),
+            "errors": [],
+        }
     _apply_current_execution_metadata(decisions, current_metadata)
     pre_trade_mark = await refresh_paper_portfolio_quotes()
     for decision in decisions:
@@ -1010,14 +1086,20 @@ async def _execute_paper_cycle(
             str(position.get("stock_code") or "").strip().upper()
             for position in market_db.get_paper_portfolio().get("positions", [])
         }
-        observation_limit = max(
-            1, int(getattr(settings, "SCANNER_AI_DEEP_ANALYSIS_COUNT", 5))
-        )
-        observation_codes = {
-            str(item.get("stock_code") or "").strip().upper()
-            for item in decisions[:observation_limit]
-            if item.get("stock_code")
-        }
+        if intraday_monitor:
+            # Recheck every persisted probe candidate during the minute loop.
+            # The helper still applies per-lane caps, so this broadens quote
+            # coverage without rescanning the universe or changing sizing.
+            observation_codes = None
+        else:
+            observation_limit = max(
+                1, int(getattr(settings, "SCANNER_AI_DEEP_ANALYSIS_COUNT", 5))
+            )
+            observation_codes = {
+                str(item.get("stock_code") or "").strip().upper()
+                for item in decisions[:observation_limit]
+                if item.get("stock_code")
+            }
         execution_decisions = _execution_candidates(
             decisions, held_codes, observation_codes=observation_codes
         )
@@ -1032,13 +1114,21 @@ async def _execute_paper_cycle(
                     settings, "STOCK_SKILL_BRIDGE_ENABLED", True
                 ),
             )
+            quote_attempts = getattr(settings, "PAPER_EXECUTION_QUOTE_ATTEMPTS", 8)
+            quote_retry_delay = getattr(
+                settings, "PAPER_EXECUTION_QUOTE_RETRY_DELAY_SECONDS", 1.25
+            )
+            if intraday_monitor:
+                # A minute loop needs a bounded retry budget.  The provider
+                # fallback above handles source diversity; repeated long
+                # batches only cause the next scheduled minute to be skipped.
+                quote_attempts = min(3, max(1, int(quote_attempts)))
+                quote_retry_delay = min(0.5, max(0.0, float(quote_retry_delay)))
             execution_quotes, causal_rejections = await fetch_post_signal_quotes(
                 execution_decisions,
                 execution_source.fetch_live_quotes,
-                attempts=getattr(settings, "PAPER_EXECUTION_QUOTE_ATTEMPTS", 8),
-                retry_delay_seconds=getattr(
-                    settings, "PAPER_EXECUTION_QUOTE_RETRY_DELAY_SECONDS", 1.25
-                ),
+                attempts=quote_attempts,
+                retry_delay_seconds=quote_retry_delay,
             )
         elif causal_reason:
             causal_rejections = [
@@ -1050,6 +1140,21 @@ async def _execute_paper_cycle(
                 }
                 for decision in execution_decisions
             ]
+
+    # Preserve the causal fetch result on the decision passed to the ledger.
+    # Previously a missing quote was flattened to blank fields, so the ledger
+    # could only report generic stale/future-date failures and hid whether the
+    # provider was absent, late, or rejected by the timestamp gate.
+    causal_reason_by_code = {
+        str(item.get("stock_code") or "").strip().upper(): str(
+            item.get("reason") or "missing_execution_quote"
+        )
+        for item in causal_rejections
+    }
+    for decision in execution_decisions:
+        code = str(decision.get("stock_code") or "").strip().upper()
+        if code in causal_reason_by_code and code not in execution_quotes:
+            decision["execution_quote_rejection_reason"] = causal_reason_by_code[code]
 
     for decision in decisions:
         quote = execution_quotes.get(decision["stock_code"])
@@ -1082,9 +1187,14 @@ async def _execute_paper_cycle(
         simulated_fill_requested_at = datetime.now().astimezone()
         from src.ai_os.paper_execution_service import paper_execution_service
 
+        # The opening path retains its historical full-decision audit.  The
+        # minute path must pass only the bounded execution candidates; sending
+        # all 300 persisted decisions to the ledger created hundreds of
+        # rejection rows per tick and made the next minute miss its deadline.
+        paper_decisions = execution_decisions if intraday_monitor else decisions
         paper_result = await asyncio.to_thread(
             paper_execution_service.execute,
-            decisions,
+            paper_decisions,
             date.today().isoformat(),
             initial_capital=100000.0,
             max_position_pct=settings.MAX_POSITION_PCT,
@@ -1116,6 +1226,7 @@ async def _execute_paper_cycle(
         "trading_calendar_source": trading_day_status.source,
         "trading_calendar_verified": trading_day_verified,
         "trading_status_snapshot": status_snapshot,
+        "intraday_monitor": intraday_monitor,
     }
 
 
@@ -1214,12 +1325,20 @@ class AIPipelineRunner:
                 codes, save_to_journal, **kwargs
             )
 
-    async def execute_persisted_strategy(self) -> dict:
-        """Execute today's newest persisted plan without rescanning the market."""
+    async def execute_persisted_strategy(
+        self, *, intraday_monitor: bool = False,
+    ) -> dict:
+        """Execute today's persisted plan without rescanning the market.
+
+        The continuous intraday task uses the same frozen decisions and paper
+        safeguards, but broadens live-quote coverage to all persisted probe
+        candidates so a watchlist signal can trigger later in the session.
+        """
         from src.api.routes.journal_utils import latest_per_stock
         from src.infrastructure.storage.market_database import market_db
 
-        async with self._run_lock:
+        async def execute_locked(*, intraday_monitor: bool) -> dict:
+            """Execute a frozen plan after the caller has acquired ``_run_lock``."""
             trade_date = date.today().isoformat()
             decisions = latest_per_stock(
                 market_db.get_decisions_for_date(trade_date, limit=5000)
@@ -1272,6 +1391,7 @@ class AIPipelineRunner:
             cycle = await _execute_paper_cycle(
                 decisions,
                 execute_paper_trades=True,
+                intraday_monitor=intraday_monitor,
             )
             paper_result = cycle["paper_result"]
             if paper_result["actions"]:
@@ -1316,6 +1436,11 @@ class AIPipelineRunner:
                     "trading_status_snapshot": cycle.get(
                         "trading_status_snapshot", {}
                     ),
+                    "intraday_monitor": intraday_monitor,
+                    "observation_scope": (
+                        "all_persisted_probe_candidates"
+                        if intraday_monitor else "configured_probe_scope"
+                    ),
                     "causal_quote_rejections": cycle["causal_rejections"],
                     "rejections": paper_result.get("rejections", []),
                 },
@@ -1324,6 +1449,26 @@ class AIPipelineRunner:
                 ],
                 "portfolio_mark": cycle["portfolio_mark"],
             }
+
+        # The minute monitor shares the pipeline lock with the scheduled
+        # opening/afternoon runs. It must never wait for or hold that lock:
+        # waiting would make APScheduler skip the next minute, while holding it
+        # during a slow provider call could delay the next full phase. A busy
+        # full run is a normal, safe outcome; the next tick retries the same
+        # frozen plan.
+        if intraday_monitor:
+            if self._run_lock.locked():
+                return {
+                    "status": "intraday_monitor_deferred_pipeline_busy",
+                    "paper_trades": [],
+                    "paper_execution": {
+                        "execution_status": "deferred_pipeline_busy",
+                    },
+                }
+            return await execute_locked(intraday_monitor=True)
+
+        async with self._run_lock:
+            return await execute_locked(intraday_monitor=False)
 
     async def _run_daily_pipeline_once(
         self,
@@ -2769,6 +2914,9 @@ class AIPipelineRunner:
             ),
             "exploration_candidate_count": sum(
                 is_momentum_probe_candidate(decision) for decision in decisions
+            ),
+            "conditional_candidate_count": sum(
+                is_conditional_probe_candidate(decision) for decision in decisions
             ),
             "new_buy_count": sum(
                 str(action.get("action") or "").upper() == "BUY"

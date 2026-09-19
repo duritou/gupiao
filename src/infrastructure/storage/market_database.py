@@ -55,9 +55,11 @@ from src.ai_os.trading_policy import (
     PAPER_MOMENTUM_PROBE_MAX_ENTRIES,
     PAPER_MOMENTUM_PROBE_POSITION_PCT,
     bounded_position_cap,
+    conditional_probe_rejection_reason,
     decision_direction,
     deep_buy_rejection_reason,
     is_buy_signal,
+    is_conditional_probe_candidate,
     is_deep_buy_approved,
     is_momentum_probe_candidate,
     momentum_probe_rank,
@@ -2635,6 +2637,130 @@ class MarketDatabase:
             for r in rows
         ]
 
+    def get_two_yang_one_yin_candidates(self, limit: int = 5) -> list[dict[str, Any]]:
+        """Return research-only candidates matching the two-yang-one-yin setup.
+
+        This deliberately lives beside the market-data queries rather than in
+        the scanner.  The result is an additional observation list for the
+        daily brief; it never changes scanner scores, ranking, or execution
+        decisions.
+        """
+        safe_limit = max(1, min(int(limit), 20))
+        with self._get_conn() as conn:
+            date_rows = conn.execute(
+                "SELECT DISTINCT trade_date FROM market_daily "
+                "ORDER BY trade_date DESC LIMIT 5"
+            ).fetchall()
+            dates = [str(row["trade_date"] or "") for row in date_rows if row["trade_date"]]
+            if len(dates) < 3:
+                return []
+            third_date, second_date, first_date = dates[:3]
+            flow_marks = ",".join("?" for _ in dates)
+            rows = conn.execute(
+                f"""
+                WITH flow_window AS (
+                    SELECT ts_code,
+                           SUM(main_net) AS five_day_main_net,
+                           COUNT(*) AS flow_rows
+                    FROM fund_flow_history
+                    WHERE trade_date IN ({flow_marks})
+                      AND data_status='available'
+                    GROUP BY ts_code
+                )
+                SELECT
+                    m1.ts_code,
+                    COALESCE(s.name, m1.ts_code) AS stock_name,
+                    m1.trade_date AS first_date,
+                    m2.trade_date AS second_date,
+                    m3.trade_date AS third_date,
+                    m1.open AS first_open,
+                    m1.close AS first_close,
+                    m1.change_pct AS first_change_pct,
+                    m2.open AS second_open,
+                    m2.close AS second_close,
+                    m2.change_pct AS second_change_pct,
+                    m3.close AS price,
+                    m3.change_pct AS third_change_pct,
+                    m1.amount AS first_amount,
+                    m2.amount AS second_amount,
+                    m3.amount AS third_amount,
+                    m3.turnover AS turnover,
+                    f3.main_net AS latest_main_net,
+                    flow_window.five_day_main_net,
+                    flow_window.flow_rows
+                FROM market_daily m1
+                JOIN market_daily m2
+                  ON m2.ts_code=m1.ts_code AND m2.trade_date=?
+                JOIN market_daily m3
+                  ON m3.ts_code=m1.ts_code AND m3.trade_date=?
+                JOIN fund_flow_history f3
+                  ON f3.ts_code=m1.ts_code
+                 AND f3.trade_date=?
+                 AND f3.data_status='available'
+                JOIN flow_window ON flow_window.ts_code=m1.ts_code
+                LEFT JOIN stock_basic s ON s.ts_code=m1.ts_code
+                WHERE m1.trade_date=?
+                  AND m1.change_pct > 0
+                  AND m2.change_pct < 0
+                  AND m3.change_pct > 0
+                  AND m1.amount > 0
+                  AND m2.amount < m1.amount
+                  AND m3.amount > m2.amount * 1.2
+                  AND m3.amount >= m1.amount * 0.9
+                  AND f3.main_net > 0
+                  AND flow_window.five_day_main_net > 0
+                  AND flow_window.flow_rows >= 5
+                  AND (
+                      m1.ts_code LIKE '%.SH'
+                      OR m1.ts_code LIKE '%.SZ'
+                  )
+                  AND COALESCE(s.name, '') NOT LIKE '%ST%'
+                  AND COALESCE(s.name, '') NOT LIKE '%退%'
+                ORDER BY (m3.amount / NULLIF(m2.amount, 0)) DESC,
+                         f3.main_net DESC
+                LIMIT ?
+                """,
+                [*dates, second_date, third_date, third_date, first_date, safe_limit],
+            ).fetchall()
+
+        result: list[dict[str, Any]] = []
+        for row in rows:
+            first_amount = float(row["first_amount"] or 0)
+            second_amount = float(row["second_amount"] or 0)
+            third_amount = float(row["third_amount"] or 0)
+            result.append(
+                {
+                    "stock_code": row["ts_code"],
+                    "stock_name": row["stock_name"] or row["ts_code"],
+                    "pattern": "two_yang_one_yin",
+                    "pattern_label": "两阳夹一阴",
+                    "pattern_state": "confirmed_watch",
+                    "pattern_dates": [
+                        row["first_date"], row["second_date"], row["third_date"]
+                    ],
+                    "price": round(float(row["price"] or 0), 3),
+                    "change_pct": round(float(row["third_change_pct"] or 0), 2),
+                    "turnover": round(float(row["turnover"] or 0), 4),
+                    "volume_ratio_middle": round(second_amount / first_amount, 2)
+                    if first_amount
+                    else 0.0,
+                    "volume_ratio_latest_vs_middle": round(third_amount / second_amount, 2)
+                    if second_amount
+                    else 0.0,
+                    "latest_main_net": round(float(row["latest_main_net"] or 0), 2),
+                    "five_day_main_net": round(float(row["five_day_main_net"] or 0), 2),
+                    "flow_rows": int(row["flow_rows"] or 0),
+                    "data_date": row["third_date"],
+                    "data_source": "local market_daily + fund_flow_history",
+                    "recommendation": "观察，不改变原有选股或买入规则",
+                    "rationale": (
+                        "阳线-阴线-阳线；中间回调缩量，第三日放量，"
+                        "最新主力净流入且近5日累计为正"
+                    ),
+                }
+            )
+        return result
+
     def get_daily_bars_until(
         self, code: str, end_date: str, limit: int = 250
     ) -> list[dict]:
@@ -3737,6 +3863,14 @@ class MarketDatabase:
         trade_date: str,
     ) -> tuple[dict | None, str]:
         """Independently enforce post-signal quote causality before a fill."""
+        # Pipeline quote acquisition records the precise causal rejection on
+        # the decision.  Return it before inspecting blank quote fields so the
+        # audit ledger does not mislabel a provider miss as a stale date.
+        recorded_rejection = str(
+            decision.get("execution_quote_rejection_reason") or ""
+        ).strip()
+        if recorded_rejection:
+            return None, recorded_rejection
         price = float(decision.get("market_price") or 0)
         price_date = str(decision.get("market_price_date") or "")
         source = str(decision.get("market_price_source") or "").strip()
@@ -4352,6 +4486,7 @@ class MarketDatabase:
                 elif (
                     code in held_codes
                     or is_momentum_probe_candidate(decision)
+                    or is_conditional_probe_candidate(decision)
                     or is_flow_probe_candidate(decision)
                 ):
                     reason = execution_status
@@ -4445,7 +4580,12 @@ class MarketDatabase:
                     flow_entry["tier"] == ExecutionTier.PROBE.value
                 )
                 legacy_probe_candidate = is_momentum_probe_candidate(d)
-                probe_candidate = flow_probe_candidate or legacy_probe_candidate
+                conditional_probe_candidate = is_conditional_probe_candidate(d)
+                probe_candidate = (
+                    flow_probe_candidate
+                    or legacy_probe_candidate
+                    or conditional_probe_candidate
+                )
                 if code not in positions:
                     if is_buy_signal(d) and not deep_approved and not probe_candidate:
                         rejection = {
@@ -4579,6 +4719,7 @@ class MarketDatabase:
                 is_deep_buy_approved(decision)
                 or is_flow_probe_candidate(decision)
                 or is_momentum_probe_candidate(decision)
+                or is_conditional_probe_candidate(decision)
                 for decision in decisions
             ) or any(code in quotes for code in positions)
             if strict_real_data and missing_position_quotes and actionable_quotes:
@@ -5203,8 +5344,14 @@ class MarketDatabase:
                     flow_entry["tier"] == ExecutionTier.PROBE.value
                 )
                 legacy_probe_candidate = is_momentum_probe_candidate(d)
-                probe_candidate = flow_probe_candidate or legacy_probe_candidate
+                conditional_probe_candidate = is_conditional_probe_candidate(d)
+                probe_candidate = (
+                    flow_probe_candidate
+                    or legacy_probe_candidate
+                    or conditional_probe_candidate
+                )
                 is_probe = False
+                is_conditional_probe = False
                 probe_reason = ""
                 flow_metadata_supplied = any(
                     key in d
@@ -5231,6 +5378,17 @@ class MarketDatabase:
                             )
                             continue
                         is_probe = True
+                    elif not deep_approved and conditional_probe_candidate:
+                        probe_reason = conditional_probe_rejection_reason(d)
+                        if not probe_reason and probe_entries >= probe_max_entries:
+                            probe_reason = "conditional_probe_entry_limit_reached"
+                        if probe_reason:
+                            record_buy_rejection(
+                                d, probe_reason, float(d.get("market_price") or 0)
+                            )
+                            continue
+                        is_probe = True
+                        is_conditional_probe = True
                     elif is_buy_signal(d) or (
                         str(d.get("pre_gate_direction") or "").lower() == "buy"
                         and flow_entry["tier"] == ExecutionTier.BLOCKED.value
@@ -5249,17 +5407,28 @@ class MarketDatabase:
                     else:
                         continue
                     if is_probe and probe_entries >= probe_max_entries:
-                        probe_reason = "flow_probe_entry_limit_reached"
+                        probe_reason = (
+                            "conditional_probe_entry_limit_reached"
+                            if is_conditional_probe
+                            else "flow_probe_entry_limit_reached"
+                        )
                 elif not deep_approved:
                     if not probe_candidate:
                         continue
-                    probe_reason = momentum_probe_rejection_reason(d)
+                    probe_reason = (
+                        conditional_probe_rejection_reason(d)
+                        if conditional_probe_candidate and not legacy_probe_candidate
+                        else momentum_probe_rejection_reason(d)
+                    )
                     if not probe_reason and probe_entries >= probe_max_entries:
                         probe_reason = "momentum_probe_entry_limit_reached"
                     if probe_reason:
                         record_buy_rejection(d, probe_reason, float(d.get("market_price") or 0))
                         continue
                     is_probe = True
+                    is_conditional_probe = (
+                        conditional_probe_candidate and not legacy_probe_candidate
+                    )
                 if probe_reason:
                     record_buy_rejection(
                         d,
@@ -5462,6 +5631,12 @@ class MarketDatabase:
                         buy_price, value,
                         (
                             (
+                                f"conditional_realtime_probe; "
+                                f"flow_state={flow_entry.get('flow_state')}; "
+                                f"max_position={order_position_cap:.0%}; min_cash=10%"
+                            )
+                            if strict_real_data and is_probe and is_conditional_probe else
+                            (
                                 f"flow_probe; flow_state={flow_entry.get('flow_state')}; "
                                 f"max_position={order_position_cap:.0%}; min_cash=10%"
                             )
@@ -5512,6 +5687,12 @@ class MarketDatabase:
                     "execution_at": fill_at,
                     "causality_status": meta.get("causality_status") or "non_strict",
                     "reason": (
+                        (
+                            f"conditional_realtime_probe; "
+                            f"flow_state={flow_entry.get('flow_state')}; "
+                            f"max_position={order_position_cap:.0%}"
+                        )
+                        if strict_real_data and is_probe and is_conditional_probe else
                         (
                             f"flow_probe; flow_state={flow_entry.get('flow_state')}; "
                             f"max_position={order_position_cap:.0%}"
@@ -6456,15 +6637,17 @@ class MarketDatabase:
         """Aggregate the latest completed local trading day without network I/O."""
         with self._get_conn() as conn:
             row = conn.execute(
-                """WITH daily_counts AS (
-                       SELECT trade_date, COUNT(*) AS row_count
+                """WITH recent_dates AS (
+                       SELECT trade_date
                        FROM market_daily
                        GROUP BY trade_date
-                   ), recent_counts AS (
-                       SELECT trade_date, row_count
-                       FROM daily_counts
                        ORDER BY trade_date DESC
                        LIMIT 10
+                   ), recent_counts AS (
+                       SELECT d.trade_date, COUNT(*) AS row_count
+                       FROM market_daily AS d
+                       INNER JOIN recent_dates AS r ON r.trade_date = d.trade_date
+                       GROUP BY d.trade_date
                    ), completed_day AS (
                        SELECT MAX(trade_date) AS trade_date
                        FROM recent_counts

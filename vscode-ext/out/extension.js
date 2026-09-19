@@ -47,18 +47,9 @@ const providers_1 = require("./sidebar/providers");
 const dashboard_1 = require("./pages/dashboard");
 const watchlist_1 = require("./pages/watchlist");
 const research_1 = require("./pages/research");
-const marketmap_1 = require("./pages/marketmap");
 const alerts_1 = require("./pages/alerts");
 const backtest_1 = require("./pages/backtest");
 const dailybrief_1 = require("./pages/dailybrief");
-const newsradar_1 = require("./pages/newsradar");
-const reports_1 = require("./pages/reports");
-const announcements_1 = require("./pages/announcements");
-const financials_1 = require("./pages/financials");
-const valuation_1 = require("./pages/valuation");
-const fundflow_1 = require("./pages/fundflow");
-const dragon_tiger_1 = require("./pages/dragon_tiger");
-const compare_1 = require("./pages/compare");
 const timeline_1 = require("./pages/timeline");
 const portfolio_1 = require("./pages/portfolio");
 const journal_1 = require("./pages/journal");
@@ -71,9 +62,12 @@ const health_1 = require("./pages/health");
 const connectors_1 = require("./pages/connectors");
 const decisions_1 = require("./pages/decisions");
 const review_lab_1 = require("./pages/review_lab");
-const view_1 = require("./review-lab/view");
 let serverProcess = null;
 let serverRestartTimer = null;
+let healthMonitorTimer = null;
+let pipelineSyncTimer = null;
+let pipelineSyncInFlight = null;
+let healthProbeInFlight = null;
 let serverRestartAttempts = 0;
 let stoppingServer = false;
 let isDeactivating = false;
@@ -83,16 +77,16 @@ let watchlist = [];
 let extensionContext = null;
 const pageCache = new Map();
 let navigationVersion = 0;
+let activePage = null;
 let activePageExtraData = undefined;
+let latestPipelineRunId = '';
 let backendPathPromptShown = false;
 const BACKEND_PATH_KEY = 'adaptiveInvestment.backendPath';
 const PAGE_CACHE_TTL_MS = {
     dashboard: 60_000,
     watchlist: 30_000,
     alerts: 30_000,
-    marketmap: 120_000,
     backtest: 300_000,
-    compare: 120_000,
     timeline: 120_000,
     portfolio: 60_000,
     dailybrief: 120_000,
@@ -106,6 +100,11 @@ const PAGE_CACHE_TTL_MS = {
     review_lab: 60_000,
 };
 const DAILY_BRIEF_TIMEOUT_MS = 10_000;
+const PIPELINE_SYNC_INTERVAL_MS = 30_000;
+const TODAY_ALERTS_CACHE_TTL_MS = 120_000;
+let todayAlertsCache = { data: null, fetchedAt: 0, pending: null };
+const STOCK_SNAPSHOT_CACHE_TTL_MS = 30_000;
+const stockSnapshotCache = new Map();
 // ============================================================
 // ACTIVATION
 // ============================================================
@@ -142,17 +141,37 @@ function activate(context) {
     void refreshRelease();
     const releaseTimer = setInterval(() => { void refreshRelease(); }, 30_000);
     context.subscriptions.push(releaseBar, { dispose: () => clearInterval(releaseTimer) });
-    context.subscriptions.push(vscode.commands.registerCommand('quantai.terminal', () => showTerminal('dashboard')), vscode.commands.registerCommand('quantai.dashboard', () => showTerminal('dashboard')), vscode.commands.registerCommand('quantai.watchlist', () => showTerminal('watchlist')), vscode.commands.registerCommand('quantai.research', () => showStockResearch()), vscode.commands.registerCommand('quantai.marketmap', () => showTerminal('marketmap')), vscode.commands.registerCommand('quantai.alerts', () => showTerminal('alerts')), vscode.commands.registerCommand('quantai.backtest', () => showTerminal('backtest')), vscode.commands.registerCommand('quantai.dailybrief', () => showTerminal('dailybrief')), vscode.commands.registerCommand('quantai.newsradar', () => showTerminal('newsradar')), vscode.commands.registerCommand('quantai.reports', () => showTerminal('reports')), vscode.commands.registerCommand('quantai.announcements', () => showTerminal('announcements')), vscode.commands.registerCommand('quantai.financials', () => showTerminal('financials')), vscode.commands.registerCommand('quantai.valuation', () => showTerminal('valuation')), vscode.commands.registerCommand('quantai.fundflow', () => showTerminal('fundflow')), vscode.commands.registerCommand('quantai.dragonTiger', () => showTerminal('dragon_tiger')), vscode.commands.registerCommand('quantai.compare', () => showTerminal('compare')), vscode.commands.registerCommand('quantai.timeline', () => showTerminal('timeline')), vscode.commands.registerCommand('quantai.portfolio', () => showTerminal('portfolio')), vscode.commands.registerCommand('quantai.journal', () => showTerminal('journal')), vscode.commands.registerCommand('quantai.resume', () => showTerminal('resume')), vscode.commands.registerCommand('quantai.profile', () => showTerminal('profile')), vscode.commands.registerCommand('quantai.aios', () => showTerminal('aios')), vscode.commands.registerCommand('quantai.taskmonitor', () => showTerminal('taskmonitor')), vscode.commands.registerCommand('quantai.replay', () => showTerminal('replay')), vscode.commands.registerCommand('quantai.reviewLab', () => showTerminal('review_lab')), vscode.commands.registerCommand('quantai.reviewLabSimulate', () => (0, view_1.showReviewSimulation)(context)), vscode.commands.registerCommand('quantai.reviewLabHistorical', () => (0, view_1.showHistoricalReview)(context)), vscode.commands.registerCommand('quantai.health', () => showTerminal('health')), vscode.commands.registerCommand('quantai.connectors', () => showTerminal('connectors')), vscode.commands.registerCommand('quantai.decisions', () => showTerminal('decisions')), vscode.commands.registerCommand('quantai.startServer', startServer), vscode.commands.registerCommand('quantai.stopServer', stopServer), vscode.commands.registerCommand('quantai.restartServer', restartServer), vscode.commands.registerCommand('quantai.configureBackend', configureBackend), vscode.commands.registerCommand('quantai.addWatch', addToWatchlist), vscode.commands.registerCommand('quantai.scan', () => showTerminal('dashboard')), vscode.commands.registerCommand('quantai.analyze', () => showStockResearch()), vscode.commands.registerCommand('quantai.knowledge', () => showTerminal('dashboard')), vscode.commands.registerCommand('quantai.status', async () => {
+    context.subscriptions.push(vscode.commands.registerCommand('quantai.terminal', () => showTerminal('dashboard')), vscode.commands.registerCommand('quantai.dashboard', () => showTerminal('dashboard')), vscode.commands.registerCommand('quantai.watchlist', () => showTerminal('watchlist')), vscode.commands.registerCommand('quantai.alerts', () => showTerminal('alerts')), vscode.commands.registerCommand('quantai.backtest', () => showTerminal('backtest')), vscode.commands.registerCommand('quantai.dailybrief', () => showTerminal('dailybrief')), vscode.commands.registerCommand('quantai.timeline', () => showTerminal('timeline')), vscode.commands.registerCommand('quantai.portfolio', () => showTerminal('portfolio')), vscode.commands.registerCommand('quantai.journal', () => showTerminal('journal')), vscode.commands.registerCommand('quantai.resume', () => showTerminal('resume')), vscode.commands.registerCommand('quantai.profile', () => showTerminal('profile')), vscode.commands.registerCommand('quantai.aios', () => showTerminal('aios')), vscode.commands.registerCommand('quantai.taskmonitor', () => showTerminal('taskmonitor')), vscode.commands.registerCommand('quantai.replay', () => showTerminal('replay')), vscode.commands.registerCommand('quantai.reviewLab', () => showTerminal('review_lab')), vscode.commands.registerCommand('quantai.health', () => showTerminal('health')), vscode.commands.registerCommand('quantai.connectors', () => showTerminal('connectors')), vscode.commands.registerCommand('quantai.decisions', () => showTerminal('decisions')), vscode.commands.registerCommand('quantai.startServer', startServer), vscode.commands.registerCommand('quantai.stopServer', stopServer), vscode.commands.registerCommand('quantai.restartServer', restartServer), vscode.commands.registerCommand('quantai.configureBackend', configureBackend), vscode.commands.registerCommand('quantai.addWatch', addToWatchlist), vscode.commands.registerCommand('quantai.scan', () => showTerminal('dashboard')), vscode.commands.registerCommand('quantai.knowledge', () => showTerminal('dashboard')), vscode.commands.registerCommand('quantai.status', async () => {
         const ok = await backendIsOnline();
         vscode.window.showInformationMessage(ok ? 'AIIP: 后端运行中' : 'AIIP: 后端未启动');
     }));
     vscode.window.registerTreeDataProvider('quantai-actions', new providers_1.TerminalNavProvider());
     statusProvider = new providers_1.StatusProvider();
     context.subscriptions.push(vscode.window.registerTreeDataProvider('quantai-status', statusProvider), statusProvider);
-    checkAndStartServer();
+    void pollBackendStatus();
+    healthMonitorTimer = setInterval(() => { void pollBackendStatus(); }, 10_000);
+    context.subscriptions.push({ dispose: () => {
+            if (healthMonitorTimer)
+                clearInterval(healthMonitorTimer);
+            healthMonitorTimer = null;
+        } });
+    void pollPipelineVersion();
+    pipelineSyncTimer = setInterval(() => { void pollPipelineVersion(); }, PIPELINE_SYNC_INTERVAL_MS);
+    context.subscriptions.push({ dispose: () => {
+            if (pipelineSyncTimer)
+                clearInterval(pipelineSyncTimer);
+            pipelineSyncTimer = null;
+        } });
+    void checkAndStartServer();
 }
 function deactivate() {
     isDeactivating = true;
+    if (healthMonitorTimer)
+        clearInterval(healthMonitorTimer);
+    healthMonitorTimer = null;
+    if (pipelineSyncTimer)
+        clearInterval(pipelineSyncTimer);
+    pipelineSyncTimer = null;
     stopServer();
     stopAlertPolling();
 }
@@ -174,6 +193,8 @@ async function startServer() {
     const configuredRoot = extensionContext?.globalState.get(BACKEND_PATH_KEY) || '';
     const seeds = [
         configuredRoot,
+        constants_1.ADAPTIVE_BACKEND_ROOT,
+        constants_1.INVESTMENT_WORKSPACE_ROOT,
         ...(vscode.workspace.workspaceFolders ?? []).map(folder => folder.uri.fsPath),
         extensionContext ? extensionContext.extensionPath : '',
         process.cwd(),
@@ -196,6 +217,11 @@ async function startServer() {
     }
     backendPathPromptShown = false;
     statusBar.text = '$(sync~spin) Starting...';
+    const managed = process.platform === 'win32' && fs.existsSync(path.join(root, 'runtime', 'active-manifest.json'));
+    if (managed) {
+        await requestManagedRestart(root);
+        return;
+    }
     if (serverProcess?.exitCode !== null || serverProcess?.killed) {
         serverProcess = null;
     }
@@ -244,7 +270,7 @@ async function startServer() {
     }
     for (let i = 0; i < 30; i++) {
         await (0, client_1.sleep)(1000);
-        if (await (0, client_1.healthCheck)()) {
+        if (await probeBackend()) {
             serverRestartAttempts = 0;
             statusBar.text = '$(check) AIIP';
             statusProvider?.refresh();
@@ -257,12 +283,48 @@ async function startServer() {
     scheduleServerRestart();
 }
 async function backendIsOnline() {
-    if (await (0, client_1.healthCheck)())
+    if (await probeBackend())
         return true;
     // A service restart or Windows Defender scan can delay one probe. Confirm
     // the state before starting a second process or showing "not started".
     await (0, client_1.sleep)(250);
-    return (0, client_1.healthCheck)();
+    return probeBackend();
+}
+function probeBackend() {
+    if (healthProbeInFlight)
+        return healthProbeInFlight;
+    healthProbeInFlight = (0, client_1.healthCheck)()
+        .catch(() => false)
+        .finally(() => { healthProbeInFlight = null; });
+    return healthProbeInFlight;
+}
+async function pollBackendStatus() {
+    const online = await probeBackend();
+    statusProvider?.setBackendOnline(online);
+}
+async function pollPipelineVersion() {
+    if (pipelineSyncInFlight)
+        return pipelineSyncInFlight;
+    pipelineSyncInFlight = (async () => {
+        const snapshot = await (0, client_1.httpGet)('/ai-os/latest-run').catch(() => null);
+        const runId = String(snapshot?.run_id || '').trim();
+        if (!runId)
+            return;
+        const changed = Boolean(latestPipelineRunId && latestPipelineRunId !== runId);
+        latestPipelineRunId = runId;
+        if (!changed)
+            return;
+        // A completed pipeline is the cache boundary for every decision-facing
+        // page.  Refresh the visible page immediately so a prior run cannot
+        // remain on screen until the normal page TTL expires.
+        invalidatePageCache('dashboard', 'dailybrief', 'decisions', 'aios', 'journal', 'portfolio');
+        if (activePage && ['dashboard', 'dailybrief', 'decisions'].includes(activePage)) {
+            void forceRefreshPage(activePage, activePageExtraData, true);
+        }
+    })().finally(() => {
+        pipelineSyncInFlight = null;
+    });
+    return pipelineSyncInFlight;
 }
 function isBackendRoot(candidate) {
     return fs.existsSync(path.join(candidate, 'pyproject.toml'))
@@ -385,6 +447,22 @@ function scheduleServerRestart() {
     }, delayMs);
 }
 async function restartServer() {
+    const configuredRoot = extensionContext?.globalState.get(BACKEND_PATH_KEY) || '';
+    const seeds = [
+        configuredRoot,
+        constants_1.ADAPTIVE_BACKEND_ROOT,
+        constants_1.INVESTMENT_WORKSPACE_ROOT,
+        ...(vscode.workspace.workspaceFolders ?? []).map(folder => folder.uri.fsPath),
+        extensionContext ? extensionContext.extensionPath : '',
+        process.cwd(),
+    ].filter((candidate, index, all) => Boolean(candidate) && all.indexOf(candidate) === index);
+    const root = findBackendRoot(seeds);
+    const managed = Boolean(root && process.platform === 'win32'
+        && fs.existsSync(path.join(root, 'runtime', 'active-manifest.json')));
+    if (managed && root) {
+        await requestManagedRestart(root);
+        return;
+    }
     stopServer();
     // Kill orphaned companion processes from previous extension sessions.
     for (const port of [constants_1.ADAPTIVE_API_PORT]) {
@@ -402,11 +480,37 @@ async function restartServer() {
     serverRestartAttempts = 0;
     await startServer();
 }
+async function requestManagedRestart(root) {
+    const requestPath = path.join(root, 'runtime', 'restart-request.json');
+    const temporaryPath = `${requestPath}.${process.pid}.tmp`;
+    fs.writeFileSync(temporaryPath, JSON.stringify({
+        action: 'restart',
+        request_id: `${Date.now()}-${process.pid}`,
+        requested_at: new Date().toISOString(),
+    }));
+    fs.renameSync(temporaryPath, requestPath);
+    statusBar.text = '$(sync~spin) Restarting...';
+    statusProvider?.refresh();
+    for (let i = 0; i < 90; i++) {
+        await (0, client_1.sleep)(1000);
+        if (!fs.existsSync(requestPath) && await probeBackend()) {
+            serverRestartAttempts = 0;
+            statusBar.text = '$(check) AIIP';
+            statusProvider?.setBackendOnline(true);
+            startAlertPolling();
+            return;
+        }
+    }
+    statusBar.text = '$(error) AIIP';
+    statusProvider?.setBackendOnline(false);
+    vscode.window.showErrorMessage('AIIP 托管重启超时，请查看 adaptive-autostart.log。');
+}
 // ============================================================
 // NAVIGATION & DATA FETCHING
 // ============================================================
 async function showTerminal(page, extraData) {
     const version = ++navigationVersion;
+    activePage = page;
     activePageExtraData = extraData;
     const cacheKey = getPageCacheKey(page, extraData);
     const cached = pageCache.get(cacheKey);
@@ -485,6 +589,57 @@ function invalidatePageCache(...pages) {
         }
     }
 }
+async function getTodayAlerts(force = false) {
+    const now = Date.now();
+    if (!force && todayAlertsCache.data && now - todayAlertsCache.fetchedAt < TODAY_ALERTS_CACHE_TTL_MS) {
+        return todayAlertsCache.data;
+    }
+    if (todayAlertsCache.pending)
+        return todayAlertsCache.pending;
+    const pending = (0, client_1.httpGet)('/alerts/today').catch(() => null);
+    todayAlertsCache.pending = pending;
+    try {
+        const data = await pending;
+        if (data) {
+            todayAlertsCache.data = data;
+            todayAlertsCache.fetchedAt = Date.now();
+        }
+        return data;
+    }
+    finally {
+        todayAlertsCache.pending = null;
+    }
+}
+async function getStockSnapshot(codes, force = false) {
+    const normalizedCodes = Array.from(new Set(codes.map(normalizeCode).filter((code) => Boolean(code)))).sort();
+    if (!normalizedCodes.length)
+        return { watchScores: null, liveQuotes: null };
+    const key = normalizedCodes.join(',');
+    const cached = stockSnapshotCache.get(key) || { data: null, fetchedAt: 0, pending: null };
+    stockSnapshotCache.set(key, cached);
+    const now = Date.now();
+    if (!force && cached.data && now - cached.fetchedAt < STOCK_SNAPSHOT_CACHE_TTL_MS) {
+        return cached.data;
+    }
+    if (cached.pending)
+        return cached.pending;
+    const pending = Promise.all([
+        (0, client_1.httpPost)('/signals/batch', { codes: normalizedCodes, force }, 10_000).catch(() => null),
+        (0, client_1.httpPost)('/market/quotes', { codes: normalizedCodes }, 10_000).catch(() => null),
+    ]).then(([watchScores, liveQuotes]) => ({ watchScores, liveQuotes }));
+    cached.pending = pending;
+    try {
+        const data = await pending;
+        if (data.watchScores || data.liveQuotes) {
+            cached.data = data;
+            cached.fetchedAt = Date.now();
+        }
+        return data;
+    }
+    finally {
+        cached.pending = null;
+    }
+}
 async function resolveDefaultStockCode(explicitCode) {
     const direct = explicitCode ? normalizeCode(explicitCode) : null;
     if (direct)
@@ -504,13 +659,12 @@ async function fetchPageData(page, extraData, force = false) {
                     : await (0, client_1.httpGet)('/trust/journal?limit=10').catch(() => null);
                 const suggestedWatch = (journalForWatch?.entries || []).map((e) => e.stock_code).filter(Boolean);
                 const watchCodes = watchlist.length ? watchlist : suggestedWatch;
-                const [market, scanner, watchScores, liveQuotes, brief, alerts, trackRecord, aiAlpha, userProfile, dataQuality] = await Promise.all([
-                    (0, client_1.httpGet)('/market/overview').catch(() => null),
+                const [market, scanner, stockSnapshot, brief, alerts, trackRecord, aiAlpha, userProfile, dataQuality] = await Promise.all([
+                    (0, client_1.httpGet)('/market/overview', 10_000).catch(() => null),
                     (0, client_1.httpGet)('/scanner/latest?top_n=8').catch(() => null),
-                    (0, client_1.httpPost)('/signals/batch', { codes: watchCodes, force }).catch(() => null),
-                    (0, client_1.httpPost)('/market/quotes', { codes: watchCodes }).catch(() => null),
+                    getStockSnapshot(watchCodes, force),
                     (0, client_1.httpGet)('/morning-brief/today').catch(() => null),
-                    (0, client_1.httpGet)('/alerts/today').catch(() => null),
+                    getTodayAlerts(),
                     (0, client_1.httpGet)('/trust/track-record?days=30').catch(() => null),
                     (0, client_1.httpGet)('/trust/ai-alpha?days=90').catch(() => null),
                     (0, client_1.httpGet)('/user/profile/summary').catch(() => null),
@@ -518,7 +672,18 @@ async function fetchPageData(page, extraData, force = false) {
                 ]);
                 // Push VS Code notification for P0/P1 alerts
                 checkUrgentAlerts(alerts);
-                return { market, scanner, watchScores, liveQuotes, brief, alerts, trackRecord, aiAlpha, userProfile, dataQuality };
+                return {
+                    market,
+                    scanner,
+                    watchScores: stockSnapshot.watchScores,
+                    liveQuotes: stockSnapshot.liveQuotes,
+                    brief,
+                    alerts,
+                    trackRecord,
+                    aiAlpha,
+                    userProfile,
+                    dataQuality,
+                };
             }
             case 'journal': {
                 const [journal, summary] = await Promise.all([
@@ -601,15 +766,8 @@ async function fetchPageData(page, extraData, force = false) {
                 return { dates, history };
             }
             case 'review_lab': {
-                const index = await (0, client_1.httpGet)('/review-lab/runs').catch(() => ({ runs: [] }));
-                const runs = Array.isArray(index.runs)
-                    ? index.runs.filter((value) => typeof value === 'string' && /^friday-[a-f0-9]{32}$/.test(value)) : [];
-                const requested = String(extraData?.runId || '').trim();
-                const selectedRunId = /^friday-[a-f0-9]{32}$/.test(requested) ? requested : runs[0];
-                const latest = selectedRunId
-                    ? await (0, client_1.httpGet)(`/review-lab/runs/${encodeURIComponent(selectedRunId)}`, 5_000).catch(() => null)
-                    : null;
-                return { latest: latest ? { ...latest, run_id: selectedRunId } : null, runs, selectedRunId };
+                const wechat = await (0, client_1.httpGet)('/knowledge/wechat/review?limit=200').catch(() => null);
+                return { wechat };
             }
             case 'health': {
                 const [health, hithink] = await Promise.all([
@@ -633,18 +791,12 @@ async function fetchPageData(page, extraData, force = false) {
                 const journal = await (0, client_1.httpGet)('/trust/journal?limit=20').catch(() => null);
                 const suggested = (journal?.entries || []).map((e) => e.stock_code).filter(Boolean);
                 const stocks = watchlist.length ? watchlist : suggested;
-                const [watchScores, liveQuotes] = stocks.length
-                    ? await Promise.all([
-                        (0, client_1.httpPost)('/signals/batch', { codes: stocks, force }).catch(() => null),
-                        (0, client_1.httpPost)('/market/quotes', { codes: stocks }).catch(() => null),
-                    ])
-                    : [null, null];
-                return { stocks, watchScores, liveQuotes };
-            }
-            case 'marketmap': {
-                const refreshQuery = force ? '?refresh=true' : '';
-                const sectors = await (0, client_1.httpGet)(`/market/sectors${refreshQuery}`, 3500).catch(() => null);
-                return sectors || { sectors: [], is_live: false, data_source: 'unavailable' };
+                const stockSnapshot = await getStockSnapshot(stocks, force);
+                return {
+                    stocks,
+                    watchScores: stockSnapshot.watchScores,
+                    liveQuotes: stockSnapshot.liveQuotes,
+                };
             }
             case 'alerts': {
                 const alerts = await (0, client_1.httpGet)('/alerts/recent?limit=50').catch(() => null);
@@ -669,81 +821,9 @@ async function fetchPageData(page, extraData, force = false) {
                     return requestErrorData(error, '每日简报');
                 }
             }
-            case 'newsradar': {
-                const newsData = await (0, client_1.httpGet)('/newsradar/latest').catch(() => null);
-                return newsData || { news: [], updated_at: '' };
-            }
-            case 'reports': {
-                const mode = extraData?.mode || 'search';
-                if (mode === 'my') {
-                    const myReports = await (0, client_1.httpGet)('/myreports').catch(() => null);
-                    return { mode: 'my', my_reports: myReports?.reports || [], _meta: myReports?._meta || {} };
-                }
-                else {
-                    const stockCode = await resolveDefaultStockCode(extraData?.stock_code);
-                    if (stockCode) {
-                        const reportsData = await (0, client_1.httpGet)(`/reports?code=${stockCode}`).catch(() => null);
-                        return { mode: 'search', stock_code: stockCode, reports: reportsData?.reports || [], count: reportsData?.count || 0, _meta: reportsData?._meta || {} };
-                    }
-                    return { mode: 'search', stock_code: '', reports: [], count: 0 };
-                }
-            }
-            case 'announcements': {
-                const mode = extraData?.mode || 'search';
-                if (mode === 'search') {
-                    const stockCode = await resolveDefaultStockCode(extraData?.stock_code);
-                    if (stockCode) {
-                        const annData = await (0, client_1.httpGet)(`/announcements?code=${stockCode}`).catch(() => null);
-                        return { mode: 'search', stock_code: stockCode, announcements: annData?.announcements || [], count: annData?.count || 0, _meta: annData?._meta || {} };
-                    }
-                    return { mode: 'search', stock_code: '', announcements: [], count: 0 };
-                }
-                else {
-                    const latestData = await (0, client_1.httpGet)('/announcements/latest?limit=50').catch(() => null);
-                    return { mode: 'latest', announcements: latestData?.announcements || [], _meta: latestData?._meta || {} };
-                }
-            }
-            case 'financials': {
-                const stockCode = await resolveDefaultStockCode(extraData?.stock_code);
-                if (stockCode) {
-                    const financialsData = await (0, client_1.httpGet)(`/financials?code=${stockCode}`).catch(() => null);
-                    return { stock_code: stockCode, financials: financialsData?.data || {}, _meta: financialsData?._meta || {} };
-                }
-                return { stock_code: '', financials: {} };
-            }
-            case 'valuation': {
-                const stockCode = await resolveDefaultStockCode(extraData?.stock_code);
-                if (stockCode) {
-                    const valuationData = await (0, client_1.httpGet)(`/valuation?code=${stockCode}`).catch(() => null);
-                    return { code: stockCode, valuation: valuationData?.data || {}, _meta: valuationData?._meta || {} };
-                }
-                return { code: '', valuation: {} };
-            }
-            case 'fundflow': {
-                const stockCode = await resolveDefaultStockCode(extraData?.stock_code);
-                if (stockCode) {
-                    const fundflowData = await (0, client_1.httpGet)(`/fundflow?code=${stockCode}`).catch(() => null);
-                    return { code: stockCode, fundflow: fundflowData?.data || {}, _meta: fundflowData?._meta || {} };
-                }
-                return { code: '', fundflow: {} };
-            }
-            case 'dragon_tiger': {
-                const stockCode = await resolveDefaultStockCode(extraData?.stock_code);
-                if (stockCode) {
-                    const dragonTigerData = await (0, client_1.httpGet)(`/dragon-tiger?code=${stockCode}`).catch(() => null);
-                    return { code: stockCode, dragon_tiger: dragonTigerData?.data || {}, _meta: dragonTigerData?._meta || {} };
-                }
-                return { code: '', dragon_tiger: {} };
-            }
             case 'portfolio': {
                 const portfolio = await (0, client_1.httpGet)('/portfolio/overview').catch(() => null);
                 return { portfolio };
-            }
-            case 'compare': {
-                const journal = await (0, client_1.httpGet)('/trust/journal?limit=2').catch(() => null);
-                const codes = (journal?.entries || []).map((e) => e.stock_code).filter(Boolean);
-                const compare = codes.length >= 2 ? await (0, client_1.httpPost)('/compare', { codes }).catch(() => null) : null;
-                return compare || {};
             }
             case 'timeline': {
                 const requestedCode = String(extraData?.code || '').trim();
@@ -782,17 +862,9 @@ function buildPage(page, data) {
     switch (page) {
         case 'dashboard': return (0, dashboard_1.buildDashboardPage)(data);
         case 'watchlist': return (0, watchlist_1.buildWatchlistPage)(data);
-        case 'marketmap': return (0, marketmap_1.buildMarketMapPage)(data);
         case 'alerts': return (0, alerts_1.buildAlertsPage)(data);
         case 'backtest': return (0, backtest_1.buildBacktestPage)(data);
         case 'dailybrief': return (0, dailybrief_1.buildDailyBriefPage)(data);
-        case 'newsradar': return (0, newsradar_1.buildNewsRadarPage)(data);
-        case 'reports': return (0, reports_1.buildReportsPage)(data);
-        case 'announcements': return (0, announcements_1.buildAnnouncementsPage)(data);
-        case 'financials': return (0, financials_1.buildFinancialsPage)(data);
-        case 'valuation': return (0, valuation_1.buildValuationPage)(data);
-        case 'fundflow': return (0, fundflow_1.buildFundflowPage)(data);
-        case 'dragon_tiger': return (0, dragon_tiger_1.buildDragonTigerPage)(data);
         case 'portfolio': return (0, portfolio_1.buildPortfolioPage)(data);
         case 'journal': return (0, journal_1.buildJournalPage)(data);
         case 'resume': return (0, resume_1.buildResumePage)(data);
@@ -803,7 +875,6 @@ function buildPage(page, data) {
         case 'health': return (0, health_1.buildHealthPage)(data);
         case 'connectors': return (0, connectors_1.buildConnectorsPage)(data);
         case 'decisions': return (0, decisions_1.buildDecisionsPage)(data);
-        case 'compare': return (0, compare_1.buildComparePage)(data);
         case 'timeline': return (0, timeline_1.buildTimelinePage)(data);
         case 'review_lab': return (0, review_lab_1.buildReviewLabPage)(data);
         default: return (0, layout_1.pageShell)('dashboard', 'Adaptive Investment Intelligence', '<div class="empty-state"><div class="icon">🤖</div><h2>Adaptive Investment Intelligence</h2><p>选择一个页面开始</p></div>');
@@ -825,60 +896,34 @@ function handleMessage(msg, currentPage) {
         case 'analyze':
             showStockResearchDirect(msg.code);
             break;
-        case 'compare':
-            showTerminal('compare');
-            break;
         case 'timeline':
             void showTerminal('timeline', { code: msg.code });
-            break;
-        case 'switchReportsTab':
-            showTerminal('reports', { mode: msg.mode });
-            break;
-        case 'searchReports':
-            showTerminal('reports', { mode: 'search', stock_code: msg.code });
-            break;
-        case 'saveReport':
-            handleSaveReport(msg.rid, msg.code, msg.title);
-            break;
-        case 'downloadReport':
-            handleDownloadReport(msg.rid);
-            break;
-        case 'searchAnnouncements':
-            showTerminal('announcements', { mode: 'search', stock_code: msg.code });
-            break;
-        case 'showLatestAnnouncements':
-            showTerminal('announcements', { mode: 'latest' });
-            break;
-        case 'searchFinancials':
-            showTerminal('financials', { stock_code: msg.code });
-            break;
-        case 'searchValuation':
-            showTerminal('valuation', { stock_code: msg.code });
-            break;
-        case 'searchFundflow':
-            showTerminal('fundflow', { stock_code: msg.code });
-            break;
-        case 'searchDragonTiger':
-            showTerminal('dragon_tiger', { stock_code: msg.code });
             break;
         case 'refreshPage':
             void forceRefreshPage(currentPage, activePageExtraData, msg.soft !== true);
             break;
-        case 'refreshNews':
-            void refreshNewsRadar();
-            break;
         case 'refreshBrief':
             void regenerateDailyBrief();
-            break;
-        case 'openExternal':
-            void openExternalUrl(msg.url);
             break;
         case 'executeTask':
             void executeTaskManually(msg.taskName);
             break;
-        case 'reviewLabHistory':
-            void showTerminal('review_lab', { runId: msg.runId });
+        case 'wechatRefresh':
+            void refreshWechatKnowledge();
             break;
+    }
+}
+async function refreshWechatKnowledge() {
+    try {
+        const result = await (0, client_1.httpPost)('/knowledge/wechat/refresh', undefined, 210_000);
+        invalidatePageCache('review_lab');
+        await forceRefreshPage('review_lab', activePageExtraData, true);
+        const learningStatus = result?.learning?.status || 'unknown';
+        vscode.window.showInformationMessage(`公众号已刷新，AI方法论学习：${learningStatus}`);
+    }
+    catch (error) {
+        const message = error instanceof Error ? error.message : '公众号刷新失败';
+        vscode.window.showWarningMessage(message);
     }
 }
 async function executeTaskManually(taskName) {
@@ -892,13 +937,6 @@ async function executeTaskManually(taskName) {
         vscode.window.showInformationMessage(`${taskName} 执行成功`);
     }
     await showTerminal('taskmonitor');
-}
-async function refreshNewsRadar() {
-    const refreshed = await (0, client_1.httpPost)('/newsradar/refresh').catch(() => null);
-    const version = ++navigationVersion;
-    const data = refreshed || { news: [], updated_at: '', _meta: { available: false, error: '刷新请求失败' } };
-    pageCache.set(getPageCacheKey('newsradar'), { data, fetchedAt: Date.now() });
-    renderTerminalPage('newsradar', data, version);
 }
 async function regenerateDailyBrief() {
     const version = ++navigationVersion;
@@ -920,17 +958,6 @@ async function regenerateDailyBrief() {
         invalidatePageCache('dashboard');
     renderTerminalPage('dailybrief', entry.data, version);
 }
-async function openExternalUrl(rawUrl) {
-    try {
-        const uri = vscode.Uri.parse(rawUrl);
-        if (uri.scheme !== 'http' && uri.scheme !== 'https')
-            throw new Error('unsupported scheme');
-        await vscode.env.openExternal(uri);
-    }
-    catch {
-        vscode.window.showWarningMessage('无法打开该链接');
-    }
-}
 async function forceRefreshPage(page, extraData, force = true) {
     const version = ++navigationVersion;
     const cacheKey = getPageCacheKey(page, extraData);
@@ -940,44 +967,9 @@ async function forceRefreshPage(page, extraData, force = true) {
         vscode.window.showWarningMessage(`${(0, layout_1.getPageTitle)(page)} 刷新失败，已保留上次数据`);
     }
 }
-async function handleSaveReport(rid, code, title) {
-    try {
-        const result = await (0, client_1.httpPost)('/myreports', { rid, code, title });
-        if (result?.success) {
-            vscode.window.showInformationMessage(`研报已收藏: ${title}`);
-            invalidatePageCache('reports');
-        }
-        else {
-            vscode.window.showErrorMessage('收藏研报失败');
-        }
-    }
-    catch (error) {
-        vscode.window.showErrorMessage('收藏研报失败');
-    }
-}
-async function handleDownloadReport(rid) {
-    try {
-        const result = await (0, client_1.httpGet)(`/myreports/file/${rid}`);
-        if (result?.url) {
-            vscode.env.openExternal(vscode.Uri.parse(result.url));
-        }
-        else {
-            vscode.window.showErrorMessage('获取研报下载链接失败');
-        }
-    }
-    catch (error) {
-        vscode.window.showErrorMessage('获取研报下载链接失败');
-    }
-}
 // ============================================================
 // STOCK RESEARCH
 // ============================================================
-async function showStockResearch() {
-    const code = await vscode.window.showInputBox({ prompt: '股票代码', value: '000001.SZ' });
-    if (!code)
-        return;
-    await showStockResearchDirect(code);
-}
 async function showStockResearchDirect(code) {
     const detail = await (0, client_1.httpGet)(`/detail/${code}?include=all`).catch(() => null);
     const html = (0, research_1.buildResearchPage)(code, detail);
@@ -1075,7 +1067,7 @@ function startAlertPolling() {
 }
 async function pollProactiveAlerts() {
     const [alertsData, taskFailures] = await Promise.all([
-        (0, client_1.httpGet)('/alerts/today').catch(() => null),
+        getTodayAlerts(true),
         (0, client_1.httpGet)('/tasks/failures?hours=24').catch(() => null),
     ]);
     checkUrgentAlerts(alertsData);

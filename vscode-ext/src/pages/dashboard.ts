@@ -174,7 +174,13 @@ export function buildDashboardPage(data: any): string {
     const regimeColor = regimeState === 'strong' || regimeState === 'lean_strong'
         ? '#22C55E'
         : regimeState === 'weak' || regimeState === 'lean_weak' ? '#EF4444' : '#F59E0B';
-    const breadthAvailable = market._data?.breadth?.available === true;
+    // Keep the dashboard useful across backend versions and during a brief
+    // provenance probe failure.  The breadth payload is authoritative when it
+    // carries a complete numeric snapshot, even if the separate quality probe
+    // has not returned yet.
+    const breadthAvailable = market._data?.breadth?.available === true
+        || (Number.isFinite(Number(m.up)) && Number.isFinite(Number(m.down))
+            && Number.isFinite(Number(m.covered_stocks)));
     const scanner = data.scanner || {};
     const candidates = (scanner.candidates || []).slice(0, 6);
     const blockedCandidates = (scanner.blocked_candidates || []).slice(0, 6);
@@ -191,8 +197,9 @@ export function buildDashboardPage(data: any): string {
     const watchQuoteMap: Record<string, any> = {};
     liveQuotes.forEach((q: any) => { watchQuoteMap[q.stock_code] = q; });
     const brief = data.brief || {};
-    const hotSectors = (market.hot_sectors?.length ? market.hot_sectors : brief.hot_sectors || []).slice(0, 5);
-    const risks = market.risk_summary?.length ? market.risk_summary : brief.risk_warnings || [];
+    // Dashboard is the summary surface; full lists stay on Daily Brief and
+    // Alerts so the same stock information is not expanded in multiple places.
+    const risks = (market.risk_summary?.length ? market.risk_summary : brief.risk_warnings || []).slice(0, 3);
     const pf = brief.portfolio || {};
     const alertFeed = data.alerts || {};
     const todayFocus = alertFeed.today_focus || {};
@@ -203,14 +210,15 @@ export function buildDashboardPage(data: any): string {
     const userProfile = data.userProfile || {};
     const greeting = userProfile.greeting || '';
     const dataHealth = data.dataQuality || {};
-    const healthStatus: string = dataHealth.live_available
+    const effectiveAvailable = dataHealth.live_available === true || breadthAvailable;
+    const healthStatus: string = effectiveAvailable
         ? dataHealth.degraded ? 'degraded' : 'healthy'
         : 'down';
     const healthIcon = healthStatus === 'healthy' ? '🟢' : healthStatus === 'degraded' ? '🟡' : '🔴';
 
     const activeProviders = (dataHealth.sources || []).filter((s: any) => s.available);
     const providerLabel = activeProviders.map((s: any) => s.name).join(' + ') || 'unavailable';
-    const qualityPct = dataHealth.live_available ? 'LIVE' : 'OFFLINE';
+    const qualityPct = dataHealth.live_available ? 'LIVE' : breadthAvailable ? 'CACHED' : 'OFFLINE';
     const qualityColor = healthStatus === 'healthy' ? '#22C55E' : healthStatus === 'degraded' ? '#F59E0B' : '#EF4444';
     const portfolioScore = finiteScore(pf.avg_score);
     const portfolioTrend = finiteScore(pf.score_trend);
@@ -255,19 +263,19 @@ ${pf.position_count > 0 || scanner.total_scanned > 0 ? `
 <div style="padding:0 24px;margin-bottom:8px">
 <div class="card" style="border:1px solid ${urgentAlerts.length > 0 ? '#F59E0B' : '#30363d'};${urgentAlerts.length > 0 ? 'background:linear-gradient(135deg,#1a1800 0%,#161b22 100%);' : ''}">
 <div class="card-header">
-<h3 style="font-size:15px;color:#F59E0B">🔥 Today Focus · 今日最重要</h3>
-<span class="text-sm text-muted">AI 已为你排好优先级</span>
+<h3 style="font-size:15px;color:#F59E0B">🔥 Today Focus · 今日重点摘要</h3>
+<span class="text-sm text-muted" style="cursor:pointer" onclick="navigate('alerts')">完整预警 →</span>
 </div>
 ${urgentAlerts.length > 0 || importantAlerts.length > 0 ? `
 <div style="display:flex;flex-direction:column;gap:8px">
-${urgentAlerts.map((a: any) => _renderFocusAlert(a, true)).join('')}
-${importantAlerts.map((a: any) => _renderFocusAlert(a, false)).join('')}
+${urgentAlerts.slice(0, 2).map((a: any) => _renderFocusAlert(a, true)).join('')}
+${importantAlerts.slice(0, Math.max(0, 3 - urgentAlerts.length)).map((a: any) => _renderFocusAlert(a, false)).join('')}
 </div>` : `
 <div class="empty-state" style="padding:24px"><p>今日暂无紧急预警 · AI持续监控中</p></div>`}
 ${alertFeed.one_liner ? `
 <div style="margin-top:12px;padding-top:12px;border-top:1px solid #21262d;font-size:13px;color:#A78BFA;line-height:1.5">💬 ${alertFeed.one_liner}</div>` : ''}
 ${brief.one_liner ? `
-<div style="margin-top:8px;font-size:13px;color:#8B5CF6;line-height:1.5">💬 ${brief.one_liner}</div>` : ''}
+<div style="margin-top:8px;font-size:13px;color:#8B5CF6;line-height:1.5">💬 ${brief.one_liner} <span style="cursor:pointer;color:#58a6ff" onclick="navigate('dailybrief')">查看每日简报 →</span></div>` : ''}
 </div></div>
 
 <!-- ═══════════ Market Overview ═══════════ -->
@@ -279,15 +287,9 @@ ${brief.one_liner ? `
 <div class="card"><h3>市场环境</h3><div class="metric-value" style="color:${regimeColor};font-size:24px">${regimeAvailable ? regimeLabel : 'N/A'}</div><span class="text-sm text-muted">${regimeAvailable ? `评分 ${regimeScore.toFixed(0)} · 置信度 ${(regimeConfidence * 100).toFixed(0)}%` : '宽度数据不可用'}</span></div>
 </div>
 
-<!-- ═══════════ Hot Sectors + Risk ═══════════ -->
+<!-- ═══════════ Risk Summary ═══════════ -->
 <div class="grid2">
-<div class="card"><div class="card-header"><h3>今日热点</h3></div>
-${hotSectors.map((s: any) => `<div class="stock-row" onclick="navigate('marketmap')">
-<span>${'★'.repeat(s.stars || 1)}${'☆'.repeat(5 - (s.stars || 1))} ${s.name}</span>
-<span class="tag tag-${finiteScore(s.score) === null ? 'info' : finiteScore(s.score)! >= 70 ? 'up' : finiteScore(s.score)! >= 40 ? 'warn' : 'down'}">${s.status || '数据不可用'}</span>
-</div>`).join('') || '<div class="empty-state"><p>加载中...</p></div>'}
-</div>
-<div class="card"><div class="card-header"><h3>风险预警</h3></div>
+<div class="card"><div class="card-header"><h3>风险预警摘要</h3><span class="text-sm text-muted" style="cursor:pointer" onclick="navigate('alerts')">完整预警 →</span></div>
 ${risks.map((r: any) => `<div class="stock-row">
 <span>${r.type}</span><span class="${r.severity === 'high' ? 'down' : 'warn'}">${r.count}只</span>
 </div>`).join('') || '<div class="empty-state"><p>暂无风险预警</p></div>'}
@@ -299,7 +301,7 @@ ${risks.map((r: any) => `<div class="stock-row">
 <div class="card-header">
 <div><h3>📊 样本技术排名 Top ${candidates.length}</h3>
 <div class="text-sm text-muted" style="margin-top:4px">${rankingNote}</div></div>
-<span class="tag tag-${coverageComplete ? 'up' : 'warn'}">覆盖 ${coverageLabel}${scanner.cached ? ' · 缓存' : ''}</span>
+<span style="display:flex;align-items:center;gap:8px"><span class="tag tag-${coverageComplete ? 'up' : 'warn'}">覆盖 ${coverageLabel}${scanner.cached ? ' · 缓存' : ''}</span><span class="text-sm text-muted" style="cursor:pointer" onclick="navigate('decisions')">决策详情 →</span></span>
 </div>
 ${candidates.map((c: any, i: number) => {
     const candidateScore = finiteScore(c.fusion_score);
@@ -334,23 +336,26 @@ ${blockedCandidates.map((c: any) => `
 <!-- ═══════════ Continuity Watchlist ═══════════ -->
 ${continuityWatchlist.length > 0 ? `
 <div style="padding:0 24px;margin-top:16px"><div class="card" style="border-left:3px solid #60A5FA">
-<div class="card-header">
-<div><h3>🔁 连续观察</h3>
-<div class="text-sm text-muted" style="margin-top:4px">保留近期高排名股票，防止短暂数据缺失导致观察对象消失</div></div>
+<details>
+<summary style="cursor:pointer;list-style:none"><div class="card-header" style="margin-bottom:0">
+<div><h3>🔁 历史连续观察（非本次结果）</h3>
+<div class="text-sm text-muted" style="margin-top:4px">仅在展开后查看前几次运行的延续观察对象</div></div>
 <span class="tag tag-info">仅观察 · 不自动交易</span>
-</div>
+</div></summary>
+<div class="text-sm text-muted" style="margin:10px 0">以下股票来自历史运行批次，不属于当前最终决策名单；不会触发模拟交易。</div>
 ${continuityWatchlist.map((c: any) => `
 <div class="stock-row" onclick="analyzeStock('${c.stock_code}')">
 <div><span class="stock-name">${c.stock_name || c.stock_code}</span><br><span class="stock-code">${c.stock_code} · 前次排名 #${c.previous_rank} · ${c.previous_decision_date}</span></div>
 <div style="text-align:right"><span class="metric-value neutral" style="font-size:20px">前次 ${scoreText(finiteScore(c.previous_ranking_score))}</span><br>
 <span class="text-sm text-muted">当前 ${scoreText(finiteScore(c.current_action_score))} · ${c.current_decision_status || '未入当前扫描'}</span></div>
 </div>`).join('')}
+</details>
 </div></div>` : ''}
 
 <!-- ═══════════ My Watchlist Snapshot ═══════════ -->
 ${watchScores.length > 0 ? `
 <div style="padding:0 24px;margin-top:16px"><div class="card">
-<div class="card-header"><h3>📈 我的关注</h3><span class="text-sm text-muted" style="cursor:pointer" onclick="navigate('watchlist')">查看全部 →</span></div>
+<div class="card-header"><h3>📈 我的关注摘要</h3><span class="text-sm text-muted" style="cursor:pointer" onclick="navigate('watchlist')">完整自选 →</span></div>
 <div class="grid4">
 ${watchScores.slice(0, 4).map((s: any) => {
     const watchScore = finiteScore(s.fusion_score);
@@ -444,7 +449,14 @@ async function refreshDashboard() {
 function startAutoRefresh() { clearInterval(dashInterval); dashInterval = setInterval(refreshDashboard, 60000); }
 function stopAutoRefresh() { clearInterval(dashInterval); }
 document.addEventListener('visibilitychange', () => { document.hidden ? stopAutoRefresh() : startAutoRefresh(); });
-startAutoRefresh();`;
+    startAutoRefresh();
+if (!${breadthAvailable}) {
+    const state = vscode.getState() || {};
+    if (!state.dashboardRecoveryRefreshRequested) {
+        vscode.setState({ ...state, dashboardRecoveryRefreshRequested: true });
+        setTimeout(refreshDashboard, 1500);
+    }
+}`;
 
     return pageShell('dashboard', 'Dashboard · Mission Control', content, extraScript);
 }

@@ -213,39 +213,6 @@ class LiveMarketService:
             return None
 
     # ============================================================
-    # Sector Data
-    # ============================================================
-
-    async def get_sectors(self) -> list[dict]:
-        """Get sector/concept board performance."""
-        try:
-            import akshare as ak
-
-            df = await asyncio.to_thread(ak.stock_board_concept_name_em)
-            if df is None or df.empty:
-                return []
-
-            result = []
-            for _, row in df.head(30).iterrows():
-                score = max(10, min(99, 50 + float(row.get("涨跌幅", 0)) * 10))
-                stars = 5 if score >= 80 else 4 if score >= 65 else 3 if score >= 45 else 2 if score >= 25 else 1
-                status = "强势" if score >= 70 else "震荡" if score >= 40 else "弱势"
-
-                result.append({
-                    "name": str(row.get("板块名称", "")),
-                    "score": score,
-                    "change_pct": float(row.get("涨跌幅", 0)),
-                    "stars": stars,
-                    "status": status,
-                })
-
-            result.sort(key=lambda s: s["score"], reverse=True)
-            return result[:12]
-        except Exception as e:
-            logger.warning(f"Live sectors failed: {e}")
-            return []
-
-    # ============================================================
     # Internal Cache
     # ============================================================
 

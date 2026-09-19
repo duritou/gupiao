@@ -3,7 +3,7 @@
 Defines WHEN the AI does WHAT, without user intervention.
 
 Daily Rhythm:
-  01:00 → Daily Strategy Plan (overnight research and candidate generation)
+  06:00 → Daily Strategy Plan (overnight research and candidate generation)
   09:35 → Market Open Watch + verified-price strategy execution
   11:30 → Midday Check (morning session review)
   14:30 → Afternoon Scan (pre-close opportunities)
@@ -26,7 +26,7 @@ from enum import Enum
 
 
 class SchedulePhase(str, Enum):
-    PRE_MARKET = "pre_market"        # 01:00
+    PRE_MARKET = "pre_market"        # 06:00
     MARKET_OPEN = "market_open"      # 09:35
     MIDDAY = "midday"                # 11:30
     AFTERNOON = "afternoon"          # 13:30
@@ -43,7 +43,7 @@ class SchedulePhase(str, Enum):
 # reconciliation is safe after the close, so it remains recoverable into the
 # evening and can unblock the daily review.
 PHASE_SCHEDULE_TIMES: dict[SchedulePhase, time] = {
-    SchedulePhase.PRE_MARKET: time(1, 0),
+    SchedulePhase.PRE_MARKET: time(6, 0),
     SchedulePhase.MARKET_OPEN: time(9, 35),
     SchedulePhase.MIDDAY: time(11, 30),
     SchedulePhase.AFTERNOON: time(13, 30),
@@ -55,10 +55,10 @@ PHASE_SCHEDULE_TIMES: dict[SchedulePhase, time] = {
 PHASE_RECOVERY_WINDOWS: dict[SchedulePhase, tuple[time, time]] = {
     # The plan is generated overnight, but recovery remains safe until the
     # opening checkpoint because pre-market scanning never submits orders.
-    # Leave the exact 01:00 checkpoint to the cron job.  Starting recovery one
+    # Leave the exact 06:00 checkpoint to the cron job.  Starting recovery one
     # minute later prevents the watchdog and the normal job from racing after
     # both become eligible at the same instant.
-    SchedulePhase.PRE_MARKET: (time(1, 1), time(9, 20)),
+    SchedulePhase.PRE_MARKET: (time(6, 1), time(9, 20)),
     SchedulePhase.MARKET_OPEN: (time(9, 35), time(11, 15)),
     SchedulePhase.MIDDAY: (time(11, 30), time(13, 20)),
     SchedulePhase.AFTERNOON: (time(13, 30), time(14, 20)),

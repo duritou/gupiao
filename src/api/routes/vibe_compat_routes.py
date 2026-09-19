@@ -13,7 +13,7 @@ import os
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from src.infrastructure.market_data.vibe_embedded import get_embedded_vibe_service
@@ -88,45 +88,6 @@ async def quote(codes: str = Query(...)):
     return _data(await _call("astock", "tencent_quote", list(dict.fromkeys(values))))
 
 
-@router.get("/radar")
-async def radar():
-    return _data(await _call("newsradar", "get_radar", False))
-
-
-@router.post("/radar/refresh")
-async def radar_refresh():
-    return _data(await _call("newsradar", "fetch_radar"))
-
-
-@router.get("/valuation/percentile")
-async def valuation_percentile(code: str = Query(...)):
-    return _data(await _call("astock", "valuation_percentile", _code(code)))
-
-
-@router.get("/announcements")
-async def announcements(code: str = Query(...)):
-    return _data(await _call("astock", "announcements", _code(code)))
-
-
-@router.get("/financials")
-async def financials(code: str = Query(...)):
-    return _data(await _call("astock", "financials", _code(code)))
-
-
-@router.get("/valuation")
-async def valuation(code: str = Query(...)):
-    return _data(await _call("astock", "full_valuation", _code(code)))
-
-
-@router.get("/reports")
-async def reports(code: str = Query(...), pages: int = Query(2, ge=1, le=5)):
-    rows = await _call("astock", "eastmoney_reports", _code(code), max_pages=pages)
-    for row in rows or []:
-        if row.get("infoCode"):
-            row["pdfUrl"] = await _call("astock", "pdf_url", row["infoCode"])
-    return _data(rows or [])
-
-
 @router.get("/news")
 async def news(code: str = Query(...), limit: int = Query(20, ge=1, le=50)):
     return _data(await _call("astock", "stock_news", _code(code), limit=limit))
@@ -150,16 +111,6 @@ async def holders(code: str = Query(...)):
 @router.get("/dividend")
 async def dividend(code: str = Query(...)):
     return _data(await _call("astock", "dividend_history", _code(code)))
-
-
-@router.get("/fund-flow")
-async def fund_flow(code: str = Query(...)):
-    return _data(await _call("astock", "stock_fund_flow_120d", _code(code)))
-
-
-@router.get("/dragon-tiger")
-async def dragon_tiger(code: str = Query(...)):
-    return _data(await _call("astock", "dragon_tiger_board", _code(code)))
 
 
 @router.get("/lockup")
@@ -231,35 +182,6 @@ async def close_position(req: CloseRequest):
 @router.delete("/portfolio/close")
 async def remove_closed(index: int = Query(..., ge=0)):
     return _data(await _call("portfolio", "remove_closed", index))
-
-
-@router.get("/myreports")
-async def myreports():
-    return _data(await _call("myreports", "list_reports"))
-
-
-class ReportRequest(BaseModel):
-    name: str
-    content_b64: str
-
-
-@router.post("/myreports")
-async def upload_report(req: ReportRequest):
-    return _data(await _call("myreports", "save_report", req.name, req.content_b64))
-
-
-@router.delete("/myreports/{rid}")
-async def delete_report(rid: str):
-    return _data({"ok": await _call("myreports", "delete_report", rid)})
-
-
-@router.get("/myreports/file/{rid}")
-async def report_file(rid: str):
-    hit = await _call("myreports", "report_path", rid)
-    if not hit:
-        raise HTTPException(404, "报告不存在")
-    path, name = hit
-    return FileResponse(str(path), filename=name)
 
 
 class LLMConfig(BaseModel):

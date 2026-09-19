@@ -696,15 +696,15 @@ class TaskExecutor:
         return await handler(task)
 
     async def _refresh_market_news(self, task: ScheduledTask) -> dict:
-        """Refresh the news cache and persist whether it is safe to consume."""
-        from src.api.routes.newsradar_routes import _apply_freshness
+        """Refresh internal market-news evidence and persist its availability."""
+        from src.infrastructure.market_data.news_freshness import apply_news_freshness
         from src.infrastructure.market_data.eastmoney_news import fetch_eastmoney_global_news
         from src.infrastructure.market_data.vibe_provider import get_vibe_provider
         from src.infrastructure.storage.market_database import market_db
 
-        data = _apply_freshness(await fetch_eastmoney_global_news())
+        data = apply_news_freshness(await fetch_eastmoney_global_news())
         if not (data.get("_meta") or {}).get("available"):
-            data = _apply_freshness(await get_vibe_provider().refresh_news_radar())
+            data = apply_news_freshness(await get_vibe_provider().refresh_news_radar())
         metadata = dict(data.get("_meta") or {})
         count = len(data.get("news") or [])
         available = bool(metadata.get("available")) and count > 0
@@ -857,10 +857,19 @@ class TaskExecutor:
         return result.to_dict()
 
     async def _execute_open_strategy(self, task: ScheduledTask) -> dict:
-        """Execute the frozen overnight plan with post-signal live quotes."""
+        """Execute a persisted plan with post-signal live quotes.
+
+        The continuous monitor passes its explicit intraday scope so eligible
+        persisted watchlist probes can be filled when live conditions arrive.
+        """
         from .pipeline_runner import pipeline_runner
 
-        result = await pipeline_runner.execute_persisted_strategy()
+        if getattr(task, "name", "") == "intraday_paper_monitor":
+            result = await pipeline_runner.execute_persisted_strategy(
+                intraday_monitor=True,
+            )
+        else:
+            result = await pipeline_runner.execute_persisted_strategy()
         trades = list(result.get("paper_trades") or [])
         if trades:
             lines = [
@@ -930,6 +939,7 @@ class TaskExecutor:
         if regime_date:
             regime_line += f" @ {regime_date}"
         picks = brief.get("considered_stocks", [])[:5]
+        pattern_picks = brief.get("pattern_watchlist", [])[:5]
         pick_parts = []
         for p in picks:
             name = p.get("stock_name") or p.get("stock_code") or "未知标的"
@@ -941,14 +951,34 @@ class TaskExecutor:
             if price_date:
                 price_text += f"（{price_date}）"
             analysis = " ".join(str(p.get("analysis") or "暂无可用分析").split())
-            if len(analysis) > 180:
-                analysis = analysis[:177] + "..."
+            # Keep the decision rationale visible in PushPlus.  The channel
+            # applies a 3800-character message cap, so keep each stock's
+            # explanation substantial without allowing one item to consume
+            # the whole brief.
+            if len(analysis) > 360:
+                analysis = analysis[:357] + "..."
             pick_parts.append(
                 f"- {name}（{code}）｜{conclusion}｜排名分 {p.get('ranking_score', p.get('score'))}\n"
                 f"  参考价：{price_text}\n"
                 f"  分析：{analysis}"
             )
         pick_lines = "\n".join(pick_parts) or "- 今日无可发布的盘前关注标的（NO_TRADE）"
+        pattern_parts = []
+        for p in pattern_picks:
+            name = p.get("stock_name") or p.get("stock_code") or "未知标的"
+            code = p.get("stock_code") or ""
+            dates = " → ".join(str(item) for item in (p.get("pattern_dates") or []))
+            latest_flow = float(p.get("latest_main_net") or 0) / 10000
+            five_flow = float(p.get("five_day_main_net") or 0) / 10000
+            volume_ratio = p.get("volume_ratio_latest_vs_middle") or 0
+            pattern_parts.append(
+                f"- {name}（{code}）｜{p.get('pattern_label', '两阳夹一阴')}｜观察\n"
+                f"  数据日：{p.get('data_date') or ''}｜形态：{dates}\n"
+                f"  第三日放量/阴线日：{volume_ratio:.2f}倍｜"
+                f"主力净流入：{latest_flow:.0f}万元｜近5日：{five_flow:.0f}万元\n"
+                f"  说明：{p.get('recommendation') or '观察，不改变原有规则'}"
+            )
+        pattern_lines = "\n".join(pattern_parts) or "- 今日没有通过数据完整性核验的两阳夹一阴候选"
         trade_lines = "\n".join(
             f"- {t.get('action')} {t.get('stock_name') or t.get('stock_code')} "
             f"{t.get('shares')}股 @ {float(t.get('price') or 0):.2f}"
@@ -962,6 +992,7 @@ class TaskExecutor:
                 f"日期：{brief.get('date', '')}",
                 f"市场：{brief.get('market_summary', '')}",
                 "盘前关注清单（最多5只）：", pick_lines,
+                "两阳夹一阴额外观察（不替换原5只）：", pattern_lines,
                 "今日纸面成交：", trade_lines,
                 f"纸面账户：总值 {paper['total_value']:.2f}，现金 {paper['cash']:.2f}，"
                 f"累计盈亏 {paper['total_pl']:.2f}",
@@ -974,6 +1005,7 @@ class TaskExecutor:
             "generated_at": brief.get("generated_at", ""),
             "degraded": (brief.get("data_status") or {}).get("degraded", True),
             "considered_count": len(picks),
+            "pattern_watch_count": len(pattern_picks),
         }
 
     async def _notify_wechat(self, title: str, content: str) -> bool:

@@ -14,6 +14,23 @@ def digest(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def runtime_endpoint(project_root: Path) -> tuple[str, int]:
+    values: dict[str, str] = {}
+    config_path = project_root.parent / "config" / "runtime.env"
+    if config_path.is_file():
+        for raw in config_path.read_text("utf-8-sig").splitlines():
+            line = raw.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, value = line.split("=", 1)
+            values[key.strip()] = value.strip().strip("\"'")
+    host = values.get("ADAPTIVE_API_HOST", "127.0.0.1")
+    port = int(values.get("ADAPTIVE_API_PORT", "8888"))
+    if not 1 <= port <= 65535:
+        raise ValueError(f"ADAPTIVE_API_PORT is outside 1..65535: {port}")
+    return host, port
+
+
 def build(manifest_path: Path, project_root: Path) -> dict:
     manifest = json.loads(manifest_path.read_text("utf-8-sig"))
     container = manifest_path.parent
@@ -29,11 +46,14 @@ def build(manifest_path: Path, project_root: Path) -> dict:
     package = json.loads((frontend / "package.json").read_text("utf-8"))
     package["version"] = manifest["product_version"]
     (frontend / "package.json").write_text(json.dumps(package, indent=2) + "\n", "utf-8")
+    api_host, api_port = runtime_endpoint(project_root)
     stamp = {
         "product_version": manifest["product_version"],
         "release_id": manifest["release_id"],
         "backend_artifact_hash": manifest["artifact_hash"],
         "api_contract_version": manifest["api_contract_version"],
+        "api_host": api_host,
+        "api_port": api_port,
     }
     (frontend / "release-info.json").write_text(json.dumps(stamp, indent=2) + "\n", "utf-8")
     node = shutil.which("node")

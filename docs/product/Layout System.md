@@ -49,7 +49,6 @@
 ├─────────────────┤
 │  📊 Dashboard   │
 │  ⭐ Watchlist   │
-│  🗺 Market Map  │
 │  🔬 Research    │  ← 导航项 (40px 每项)
 │  ⚖ Compare     │
 │  📈 Timeline    │

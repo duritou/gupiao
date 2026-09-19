@@ -249,10 +249,6 @@ sections:
           value: float
           change_pct: float
 
-  - hot_sectors:
-      max_items: 5
-      fields: [name, stars, score]
-
   - top_opportunities:
       max_items: 3
       fields: [rank, stock_code, stock_name, score, direction, reason]

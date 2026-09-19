@@ -9,6 +9,9 @@ from src.ai_os.pipeline_runner import (
     _execution_candidates,
 )
 from src.ai_os.trading_policy import (
+    conditional_probe_rejection_reason,
+    is_conditional_probe_approved,
+    is_conditional_probe_candidate,
     is_momentum_probe_approved,
     is_momentum_probe_candidate,
     momentum_probe_candidate_rejection_reason,
@@ -56,6 +59,33 @@ def test_guarded_neutral_can_become_confirmed_momentum_probe():
     assert is_momentum_probe_candidate(decision) is True
     assert momentum_probe_candidate_rejection_reason(decision) == ""
     assert is_momentum_probe_approved(decision) is True
+
+
+def test_conditional_lane_accepts_missing_overnight_context_with_live_trigger():
+    decision = _probe_decision(raw_score=57.6)
+    evidence = json.loads(decision["evidence"])
+    evidence["technical"] = {"score": 58.7, "confirmations": 1}
+    evidence["score_guard"]["reasons"] = [
+        "market_context_missing", "fundamental_evidence_missing",
+    ]
+    decision["evidence"] = json.dumps(evidence)
+
+    assert is_conditional_probe_candidate(decision) is True
+    assert is_conditional_probe_approved(decision) is True
+    assert conditional_probe_rejection_reason(decision) == ""
+
+
+def test_conditional_lane_never_bypasses_hard_fundamental_risk():
+    decision = _probe_decision(raw_score=80.0)
+    evidence = json.loads(decision["evidence"])
+    evidence["technical"] = {"score": 80.0, "confirmations": 2}
+    evidence["score_guard"]["reasons"] = ["fundamental_loss_risk"]
+    decision["evidence"] = json.dumps(evidence)
+
+    assert is_conditional_probe_candidate(decision) is False
+    assert conditional_probe_rejection_reason(decision) == (
+        "conditional_probe_hard_risk_gate_failed"
+    )
 
 
 def test_exploration_lane_accepts_bounded_lower_score_candidate():

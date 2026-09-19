@@ -1,11 +1,9 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
 from unittest.mock import AsyncMock
 
 import pytest
 
-from src.api.routes import newsradar_routes
 from src.infrastructure.market_data import eastmoney_common, eastmoney_news
 
 
@@ -106,30 +104,3 @@ async def test_fetch_global_news_reuses_fresh_cache(monkeypatch):
     assert calls == 1
     assert second["_meta"]["cached"] is True
     assert second["news"] == first["news"]
-
-
-@pytest.mark.asyncio
-async def test_news_radar_route_prefers_native_global_news(monkeypatch):
-    native = {
-        "news": [{"title": "市场快讯"}],
-        "total_count": 1,
-        "updated_at": datetime.now(timezone.utc).isoformat(),
-        "_meta": {"provider": "eastmoney", "available": True},
-    }
-    monkeypatch.setattr(
-        newsradar_routes,
-        "fetch_eastmoney_global_news",
-        AsyncMock(return_value=native),
-    )
-
-    class Provider:
-        async def get_news_radar(self):
-            raise AssertionError("Vibe should not be called when native news is available")
-
-    monkeypatch.setattr(newsradar_routes, "get_vibe_provider", lambda: Provider())
-
-    result = await newsradar_routes.get_news_radar()
-
-    assert result["news"][0]["title"] == "市场快讯"
-    assert result["_meta"]["provider"] == "eastmoney"
-    assert result["_meta"]["stale"] is False

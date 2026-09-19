@@ -37,6 +37,7 @@ function buildReplayPage(data) {
 <button class="btn btn-primary" onclick="runReplay()">运行完整回放</button>
 <button class="btn" onclick="runCompare()">策略口径对比</button>
 <button class="btn" onclick="runSimulate()">持仓场景实验</button>
+<button class="btn" onclick="runWechatSync()">刷新公众号知识</button>
 </div>
 <div id="replayDateInfo" style="padding:0 24px 8px;font-size:11px;color:#8b949e"></div>
 <div id="replayStatus" style="padding:0 24px;text-align:center"></div>
@@ -58,6 +59,7 @@ ${_renderHistory.toString()}
 ${_renderCandidateTable.toString()}
 ${_renderComparisonPanel.toString()}
 ${_renderSimulationPanel.toString()}
+${_renderWechatArticles.toString()}
 ${_renderReport.toString()}
 ${_renderCompare.toString()}
 ${_renderSimulation.toString()}
@@ -154,6 +156,23 @@ async function runSimulate() {
     }
 }
 
+async function runWechatSync() {
+    const status = document.getElementById('replayStatus');
+    status.innerHTML = '<div class="loading">正在读取公众号 RSS（不会改变交易数据）</div>';
+    try {
+        const payload = await replayFetch('/knowledge/wechat/sync', {method: 'POST'}, 30000);
+        if (payload.status === 'disabled' || payload.status === 'not_configured') {
+            status.innerHTML = '<span style="color:#F59E0B">公众号 RSS 尚未配置，请先设置 WECHAT_RSS_ENABLED/WECHAT_RSS_URL</span>';
+            return;
+        }
+        status.innerHTML = '<span style="color:#22C55E">公众号知识已刷新：新增 ' + (payload.new || 0)
+            + ' 篇，更新 ' + (payload.updated || 0) + ' 篇</span>';
+        if (document.getElementById('replayDate').value) await runReplay();
+    } catch (error) {
+        status.innerHTML = '<span style="color:#f85149">公众号刷新失败：' + _escapeHtml(error.message || String(error)) + '</span>';
+    }
+}
+
 document.getElementById('replayDate').addEventListener('change', updateReplayDateInfo);
 updateReplayDateInfo();`;
     return (0, layout_1.pageShell)('replay', 'Replay · 历史决策验证', content, extraScript);
@@ -231,6 +250,18 @@ ${!entries.length ? '<div style="color:#8b949e;font-size:12px">暂无可评估�
 </div>`).join('')}</div>`}
 ${(simulation?.insights || []).map((insight) => `<div style="font-size:11px;color:#c9d1d9;margin-top:7px">💡 ${_escapeHtml(insight)}</div>`).join('')}</div>`;
 }
+function _renderWechatArticles(articles) {
+    if (!articles?.length)
+        return '';
+    return `<div class="card">
+<div class="card-header"><h3>公众号复盘思想（当日可见）</h3><span class="text-sm text-muted">${articles.length}篇</span></div>
+<div style="font-size:10px;color:#8b949e;margin-bottom:8px">仅作为该日期可见的知识证据展示，不改变技术评分、排序或交易判定。</div>
+${articles.slice(0, 8).map(article => `<div style="padding:8px 0;border-top:1px solid #21262d">
+<div style="font-size:12px;font-weight:600"><a href="${_escapeHtml(article.url || '')}" target="_blank" rel="noreferrer" style="color:#A78BFA;text-decoration:none">${_escapeHtml(article.title || '未命名文章')}</a></div>
+<div style="font-size:10px;color:#6B7280;margin:3px 0">${_escapeHtml(String(article.published_at || '').slice(0, 19))} · ${_escapeHtml(article.author || '股痴流沙河')}</div>
+<div style="font-size:11px;color:#c9d1d9;line-height:1.5">${_escapeHtml(String(article.summary || '').slice(0, 420))}</div>
+</div>`).join('')}</div>`;
+}
 function _renderReport(report) {
     if (report.status !== 'ok' && report.status !== 'insufficient_history') {
         return _statusBlock(report.status || 'no_data', report.message || '没有可回放数据。');
@@ -244,6 +275,7 @@ function _renderReport(report) {
 <div class="flex-between" style="padding:3px 0"><span class="text-sm text-muted">涨/跌/平</span><span>${context.market_breadth_up || 0}/${context.market_breadth_down || 0}/${context.market_breadth_flat || 0}</span></div>
 <div class="flex-between" style="padding:3px 0"><span class="text-sm text-muted">市场覆盖</span><span>${context.market_coverage || 0}只</span></div>
 <div class="flex-between" style="padding:3px 0"><span class="text-sm text-muted">情绪宽度</span><span>${Number(context.market_sentiment || 0).toFixed(1)}</span></div>
+<div class="flex-between" style="padding:3px 0"><span class="text-sm text-muted">公众号复盘文章</span><span>${context.wechat_article_count || 0}篇</span></div>
 <div style="font-size:10px;color:#22C55E;margin-top:7px">✓ 精确决策日 · ✓ K线截断 · ✓ 无未来函数</div></div>
 <div class="card"><div class="card-header"><h3>重算结果</h3><span class="text-sm text-muted">${_escapeHtml(pipeline.model_label || pipeline.model_version || '')}</span></div>
 <div class="flex-between" style="padding:3px 0"><span class="text-sm text-muted">成功重算</span><span>${pipeline.scanned || 0}只</span></div>
@@ -253,6 +285,7 @@ function _renderReport(report) {
 <div style="font-size:10px;color:#6B7280;margin-top:7px">Result ${_escapeHtml(pipeline.result_hash || '')}</div></div>
 </div>
 <div class="card"><div class="card-header"><h3>候选明细</h3><span class="text-sm text-muted">重算分 vs 当时记录分</span></div>${_renderCandidateTable(pipeline.candidate_rows || [], pipeline.horizon_days || 5)}</div>
+${_renderWechatArticles(context.wechat_articles || [])}
 ${_renderComparisonPanel(report.model_comparison || {})}
 ${_renderSimulationPanel(report.simulation || {})}
 </div>`;

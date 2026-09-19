@@ -9,7 +9,7 @@ def test_current_phase_does_not_enter_open_execution_before_0935():
 
 
 def test_recovery_catches_a_late_pre_market_start():
-    assert get_recoverable_phases(datetime(2026, 8, 17, 1, 5)) == [
+    assert get_recoverable_phases(datetime(2026, 8, 17, 6, 5)) == [
         SchedulePhase.PRE_MARKET,
     ]
     assert get_recoverable_phases(datetime(2026, 8, 17, 8, 38)) == [
@@ -44,6 +44,7 @@ def test_recovery_runs_close_before_evening_after_late_restart():
 
 
 def test_recovery_does_not_run_outside_safe_windows_or_on_weekends():
+    assert get_recoverable_phases(datetime(2026, 8, 17, 5, 59)) == []
     assert get_recoverable_phases(datetime(2026, 8, 17, 9, 25)) == []
     assert get_recoverable_phases(datetime(2026, 8, 17, 15, 0)) == [
         SchedulePhase.MARKET_CLOSE,

@@ -10,19 +10,14 @@ from src.ai_os.scheduler import SchedulePhase, get_schedule_for_phase
 from src.ai_os.task_executor import TaskExecutor
 from src.api.routes import (
     alerts_routes,
-    announcements_routes,
     brief_utils,
     decision_routes,
-    financials_routes,
-    fundflow_routes,
     market_routes,
-    newsradar_routes,
     trust_routes,
-    valuation_routes,
 )
-from src.infrastructure.market_data import stock_skill_bridge
 from src.infrastructure.market_data.real_data_provider import RealDataProvider
 from src.infrastructure.market_data.source_manager import DataProvenance
+from src.infrastructure.market_data.news_freshness import apply_news_freshness
 from src.infrastructure.market_data.vibe_provider import VibeResearchProvider
 from src.user_model import journal_loader
 from src.user_model.engine import UserModelEngine
@@ -295,7 +290,7 @@ def test_neutral_observation_is_not_a_verified_user_model_call(monkeypatch):
 
 
 def test_stale_news_is_not_reported_available():
-    data = newsradar_routes._apply_freshness({
+    data = apply_news_freshness({
         "news": [{"title": "old"}],
         "updated_at": "2020-01-01 00:00",
         "_meta": {"available": True},
@@ -305,7 +300,7 @@ def test_stale_news_is_not_reported_available():
 
 
 def test_empty_news_is_not_reported_available_even_with_fresh_timestamp():
-    data = newsradar_routes._apply_freshness({
+    data = apply_news_freshness({
         "news": [],
         "updated_at": datetime.now().isoformat(timespec="minutes"),
         "_meta": {"available": True},
@@ -333,132 +328,6 @@ def test_news_radar_prioritizes_a_share_relevance_before_generic_ai():
 
     assert result["news"][0]["title"] == "A股芯片制造扩产"
     assert result["_meta"]["ranking"] == "a_share_relevance_then_recency"
-
-
-@pytest.mark.asyncio
-async def test_market_map_cold_load_returns_before_background_refresh(monkeypatch):
-    started = asyncio.Event()
-    release = asyncio.Event()
-
-    async def delayed_payload():
-        started.set()
-        await release.wait()
-        return {
-            "sectors": [{"name": "机器人", "score": 80, "change_pct": 3.0}],
-            "data_source": "test_live",
-            "is_live": True,
-            "refreshing": False,
-        }
-
-    monkeypatch.setattr(market_routes, "_sector_cache", None)
-    monkeypatch.setattr(market_routes, "_sector_cache_expires_at", 0.0)
-    monkeypatch.setattr(market_routes, "_sector_refresh_task", None)
-    monkeypatch.setattr(market_routes, "_fetch_live_sector_payload", delayed_payload)
-
-    first = await market_routes.market_sectors()
-    assert first["refreshing"] is True
-    assert first["data_source"] == "static_fallback"
-    await started.wait()
-
-    release.set()
-    task = market_routes._sector_refresh_task
-    assert task is not None
-    await task
-    second = await market_routes.market_sectors()
-    assert second["is_live"] is True
-    assert second["sectors"][0]["name"] == "机器人"
-
-
-@pytest.mark.asyncio
-async def test_market_map_failed_refresh_is_cached_without_blocking(monkeypatch):
-    async def failed_payload():
-        raise TimeoutError("provider timed out")
-
-    monkeypatch.setattr(market_routes, "_sector_cache", None)
-    monkeypatch.setattr(market_routes, "_sector_cache_expires_at", 0.0)
-    monkeypatch.setattr(market_routes, "_sector_refresh_task", None)
-    monkeypatch.setattr(market_routes, "_fetch_live_sector_payload", failed_payload)
-
-    first = await market_routes.market_sectors()
-    assert first["refreshing"] is True
-    await asyncio.sleep(0)
-    task = market_routes._sector_refresh_task
-    if task is not None:
-        await task
-
-    second = await market_routes.market_sectors()
-    assert second["refreshing"] is False
-    assert second["data_source"] == "static_fallback"
-    assert "provider timed out" in second["error"]
-
-
-def test_parse_tencent_sector_proxy_uses_real_etf_changes():
-    raw = (
-        'v_sh512480="1~半导体ETF~512480~1.042~1.039~1.034~0~0~0~'
-        '0~0~0~0~0~0~0~0~0~0~0~0~0~0~0~0~0~0~0~0~0~'
-        '20260821150000~0.003~0.29~";'
-        'v_sh512010="1~医药ETF~512010~0.388~0.400~0.394~0~0~0~'
-        '0~0~0~0~0~0~0~0~0~0~0~0~0~0~0~0~0~0~0~0~0~'
-        '20260821150000~-0.012~-3.00~";'
-    ).encode("gb18030")
-
-    result = market_routes._parse_tencent_sector_proxy(raw)
-
-    assert result["data_source"] == "tencent_sector_etf_proxy"
-    assert result["is_proxy"] is True
-    assert result["data_date"] == "2026-08-21"
-    assert [item["name"] for item in result["sectors"]] == ["半导体", "医药生物"]
-    assert result["sectors"][0]["change_pct"] == 0.29
-    assert result["sectors"][1]["change_pct"] == -3.0
-
-
-@pytest.mark.asyncio
-async def test_market_sectors_falls_back_to_tencent_proxy(monkeypatch):
-    async def failed_eastmoney():
-        raise RuntimeError("remote closed")
-
-    async def working_tencent():
-        return {
-            "sectors": [{"name": "通信", "score": 70, "change_pct": 2.0}],
-            "data_source": "tencent_sector_etf_proxy",
-            "is_live": True,
-            "is_proxy": True,
-        }
-
-    monkeypatch.setattr(
-        market_routes, "_fetch_eastmoney_sector_payload", failed_eastmoney
-    )
-    monkeypatch.setattr(
-        market_routes, "_fetch_tencent_sector_proxy_payload", working_tencent
-    )
-
-    result = await market_routes._fetch_live_sector_payload()
-
-    assert result["data_source"] == "tencent_sector_etf_proxy"
-    assert result["sectors"][0]["name"] == "通信"
-
-
-@pytest.mark.asyncio
-async def test_market_map_respects_shared_eastmoney_circuit():
-    from src.infrastructure.market_data.provider_resilience import (
-        ProviderCircuitOpenError,
-        record_provider_failure,
-        reset_provider_resilience_state,
-    )
-
-    reset_provider_resilience_state()
-    record_provider_failure(
-        "eastmoney",
-        "scanner HTTP 429",
-        failure_threshold=2,
-        cooldown_seconds=60,
-        immediate=True,
-    )
-    try:
-        with pytest.raises(ProviderCircuitOpenError, match="cooldown active"):
-            await market_routes._fetch_eastmoney_sector_payload()
-    finally:
-        reset_provider_resilience_state()
 
 
 @pytest.mark.asyncio
@@ -519,6 +388,7 @@ async def test_brief_reuses_inflight_build(monkeypatch):
 @pytest.mark.asyncio
 async def test_brief_carries_market_regime_from_overview(monkeypatch):
     from src.infrastructure.market_data import eastmoney_emotion
+    from src.infrastructure.storage import market_database
 
     regime = {
         "state": "lean_strong",
@@ -539,9 +409,6 @@ async def test_brief_carries_market_regime_from_overview(monkeypatch):
             "_data": {"available": True},
         }
 
-    async def sectors():
-        return {"sectors": [], "is_live": False}
-
     class FakeVibe:
         async def get_sentiment_lite(self):
             return {}
@@ -551,7 +418,12 @@ async def test_brief_carries_market_regime_from_overview(monkeypatch):
 
     monkeypatch.setattr(brief_utils, "_brief_cache", None)
     monkeypatch.setattr(brief_utils, "_brief_refresh_task", None)
-    monkeypatch.setattr(brief_utils, "get_journal_decisions", lambda limit=30: [])
+    monkeypatch.setattr(market_database.market_db, "get_latest_pipeline_run_audit", lambda: {})
+    monkeypatch.setattr(
+        market_database.market_db,
+        "get_decisions_for_date",
+        lambda decision_date, limit=5000: [],
+    )
     monkeypatch.setattr(brief_utils, "get_vibe_provider", lambda: FakeVibe())
     monkeypatch.setattr(
         eastmoney_emotion,
@@ -559,7 +431,6 @@ async def test_brief_carries_market_regime_from_overview(monkeypatch):
         AsyncMock(return_value={"data": {}, "_meta": {"available": False}}),
     )
     monkeypatch.setattr(market_routes, "market_overview", overview)
-    monkeypatch.setattr(market_routes, "market_sectors", sectors)
 
     result = await brief_utils.build_real_brief(force_refresh=True)
 
@@ -634,9 +505,6 @@ async def test_real_brief_exposes_considered_stock_analysis_and_reference_price(
     async def overview():
         return {"market_breadth": {"up": 1, "down": 1}, "_data": {"available": True}}
 
-    async def sectors():
-        return {"sectors": [], "is_live": False}
-
     class FakeVibe:
         async def get_sentiment_lite(self):
             return {}
@@ -647,29 +515,43 @@ async def test_real_brief_exposes_considered_stock_analysis_and_reference_price(
     decision = {
         "stock_code": "000001.SZ",
         "stock_name": "平安银行",
+        "decision_date": date.today().isoformat(),
         "ai_score": 58,
         "ranking_score": 73.2,
         "direction": "neutral",
+        "decision_status": "hold",
         "recommendation": "HOLD",
         "deep_analysis": "估值尚可，等待量价确认。",
+        "deep_rating": "Hold",
         "deep_analysis_available": True,
+        "execution_evidence_complete": True,
+        "score_guard_reasons": [],
+        "publication_blocked": False,
+        "run_id": "test-run",
+        "recommendation_tier": "research_complete",
         "market_price": 12.345,
         "market_price_date": "2026-08-29",
         "market_price_source": "tencent",
-        "publication_blocked": False,
     }
     monkeypatch.setattr(brief_utils, "_brief_cache", None)
     monkeypatch.setattr(brief_utils, "_brief_refresh_task", None)
-    monkeypatch.setattr(brief_utils, "get_journal_decisions", lambda limit=30: [decision])
     monkeypatch.setattr(brief_utils, "get_vibe_provider", lambda: FakeVibe())
     monkeypatch.setattr(market_routes, "market_overview", overview)
-    monkeypatch.setattr(market_routes, "market_sectors", sectors)
     monkeypatch.setattr(
         eastmoney_emotion,
         "fetch_limit_up_sentiment",
         AsyncMock(return_value={"data": {}, "_meta": {"available": False}}),
     )
-    monkeypatch.setattr(market_database.market_db, "get_latest_pipeline_run_audit", lambda: {})
+    monkeypatch.setattr(
+        market_database.market_db,
+        "get_latest_pipeline_run_audit",
+        lambda: {"decision_date": date.today().isoformat(), "run_id": "test-run"},
+    )
+    monkeypatch.setattr(
+        market_database.market_db,
+        "get_decisions_for_date",
+        lambda decision_date, limit=5000: [decision],
+    )
 
     result = await brief_utils.build_real_brief(force_refresh=True)
 
@@ -749,232 +631,3 @@ async def test_market_checkpoint_does_not_use_dated_close_as_intraday_regime(mon
     assert result["market_regime_usable_for_intraday"] is False
     assert result["market_regime_state"] == "unknown"
     assert result["market_regime_score"] is None
-
-
-@pytest.mark.asyncio
-async def test_valuation_prefers_adaptive_quote_snapshot(monkeypatch):
-    async def quote(code):
-        return {
-            "stock_code": code,
-            "stock_name": "Test Corp",
-            "price": 12.5,
-            "change_pct": 1.2,
-            "pe": 18.0,
-            "pb": 1.6,
-            "total_market_cap": 12_000_000_000,
-        }, DataProvenance(provider="tencent", is_live=True)
-
-    class FailingVibe:
-        async def get_valuation(self, code):
-            raise AssertionError("fallback should not be called")
-
-    monkeypatch.setattr(valuation_routes.source_manager, "get_eod_quote", quote)
-    monkeypatch.setattr(valuation_routes, "get_vibe_provider", lambda: FailingVibe())
-
-    result = await valuation_routes.get_valuation("000001.SZ")
-
-    assert result["data"]["pe"] == 18.0
-    assert result["data"]["pb"] == 1.6
-    assert result["_meta"]["provider"] == "tencent"
-    assert result["_meta"]["valuation_scope"] == "quote_snapshot"
-    assert result["_meta"]["is_proxy"] is True
-
-
-@pytest.mark.asyncio
-async def test_valuation_falls_back_when_quote_has_no_valuation_fields(monkeypatch):
-    async def quote(code):
-        return {"stock_code": code, "price": 12.5}, DataProvenance(provider="tencent")
-
-    class Vibe:
-        async def get_valuation(self, code):
-            return {"data": {"pe": 20.0}, "_meta": {"provider": "vibe_research"}}
-
-    monkeypatch.setattr(valuation_routes.source_manager, "get_eod_quote", quote)
-    monkeypatch.setattr(valuation_routes, "get_vibe_provider", lambda: Vibe())
-
-    result = await valuation_routes.get_valuation("000001.SZ")
-
-    assert result["data"]["pe"] == 20.0
-    assert result["_meta"]["provider"] == "vibe_research"
-
-
-@pytest.mark.asyncio
-async def test_financials_prefers_adaptive_native_statements(monkeypatch):
-    async def native(code):
-        return {
-            "data": {
-                "code": code,
-                "period": "2026-03-31",
-                "revenue": "130",
-                "statements": {"income_statement": [{"report_date": "2026-03-31"}]},
-            },
-            "_meta": {
-                "provider": "sina",
-                "source_layer": "adaptive_native",
-                "available": True,
-                "point_in_time": True,
-            },
-        }
-
-    class FailingVibe:
-        async def get_financials(self, code):
-            raise AssertionError("fallback should not be called")
-
-    async def unavailable_statements(code):
-        return {}, DataProvenance(provider="tushare", error_message="test unavailable")
-
-    async def unavailable_history(code, periods=8):
-        del code, periods
-        return {}, DataProvenance(provider="tushare", error_message="test unavailable")
-
-    monkeypatch.setattr(
-        financials_routes.source_manager,
-        "get_financial_statements",
-        unavailable_statements,
-    )
-    monkeypatch.setattr(
-        financials_routes.source_manager,
-        "get_financial_history",
-        unavailable_history,
-    )
-    monkeypatch.setattr(financials_routes, "fetch_sina_financials", native)
-    monkeypatch.setattr(financials_routes, "get_vibe_provider", lambda: FailingVibe())
-
-    result = await financials_routes.get_financials("600519.SH")
-
-    assert result["data"]["period"] == "2026-03-31"
-    assert result["data"]["revenue"] == "130"
-    assert result["_meta"]["point_in_time"] is True
-
-
-@pytest.mark.asyncio
-async def test_announcements_prefers_cninfo_native_records(monkeypatch):
-    async def native(code):
-        return {
-            "announcements": [{"title": "annual report", "date": "2026-08-30"}],
-            "count": 1,
-            "_meta": {"provider": "cninfo", "source_layer": "adaptive_native"},
-        }
-
-    class FailingVibe:
-        async def get_announcements(self, code):
-            raise AssertionError(f"Vibe announcements should not be called for {code}")
-
-    monkeypatch.setattr(announcements_routes, "fetch_cninfo_announcements", native)
-    monkeypatch.setattr(announcements_routes, "get_vibe_provider", lambda: FailingVibe())
-
-    result = await announcements_routes.get_announcements("600519.SH")
-
-    assert result["announcements"][0]["title"] == "annual report"
-    assert result["_meta"]["provider"] == "cninfo"
-
-
-@pytest.mark.asyncio
-async def test_fundflow_uses_labelled_tencent_proxy_when_primary_is_empty(monkeypatch):
-    class EmptyProvider:
-        async def get_fundflow(self, code):
-            return {
-                "data": {},
-                "_meta": {"available": False, "error": "primary empty"},
-            }
-
-    async def quotes(codes, timeout_seconds=3.0):
-        return {
-            "300016.SZ": {
-                "name": "北陆药业",
-                "price": 12.3,
-                "change_pct": 1.2,
-                "active_volume_ratio": 0.125,
-                "outer_volume_lots": 1250,
-                "inner_volume_lots": 1000,
-                "amount_wan": 5000,
-                "data_date": "2026-08-21",
-                "fetched_at": "2026-08-21T15:00:00+08:00",
-            }
-        }
-
-    async def empty_source_manager_quote(code):
-        return None, DataProvenance(provider="none")
-
-    monkeypatch.setattr(fundflow_routes, "get_vibe_provider", EmptyProvider)
-    async def empty_evidence(code):
-        return {"quote": {}, "fund_flow": {}, "provenance": {}}
-
-    async def empty_flow_history(code, days=20):
-        del code, days
-        return {}, DataProvenance(provider="tushare", error_message="test unavailable")
-
-    monkeypatch.setattr(
-        fundflow_routes.source_manager,
-        "get_stock_evidence",
-        empty_evidence,
-    )
-    monkeypatch.setattr(
-        fundflow_routes.source_manager,
-        "get_fund_flow_history",
-        empty_flow_history,
-    )
-    monkeypatch.setattr(
-        fundflow_routes.source_manager,
-        "get_realtime_quote",
-        empty_source_manager_quote,
-    )
-    monkeypatch.setattr(stock_skill_bridge, "fetch_tencent_quotes", quotes)
-
-    result = await fundflow_routes.get_fundflow("300016.SZ")
-
-    assert result["_meta"]["available"] is True
-    assert result["_meta"]["is_proxy"] is True
-    assert result["data"]["proxy_type"] == "active_trade_ratio"
-    assert result["data"]["main_net_pct"] == 12.5
-
-
-@pytest.mark.asyncio
-async def test_fundflow_prefers_adaptive_source_manager_proxy(monkeypatch):
-    class EmptyProvider:
-        async def get_fundflow(self, code):
-            return {"data": {}, "_meta": {"available": False}}
-
-    async def quote(code):
-        return {
-            "stock_code": code,
-            "stock_name": "Test Corp",
-            "price": 12.3,
-            "change_pct": 1.2,
-            "outer_volume_lots": 1250,
-            "inner_volume_lots": 1000,
-            "amount": 50_000_000,
-            "data_date": "2026-08-30",
-        }, DataProvenance(provider="tencent", is_live=True)
-
-    async def forbidden_bridge(*args, **kwargs):
-        raise AssertionError("stock-skill bridge should not be called")
-
-    monkeypatch.setattr(fundflow_routes, "get_vibe_provider", EmptyProvider)
-    async def empty_evidence(code):
-        return {"quote": {}, "fund_flow": {}, "provenance": {}}
-
-    async def empty_flow_history(code, days=20):
-        del code, days
-        return {}, DataProvenance(provider="tushare", error_message="test unavailable")
-
-    monkeypatch.setattr(
-        fundflow_routes.source_manager,
-        "get_stock_evidence",
-        empty_evidence,
-    )
-    monkeypatch.setattr(
-        fundflow_routes.source_manager,
-        "get_fund_flow_history",
-        empty_flow_history,
-    )
-    monkeypatch.setattr(fundflow_routes.source_manager, "get_realtime_quote", quote)
-    monkeypatch.setattr(stock_skill_bridge, "fetch_tencent_quotes", forbidden_bridge)
-
-    result = await fundflow_routes.get_fundflow("000001.SZ")
-
-    assert result["data"]["main_net_pct"] == 11.11
-    assert result["data"]["amount_wan"] == 5000.0
-    assert result["_meta"]["provider"] == "tencent"
-    assert result["_meta"]["source_layer"] == "adaptive_source_manager_quote"
-    assert result["_meta"]["is_proxy"] is True

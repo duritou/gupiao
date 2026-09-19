@@ -111,6 +111,10 @@ class ReplayContext:
     decision_count: int = 0
     watchlist: list[str] = field(default_factory=list)
     portfolio_positions: list[dict] = field(default_factory=list)
+    # Public-account review articles visible no later than replay_date.
+    # These are context evidence only; they do not alter the deterministic
+    # technical score or paper-trading decision.
+    wechat_articles: list[dict] = field(default_factory=list)
     knowledge_version: str = "journal"
     prompt_version: str = "journal"
     model_version: str = "balanced-v2"
@@ -141,6 +145,14 @@ class ReplayContext:
                 )
                 for stock in self.stock_pool
             ],
+            "wechat_articles": [
+                (
+                    article.get("id", ""),
+                    article.get("published_at", ""),
+                    article.get("summary", ""),
+                )
+                for article in self.wechat_articles
+            ],
         })
 
     def to_dict(self) -> dict:
@@ -163,6 +175,8 @@ class ReplayContext:
             "decision_count": self.decision_count,
             "watchlist": self.watchlist,
             "portfolio_positions_count": len(self.portfolio_positions),
+            "wechat_articles": self.wechat_articles,
+            "wechat_article_count": len(self.wechat_articles),
             "knowledge_version": self.knowledge_version,
             "prompt_version": self.prompt_version,
             "model_version": self.model_version,
@@ -245,7 +259,11 @@ class ReplayResult:
             ),
             "horizon_days": self.horizon_days,
             "lookahead_safe": self.context.lookahead_safe if self.context else True,
-            "data_source": "decision_journal + point_in_time_local_bars",
+            "data_source": (
+                self.context.data_source
+                if self.context
+                else "decision_journal + point_in_time_local_bars"
+            ),
         }
 
 
@@ -367,6 +385,7 @@ class ReplayEngine:
     ) -> ReplayContext:
         from src.api.routes.journal_utils import latest_per_stock
         from src.infrastructure.storage.market_database import market_db
+        from src.knowledge.wechat_rss import get_replay_articles
 
         date.fromisoformat(target_date)
         metadata_policy = str(metadata_policy or "auto").strip().lower()
@@ -423,6 +442,13 @@ class ReplayEngine:
         if portfolio is None:
             portfolio = []
 
+        try:
+            wechat_articles = get_replay_articles(target_date, limit=20)
+        except Exception:
+            # A malformed optional archive must not make market replay fail;
+            # the context simply records that no article evidence was loaded.
+            wechat_articles = []
+
         metadata_coverage = market_db.get_stock_metadata_coverage(target_date)
         metadata_filtered = 0
         metadata_missing = 0
@@ -478,6 +504,7 @@ class ReplayEngine:
             decision_count=len(decisions),
             watchlist=watchlist,
             portfolio_positions=portfolio,
+            wechat_articles=wechat_articles,
             knowledge_version=knowledge_version,
             prompt_version=prompt_version,
             model_version=canonical_model,
@@ -495,6 +522,11 @@ class ReplayEngine:
                 "metadata_missing_count": metadata_missing,
                 "market_regime_state": market_regime.get("state", "unknown"),
                 "market_regime_score": market_regime.get("score", 50),
+                "wechat_articles_count": len(wechat_articles),
+                "wechat_latest_published_at": (
+                    wechat_articles[0].get("published_at", "")
+                    if wechat_articles else ""
+                ),
             },
             lookahead_safe=(
                 metadata_policy == "ignore"
@@ -502,6 +534,10 @@ class ReplayEngine:
                     metadata_coverage["stock_count"] > 0
                     and metadata_missing == 0
                 )
+            ),
+            data_source=(
+                "decision_journal + local_market_daily + wechat_review_articles"
+                if wechat_articles else "decision_journal + local_market_daily"
             ),
         )
         ctx.context_hash = ctx.compute_hash()

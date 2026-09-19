@@ -2,115 +2,85 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.buildReviewLabPage = buildReviewLabPage;
 const layout_1 = require("../webview/layout");
-const model_1 = require("../review-lab/model");
 function escapeHtml(value) {
     return String(value ?? '--').replace(/[&<>"']/g, char => ({
         '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
     }[char] || char));
 }
-function renderTrade(trade) {
-    const name = trade.name && trade.name !== trade.symbol ? `<div>${escapeHtml(trade.name)}</div><div class="text-sm text-muted">${escapeHtml(trade.symbol)}</div>` : escapeHtml(trade.symbol);
-    return `<tr><td>${name}</td><td>${escapeHtml(trade.buy_date)}</td>
-<td>${escapeHtml(trade.sell_date)}</td><td>${escapeHtml(trade.quantity)}</td>
-<td>${escapeHtml(trade.entry_price)}</td><td>${escapeHtml(trade.exit_price)}</td>
-<td class="${Number(trade.net_pnl) >= 0 ? 'up' : 'down'}">${escapeHtml(trade.net_pnl)}</td></tr>`;
+function renderArticle(article, accountName, latest = false) {
+    if (!article)
+        return '<p class="text-muted">暂无已同步文章。</p>';
+    const title = escapeHtml(article.title || '未命名文章');
+    const url = escapeHtml(article.url || '');
+    const published = escapeHtml(String(article.published_at || '').slice(0, 19));
+    const author = escapeHtml(article.account_name || accountName || '公众号');
+    const text = escapeHtml(article.content_text || article.summary || '暂无摘要');
+    const images = Array.isArray(article.content_images) ? article.content_images : [];
+    const imageHtml = images.length
+        ? `<div style="display:grid;gap:8px;margin-top:10px">${images.map(image => `<img src="${escapeHtml(image)}" alt="公众号文章配图" loading="lazy" style="max-width:100%;border-radius:5px;background:#111827">`).join('')}</div>`
+        : '';
+    return `<article style="padding:10px 0${latest ? '' : ';border-top:1px solid #21262d'}">
+<div style="font-size:13px;font-weight:600"><a href="${url}" target="_blank" rel="noreferrer" style="color:#A78BFA;text-decoration:none">${title}</a></div>
+<div style="font-size:10px;color:#6B7280;margin:4px 0">${published} · ${author}</div>
+<div class="text-sm" style="line-height:1.75;white-space:pre-wrap">${text}</div>${imageHtml}</article>`;
 }
-function renderMetric(key, value) {
-    if (value && typeof value === 'object')
-        return '';
-    return `<span style="display:inline-block;margin:3px 6px 3px 0;padding:3px 7px;border:1px solid #30363d;border-radius:999px;color:#c9d1d9;font-size:11px">${escapeHtml(key)}：${escapeHtml(value)}</span>`;
-}
-function renderProjectReview(item) {
-    const findings = Array.isArray(item?.findings) ? item.findings : [];
-    const limitations = Array.isArray(item?.limitations) ? item.limitations : [];
-    const metrics = item?.metrics && typeof item.metrics === 'object' ? item.metrics : {};
-    const metricHtml = Object.entries(metrics).map(([key, value]) => renderMetric(key, value)).join('');
-    const facts = Array.isArray(item?.facts) ? item.facts : [];
-    const watchNext = Array.isArray(item?.watch_next) ? item.watch_next : [];
-    const status = item?.status === 'completed' ? 'completed' : 'partial / data limited';
-    return `<section style="border-top:1px solid #30363d;padding:14px 0">
-<div class="flex-between" style="gap:12px;align-items:flex-start"><div><strong>${escapeHtml(item?.project)}</strong><div class="text-sm text-muted">${escapeHtml(item?.title)}</div></div>
-<span class="text-sm ${item?.status === 'completed' ? 'up' : 'text-muted'}">${escapeHtml(status)}</span></div>
-${metricHtml ? `<div style="margin:7px 0">${metricHtml}</div>` : ''}
-${facts.length ? `<div class="text-sm"><strong>数据事实</strong><ul style="margin:5px 0;padding-left:20px">${facts.map((fact) => `<li style="margin:4px 0">${escapeHtml(fact)}</li>`).join('')}</ul></div>` : ''}
-${findings.length ? `<ul class="text-sm" style="margin:7px 0;padding-left:20px">${findings.map((finding) => `<li style="margin:4px 0">${escapeHtml(finding)}</li>`).join('')}</ul>` : '<p class="text-sm text-muted">暂无观察结论。</p>'}
-${item?.interpretation ? `<p class="text-sm"><strong>复盘推断：</strong>${escapeHtml(item.interpretation)}</p>` : ''}
-${watchNext.length ? `<p class="text-sm"><strong>下一步验证：</strong>${watchNext.map((value) => escapeHtml(value)).join('；')}</p>` : ''}
-${limitations.length ? `<p class="text-sm text-muted" style="margin:7px 0">边界：${limitations.map((value) => escapeHtml(value)).join('；')}</p>` : ''}</section>`;
-}
-function renderIndustryViews(views) {
-    const groups = views.filter(view => Array.isArray(view?.items) && view.items.length);
-    if (!groups.length)
-        return '<p class="text-muted">行业字段不足，无法形成行业横截面。</p>';
-    return groups.map(view => `<div style="margin:10px 0"><strong>${escapeHtml(view.view)}</strong>
-<div style="overflow-x:auto"><table><thead><tr><th>行业</th><th>样本</th><th>上涨占比</th><th>平均涨跌</th><th>成交额</th></tr></thead><tbody>
-${view.items.slice(0, 5).map((item) => `<tr><td>${escapeHtml(item.industry)}</td><td>${escapeHtml(item.universe)}</td><td>${escapeHtml(item.breadth_pct)}%</td><td class="${Number(item.mean_change_pct) >= 0 ? 'up' : 'down'}">${escapeHtml(item.mean_change_pct)}%</td><td>${escapeHtml((Number(item.amount) / 1e8).toFixed(1))} 亿</td></tr>`).join('')}
-</tbody></table></div></div>`).join('');
-}
-function renderNarrative(narrative) {
-    if (!narrative)
-        return '';
-    const facts = Array.isArray(narrative.facts) ? narrative.facts : [];
-    const interpretations = Array.isArray(narrative.interpretations) ? narrative.interpretations : [];
-    const nextChecks = Array.isArray(narrative.next_checks) ? narrative.next_checks : [];
-    const evidence = Array.isArray(narrative.evidence) ? narrative.evidence : [];
-    const quality = narrative.quality || {};
-    return `<div class="card" style="margin:0 24px 16px"><h3>先看结论，再看数字</h3>
-<p class="text-sm" style="font-size:14px;line-height:1.8">${escapeHtml(narrative.headline || '暂无结论')}</p>
-<div class="grid2"><div><h4>数据事实</h4><ul class="text-sm">${facts.map((fact) => `<li style="margin:6px 0">${escapeHtml(fact)}</li>`).join('')}</ul></div>
-<div><h4>复盘推断（非事实）</h4><ul class="text-sm">${interpretations.map((item) => `<li style="margin:6px 0">${escapeHtml(item)}</li>`).join('')}</ul></div></div>
-<h4>下一交易日待验证</h4><ul class="text-sm">${nextChecks.map((item) => `<li style="margin:6px 0">${escapeHtml(item)}</li>`).join('')}</ul>
-<p class="text-sm text-muted">质量边界：核心字段空值 ${escapeHtml(quality.null_core_rows)} 行；极端涨跌 ${escapeHtml(quality.extreme_change_rows)} 行；行业覆盖 ${escapeHtml(quality.industry_coverage_pct)}%。</p></div>
-<div class="card" style="margin:0 24px 16px"><h3>证据股票（已排除极端涨跌）</h3>
-${evidence.length ? `<table><thead><tr><th>标的</th><th>行业</th><th>方向</th><th>涨跌幅</th><th>成交额</th><th>换手率</th></tr></thead><tbody>${evidence.map((item) => `<tr><td>${escapeHtml(item.symbol)} ${escapeHtml(item.name)}</td><td>${escapeHtml(item.industry)}</td><td>${escapeHtml(item.side)}</td><td class="${Number(item.change_pct) >= 0 ? 'up' : 'down'}">${escapeHtml(item.change_pct)}%</td><td>${escapeHtml((Number(item.amount) / 1e8).toFixed(1))} 亿</td><td>${escapeHtml(item.turnover)}%</td></tr>`).join('')}</tbody></table>` : '<p class="text-muted">暂无可核验股票证据。</p>'}</div>
-<div class="card" style="margin:0 24px 16px"><h3>行业主线与弱项</h3>${renderIndustryViews(Array.isArray(narrative.industry_views) ? narrative.industry_views : [])}</div>`;
+function renderAccount(account) {
+    const accountName = String(account?.source_name || '公众号');
+    const latest = account?.latest || null;
+    const history = Array.isArray(account?.history) ? account.history : [];
+    const methodology = account?.methodology || {};
+    const principles = Array.isArray(methodology.principles) ? methodology.principles : [];
+    const checklist = Array.isArray(methodology.checklist) ? methodology.checklist : [];
+    const limitations = Array.isArray(methodology.limitations) ? methodology.limitations : [];
+    const learningStatus = methodology.status === 'completed'
+        ? '已完成独立方法论学习' : methodology.status === 'unchanged'
+        ? '文章未变化，沿用上一版学习结果' : methodology.status === 'failed'
+        ? '本次学习失败，保留上一版结果' : '尚未生成方法论总结';
+    const contentStatus = latest?.has_content ? '正文已抓取' : '暂无正文，仅显示摘要';
+    const list = (items) => items.length
+        ? `<ul class="text-sm" style="margin:6px 0;padding-left:20px">${items.map(item => `<li style="margin:4px 0">${escapeHtml(item)}</li>`).join('')}</ul>`
+        : '<p class="text-muted">暂无。</p>';
+    const historyHtml = history.length
+        ? history.map(article => `<details style="margin:8px 0;border-top:1px solid #21262d;padding-top:8px">
+<summary style="cursor:pointer;color:#A78BFA;font-size:12px">${escapeHtml(article?.title || '未命名文章')} · ${escapeHtml(String(article?.published_at || '').slice(0, 10))}</summary>
+${renderArticle(article, accountName)}</details>`).join('')
+        : '<p class="text-muted">暂无历史文章。</p>';
+    const learningHtml = methodology.summary_markdown
+        ? `<div class="text-sm" style="line-height:1.7;white-space:pre-wrap">${escapeHtml(methodology.summary_markdown)}</div>`
+        : '<p class="text-muted">同步文章后点击“刷新并学习”，生成作者复盘思路总结。</p>';
+    return `<section class="card" style="margin:0 24px 16px;border-color:#7C3AED88">
+<div class="flex-between" style="gap:12px;align-items:flex-start"><div><h3 style="margin-bottom:4px">公众号复盘 · ${escapeHtml(accountName)}</h3>
+<div class="text-sm text-muted">仅保留公众号文章与方法论学习 · ${contentStatus}</div></div>
+<button class="btn btn-primary" onclick="refreshWechat()">刷新并学习</button></div>
+<div style="margin-top:12px;padding:10px 12px;background:#0B1220;border-radius:7px">${renderArticle(latest, accountName, true)}</div>
+<details style="margin-top:10px"><summary style="cursor:pointer;color:#A78BFA">历史文章（${history.length}）</summary>
+<div style="margin-top:5px">${historyHtml}</div></details>
+<div style="margin-top:14px;border-top:1px solid #30363d;padding-top:12px"><div class="flex-between" style="gap:12px;align-items:center">
+<h4 style="margin:0">AI 学习：作者复盘思路</h4><span class="text-sm text-muted">${escapeHtml(learningStatus)}</span></div>
+${learningHtml}
+<div class="grid2" style="padding:0;margin-top:10px"><div><strong class="text-sm">提炼原则</strong>${list(principles)}</div>
+<div><strong class="text-sm">每日检查清单</strong>${list(checklist)}</div></div>
+${methodology.learning_delta ? `<p class="text-sm" style="margin:8px 0"><strong>本次进步：</strong>${escapeHtml(methodology.learning_delta)}</p>` : ''}
+${limitations.length ? `<p class="text-sm text-muted" style="margin:8px 0">边界：${limitations.map(item => escapeHtml(item)).join('；')}</p>` : ''}
+${methodology.generated_at ? `<div class="text-sm text-muted" style="margin-top:8px">学习时间：${escapeHtml(String(methodology.generated_at).slice(0, 19))} · 样本：${escapeHtml(methodology.article_count || 0)} 篇</div>` : ''}</div></section>`;
 }
 function buildReviewLabPage(data) {
-    const latest = data.latest || null;
-    const runs = Array.isArray(data.runs) ? data.runs : [];
-    const trades = Array.isArray(latest?.trades) ? latest.trades : [];
-    const rejected = Array.isArray(latest?.rejected) ? latest.rejected : [];
-    const learning = Array.isArray(latest?.learning) ? latest.learning : [];
-    const projectReviews = Array.isArray(latest?.project_reviews) ? latest.project_reviews : [];
-    const latestBlock = latest ? `
-<div class="grid4" style="padding:16px 24px 0">
-<div class="card"><h3>复盘日期</h3><div class="metric-value" style="font-size:22px">${escapeHtml(latest.date)}</div></div>
-<div class="card"><h3>模拟净结果</h3><div class="metric-value ${Number(latest.net_pnl) >= 0 ? 'up' : 'down'}" style="font-size:22px">${escapeHtml(latest.net_pnl)} 元</div></div>
-<div class="card"><h3>模拟成交</h3><div class="metric-value" style="font-size:22px">${trades.length} 笔</div></div>
-<div class="card"><h3>运行标识</h3><div class="text-sm" style="overflow-wrap:anywhere">${escapeHtml(latest.run_id || data.selectedRunId || '--')}</div></div>
-</div>
-<div class="card" style="margin:16px 24px"><h3>本次闭环</h3>
-<p class="text-sm">使用历史数据先决策、下一交易日模拟买入、再下一交易日模拟卖出；周五收盘没有倒推买点。</p>
-<p class="text-sm text-muted">数据指纹：${escapeHtml(latest.input_sha256)} · 来源：${escapeHtml(latest.source)}</p>
-<p class="text-sm text-muted">执行：${escapeHtml(latest.execution)} · 费用：${escapeHtml(latest.fee_assumptions)}</p>
-${latest.source_data ? `<p class="text-sm text-muted">数据快照：${escapeHtml(latest.source_data.target_rows)} 行 · 三日覆盖：${escapeHtml(JSON.stringify(latest.source_data.rows_by_date || {}))}</p>` : ''}</div>
-${renderNarrative(latest?.narrative)}
-<div class="card" style="margin:0 24px 16px"><h3>七种方法复盘</h3>
-<p class="text-sm text-muted">同一份周五日线快照按你提供的七个项目方向分别观察；这是本地方法映射，不是上游仓库代码实际运行。</p>
-${projectReviews.length ? projectReviews.map(renderProjectReview).join('') : '<p class="text-muted">这条历史结果尚未包含七项目分析，请刷新生成最新复盘。</p>'}</div>
-<div class="card" style="margin:0 24px 16px"><h3>模拟交易明细</h3>
-${trades.length ? `<table><thead><tr><th>标的</th><th>买入日</th><th>卖出日</th><th>数量</th><th>买价</th><th>卖价</th><th>净结果</th></tr></thead><tbody>${trades.map(renderTrade).join('')}</tbody></table>` : '<p class="text-muted">没有符合条件的模拟成交。</p>'}
-${rejected.length ? `<p class="text-sm text-muted" style="margin-top:12px">未入场：${rejected.map(item => `${escapeHtml(item.symbol)}（${escapeHtml(item.reason)}）`).join('、')}</p>` : ''}</div>
-<div class="card" style="margin:0 24px 16px"><h3>测试学习总结</h3>
-${learning.length ? `<ul>${learning.map((item) => `<li style="margin:6px 0">${escapeHtml(item)}</li>`).join('')}</ul>` : '<p class="text-muted">暂无独立学习记录。</p>'}</div>`
-        : `<div class="empty-state"><div class="icon">🧪</div><h2>暂无最新测试复盘</h2><p>没有生成结果，不会调用主流程补采或虚构结论。</p></div>`;
-    const history = runs.length ? runs.map(run => `<tr><td>${escapeHtml(run)}</td><td><button class="btn btn-sm" onclick="openReviewHistory('${escapeHtml(run)}')">查看</button></td></tr>`).join('')
-        : '<tr><td colspan="2" class="text-muted">暂无历史记录</td></tr>';
-    const learningGuide = `<div class="card" style="margin:0 24px 16px"><h3>项目学习方向与评价</h3>
-<p class="text-sm text-muted">以下是方法借鉴清单，不是这些仓库实际运行后的收益结论。</p>
-<div style="overflow-x:auto"><table><thead><tr><th>项目</th><th>适合学习什么</th><th>评价与边界</th></tr></thead><tbody>
-${model_1.REVIEW_LEARNING_GUIDE.map(item => `<tr><td style="min-width:190px">${escapeHtml(item.project)}</td><td>${escapeHtml(item.learn)}</td><td>${escapeHtml(item.evaluation)}</td></tr>`).join('')}
-</tbody></table></div></div>`;
+    const wechat = data?.wechat || {};
+    const accounts = Array.isArray(wechat.accounts) && wechat.accounts.length
+        ? wechat.accounts
+        : [{
+                source_name: wechat.source_name || '股痴流沙河',
+                latest: wechat.latest,
+                history: wechat.history || [],
+                methodology: wechat.methodology || {},
+            }];
     const content = `<div style="padding:22px 24px 8px"><div class="flex-between" style="align-items:flex-start;gap:16px;flex-wrap:wrap">
-<div><h1 style="font-size:20px;color:#A78BFA;margin-bottom:4px">测试复盘 · 最新结果</h1>
-<div style="font-size:12px;color:#8b949e">独立只读模块 · 仅供参考 · 不参与主系统选股、交易或学习</div></div>
-<span style="font-size:11px;color:#22C55E;border:1px solid #14532D;background:#052E16;padding:4px 8px;border-radius:999px">✓ Reference Only</span></div></div>
-<div style="padding:0 24px 8px"><button class="btn btn-primary" onclick="openReviewLatest()">显示最新</button><button class="btn" style="margin-left:8px" onclick="refreshReviewLab()">刷新</button></div>
-${latestBlock}${learningGuide}<div class="card" style="margin:0 24px 24px"><h3>历史记录</h3><p class="text-sm text-muted">历史运行只读保存；不会覆盖最新结果，也不会回写生产数据库。</p>
-<table><thead><tr><th>运行 ID</th><th>操作</th></tr></thead><tbody>${history}</tbody></table></div>`;
-    const extraScript = `function openReviewHistory(runId){vscode.postMessage({command:'reviewLabHistory',runId});}
-function openReviewLatest(){vscode.postMessage({command:'navigate',page:'review_lab'});}
-function refreshReviewLab(){vscode.postMessage({command:'refreshPage'});}`;
-    return (0, layout_1.pageShell)('review_lab', '测试复盘 · 最新结果', content, extraScript);
+<div><h1 style="font-size:20px;color:#A78BFA;margin-bottom:4px">公众号复盘 · 方法论</h1>
+<div style="font-size:12px;color:#8b949e">公众号文章归档、最新复盘与独立方法论学习</div></div>
+<span style="font-size:11px;color:#22C55E;border:1px solid #14532D;background:#052E16;padding:4px 8px;border-radius:999px">✓ 仅公众号</span></div></div>
+<div style="padding:0 24px 8px"><button class="btn btn-primary" onclick="refreshWechat()">刷新并学习</button></div>
+${accounts.map(renderAccount).join('')}`;
+    const extraScript = `function refreshWechat(){vscode.postMessage({command:'wechatRefresh'});}`;
+    return (0, layout_1.pageShell)('review_lab', '公众号复盘 · 方法论', content, extraScript);
 }
 //# sourceMappingURL=review_lab.js.map

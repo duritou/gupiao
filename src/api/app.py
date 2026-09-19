@@ -37,12 +37,12 @@ def _deployment_validation_active() -> bool:
 from src.api.routes import (
     system_routes,
     knowledge_routes,
+    wechat_routes,
     signals_routes,
     scanner_routes,
     research_routes,
     backtest_routes,
     market_routes,
-    compare_routes,
     timeline_routes,
     alerts_routes,
     dailybrief_routes,
@@ -54,13 +54,6 @@ from src.api.routes import (
     replay_routes,
     knowledge_graph_routes,
     decision_routes,
-    newsradar_routes,
-    reports_routes,
-    announcements_routes,
-    financials_routes,
-    valuation_routes,
-    fundflow_routes,
-    dragon_tiger_routes,
     vibe_compat_routes,
     unified_research_routes,
     task_monitor_routes,
@@ -448,6 +441,40 @@ async def lifespan(app):
                             str(exc) or repr(exc),
                         )
 
+            wechat_sync_lock = asyncio.Lock()
+
+            async def _daily_wechat_sync():
+                """Refresh optional public-account knowledge once per day."""
+                from config.settings import settings
+
+                if deployment_validation or not settings.WECHAT_RSS_ENABLED:
+                    return
+                if wechat_sync_lock.locked():
+                    logger.warning("[wechat-rss] 已有同步任务运行，跳过本次触发")
+                    return
+                async with wechat_sync_lock:
+                    try:
+                        from src.knowledge.wechat_rss import (
+                            learn_wechat_methodology,
+                            sync_wechat_articles,
+                        )
+
+                        result = await asyncio.to_thread(sync_wechat_articles)
+                        learning = await learn_wechat_methodology()
+                        logger.info(
+                            "[wechat-rss] daily sync status=%s fetched=%s new=%s updated=%s learning=%s",
+                            result.get("status"),
+                            result.get("fetched_count", 0),
+                            result.get("new", 0),
+                            result.get("updated", 0),
+                            learning.get("status", "unknown"),
+                        )
+                    except Exception as exc:
+                        logger.warning(
+                            "[wechat-rss] daily sync failed: %s: %s",
+                            type(exc).__name__, str(exc)[:200],
+                        )
+
             # Pin the business schedule to China Standard Time instead of
             # inheriting a machine timezone that may change after reboot.
             scheduler = AsyncIOScheduler(timezone="Asia/Shanghai")
@@ -472,10 +499,23 @@ async def lifespan(app):
                 max_instances=1,
                 misfire_grace_time=300,
             )
+            from config.settings import settings as app_settings
+
+            scheduler.add_job(
+                _daily_wechat_sync,
+                "cron",
+                hour=max(0, min(int(app_settings.WECHAT_RSS_SYNC_HOUR), 23)),
+                minute=max(0, min(int(app_settings.WECHAT_RSS_SYNC_MINUTE), 59)),
+                id="wechat_rss_sync",
+                coalesce=True,
+                max_instances=1,
+                misfire_grace_time=900,
+            )
 
             # 注册AI OS调度器定时任务
             from src.ai_os.scheduler import (
                 HITHINK_CANARY_CHECKPOINTS,
+                PHASE_SCHEDULE_TIMES,
                 SchedulePhase,
                 get_recoverable_phases,
                 get_schedule_for_phase,
@@ -606,7 +646,7 @@ async def lifespan(app):
                         # prerequisite is in its recovery cooldown.  Without
                         # this guard, every 30-second watchdog tick records
                         # another skipped P0 morning brief/check-alerts entry
-                        # and can contend with the scheduled 01:00 phase.
+                        # and can contend with the scheduled pre-market phase.
                         pending_names = {task.name for task in pending}
                         blocked_by_cooldown = {
                             dependency
@@ -633,9 +673,19 @@ async def lifespan(app):
                     logger.exception("[TaskExecutor] 漏跑阶段补偿失败: %s", exc)
 
             # 每日定时任务 - 直接传递async函数
-            scheduler.add_job(_execute_phase_tasks, "cron", day_of_week="mon-fri", hour=1, minute=0,
-                            args=[SchedulePhase.PRE_MARKET], id="pre_market", coalesce=True,
-                            max_instances=1, misfire_grace_time=30)
+            pre_market_time = PHASE_SCHEDULE_TIMES[SchedulePhase.PRE_MARKET]
+            scheduler.add_job(
+                _execute_phase_tasks,
+                "cron",
+                day_of_week="mon-fri",
+                hour=pre_market_time.hour,
+                minute=pre_market_time.minute,
+                args=[SchedulePhase.PRE_MARKET],
+                id="pre_market",
+                coalesce=True,
+                max_instances=1,
+                misfire_grace_time=30,
+            )
             scheduler.add_job(_execute_phase_tasks, "cron", day_of_week="mon-fri", hour=9, minute=35,
                             args=[SchedulePhase.MARKET_OPEN], id="market_open", coalesce=True,
                             max_instances=1, misfire_grace_time=30)
@@ -657,7 +707,7 @@ async def lifespan(app):
             scheduler.add_job(
                 _monitor_intraday_paper_opportunities,
                 "interval",
-                minutes=1,
+                minutes=5,
                 id="intraday_paper_monitor",
                 coalesce=True,
                 max_instances=1,
@@ -703,7 +753,10 @@ async def lifespan(app):
             scheduler.start()
             from src.api.routes.task_monitor_routes import update_scheduler_runtime
             update_scheduler_runtime(scheduler)
-            logger.info("[TaskExecutor] AI OS定时任务已注册(每日01:00策略计划/开盘/午间/午盘/收盘/晚间)")
+            logger.info(
+                "[TaskExecutor] AI OS定时任务已注册(每日%s策略计划/开盘/午间/午盘/收盘/晚间)",
+                pre_market_time.strftime("%H:%M"),
+            )
             async def _delayed_startup_phase_recovery():
                 # Let the API finish binding and answer health checks before
                 # any potentially expensive recovery phase can start.
@@ -771,12 +824,12 @@ app.add_middleware(
 # 注册路由
 app.include_router(system_routes.router, prefix="/api/v1")
 app.include_router(knowledge_routes.router, prefix="/api/v1")
+app.include_router(wechat_routes.router, prefix="/api/v1")
 app.include_router(signals_routes.router, prefix="/api/v1")
 app.include_router(scanner_routes.router, prefix="/api/v1")
 app.include_router(research_routes.router, prefix="/api/v1")
 app.include_router(backtest_routes.router, prefix="/api/v1")
 app.include_router(market_routes.router, prefix="/api/v1")
-app.include_router(compare_routes.router, prefix="/api/v1")
 app.include_router(timeline_routes.router, prefix="/api/v1")
 app.include_router(alerts_routes.router, prefix="/api/v1")
 app.include_router(dailybrief_routes.router, prefix="/api/v1")
@@ -790,18 +843,7 @@ app.include_router(knowledge_graph_routes.router, prefix="/api/v1")
 app.include_router(decision_routes.router, prefix="/api/v1")
 app.include_router(portfolio_mod.router, prefix="/api/v1")
 app.include_router(morning_mod.router, prefix="/api/v1")
-app.include_router(newsradar_routes.router, prefix="/api/v1")
-app.include_router(reports_routes.router, prefix="/api/v1")
-app.include_router(announcements_routes.router, prefix="/api/v1")
-app.include_router(financials_routes.router, prefix="/api/v1")
-app.include_router(valuation_routes.router, prefix="/api/v1")
-app.include_router(fundflow_routes.router, prefix="/api/v1")
-app.include_router(dragon_tiger_routes.router, prefix="/api/v1")
 app.include_router(vibe_compat_routes.router, prefix="/api/v1")
 app.include_router(unified_research_routes.router, prefix="/api/v1")
 app.include_router(unified_research_routes.router, prefix="/api/v1/vibe")
 app.include_router(task_monitor_routes.router, prefix="/api/v1")
-
-from src.api.routes import review_lab_routes
-
-app.include_router(review_lab_routes.router, prefix="/api/v1")
