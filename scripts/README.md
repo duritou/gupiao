@@ -11,7 +11,7 @@
 >
 > 注册脚本会按当前目录定位批处理脚本；每日同步会在非交易日自动跳过。
 
-让「数据同步 / AI 学习 / ifind 监控」每天自动跑，**不依赖手动打开 VSCode 或后端服务**。
+让「数据同步 / AI 学习 / 数据源监控」每天自动跑，**不依赖手动打开 VSCode 或后端服务**。
 
 ## 组件总览
 
@@ -19,7 +19,7 @@
 |---|---|---|---|
 | **QuantAI_StartService** | 登录时（启动文件夹 VBS） | 启动 uvicorn 后端服务 | `logs/uvicorn.log` |
 | **QuantAI_DailySync** | 每日 16:00（schtasks） | baostock 增量同步近 3 交易日日线入库 | `logs/daily_sync.log` |
-| **QuantAI_DailyVerify** | 每日 09:35（schtasks） | 跑 `verify_trading_day.py` 验证 ifind 接入 | `logs/daily_verify.log` |
+| **QuantAI_DailyVerify** | 每日 09:35（schtasks） | 跑 `verify_trading_day.py` 验证行情源可用 | `logs/daily_verify.log` |
 
 > **AI 学习闭环**：服务自启后，uvicorn 内的 APScheduler 自动跑两件事——启动时数据新鲜度检查、**每日 16:05 决策结果回填（backfill）**。backfill 就是 AI「学习」（决策→等5交易日真实行情→回填→喂 Calibration）。只要服务在跑 + 数据同步着，时间到了学习就自动发生。
 
@@ -151,7 +151,7 @@ schtasks /query /tn "QuantAI_DailySync" /v /fo list
 ### 手动立即触发一次（不等到点）
 ```cmd
 schtasks /run /tn "QuantAI_DailySync"      :: 立即同步
-schtasks /run /tn "QuantAI_DailyVerify"    :: 立即验证 ifind
+schtasks /run /tn "QuantAI_DailyVerify"    :: 立即验证行情源
 ```
 StartService（VBS）：双击启动文件夹里的 `QuantAI_StartService.vbs`（路径：`%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\`）。
 
@@ -164,7 +164,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File C:\vscode_code_data\investme
 ### 查日志
 ```cmd
 type logs\daily_sync.log      :: 数据同步
-type logs\daily_verify.log    :: ifind 验证
+type logs\daily_verify.log    :: 行情源验证
 type logs\uvicorn.log         :: 后端服务
 ```
 

@@ -30,9 +30,14 @@
 
 ## 变更规则
 
-13. **v1.0 Architecture Frozen** — 架构文档不再修改
-14. **新想法先进 Backlog** — 写入 `docs/architecture-v1.1-backlog.md`
-15. **不要提前优化** — Phase 0-6 用 SQLite + 内存 EventBus + 单机 Arq，跑通再换
+13. **文档必须描述在跑的系统** — 2026-09-19 删除了 12 份描述 v1.0 架构（Plugin
+    Registry / Market Gateway / Event Bus / 端口-适配器）的文档：那套架构建于
+    2026-07-05/06，从未接线，几天后即被放弃。**任何描述一套不存在架构的文档
+    都是负债** —— 它会让人（包括 AI 助手）按错误的心智模型改代码。
+14. **新想法先进 Backlog** — 记录在 `docs/project-optimization-20260913/` 或
+    新建文档；不要再引用已删除的 `architecture-v1.1-backlog.md`
+15. **不要提前优化** — SQLite + 单机进程即可，跑通再换。注意：曾计划的内存
+    EventBus 与 Arq 队列**从未接线且已删除**，不要按那份设计写代码
 16. **Feature 先进入 Backlog，再进入 Roadmap** — 不在 Roadmap 上的功能不开发
 
 ---

@@ -2,12 +2,13 @@
 
 `QuantAI_DailyVerify` runs scripts/auto_daily_verify.bat every morning, which
 runs this script and alarms on a non-zero exit.  The informational probes may
-grow, but the return codes may not drift: 0 when a live quote was obtained
-(with or without iFind), 1 when none was, 2 when iFind was required and absent.
+grow, but the return codes may not drift: 0 when a live quote was obtained, 1
+when none was.
 
-The kline probe was folded in from the older root-level script this replaced.
-It reports and does not vote, precisely so that adding it could not change when
-the job alarms.
+The script no longer names a provider.  iFind was removed from the chain on
+2026-09-19 when its account expired, and the chain itself is ranked by observed
+reliability -- asserting a winner here would create a second place for that
+ranking to go stale.
 """
 
 import asyncio
@@ -24,8 +25,8 @@ if str(PROJECT_ROOT) not in sys.path:
 import scripts.verify_trading_day as verify_module  # noqa: E402
 
 
-def _quote(price: float):
-    return SimpleNamespace(price=price)
+def _provenance(provider: str, error: str = ""):
+    return SimpleNamespace(provider=provider, is_live=True, error_message=error)
 
 
 @pytest.fixture()
@@ -36,81 +37,79 @@ def trading_day(monkeypatch):
     monkeypatch.setattr(verify_module, "get_trading_day_status", status)
 
 
-def _install(monkeypatch, *, ifind_quote, fallback, kline):
-    monkeypatch.setattr(verify_module.ifind, "get_quote", lambda code: ifind_quote)
-    monkeypatch.setattr(verify_module.ifind, "get_kline", lambda code, count=3: kline)
-
+def _install(monkeypatch, *, quote, klines):
     async def get_realtime_quote(code):
-        return fallback
+        return quote
 
-    monkeypatch.setattr(
-        verify_module.source_manager, "get_realtime_quote", get_realtime_quote
-    )
+    async def get_kline(code, count=250, adjustment_mode=None):
+        return klines
+
+    monkeypatch.setattr(verify_module.source_manager, "get_realtime_quote", get_realtime_quote)
+    monkeypatch.setattr(verify_module.source_manager, "get_kline", get_kline)
 
 
-def test_a_fallback_quote_passes_even_when_ifind_is_down(monkeypatch, trading_day):
+def test_a_live_quote_passes(monkeypatch, trading_day):
     _install(
         monkeypatch,
-        ifind_quote=None,
-        fallback=({"price": 10.0}, SimpleNamespace(provider="tickflow", is_live=True, error_message="")),
-        kline=None,
+        quote=({"price": 10.0}, _provenance("tickflow")),
+        klines=([], _provenance("tushare", "no bars")),
     )
 
-    assert asyncio.run(verify_module.verify("600000.SH", require_ifind=False)) == 0
+    assert asyncio.run(verify_module.verify("600000.SH")) == 0
 
 
 def test_no_quote_at_all_fails(monkeypatch, trading_day):
     _install(
         monkeypatch,
-        ifind_quote=None,
-        fallback=(None, SimpleNamespace(provider="", is_live=False, error_message="down")),
-        kline=None,
+        quote=(None, _provenance("", "all providers failed")),
+        klines=([], _provenance("", "none")),
     )
 
-    assert asyncio.run(verify_module.verify("600000.SH", require_ifind=False)) == 1
-
-
-def test_requiring_ifind_fails_when_it_is_absent(monkeypatch, trading_day):
-    _install(
-        monkeypatch,
-        ifind_quote=None,
-        fallback=({"price": 10.0}, SimpleNamespace(provider="tickflow", is_live=True, error_message="")),
-        kline=None,
-    )
-
-    assert asyncio.run(verify_module.verify("600000.SH", require_ifind=True)) == 2
+    assert asyncio.run(verify_module.verify("600000.SH")) == 1
 
 
 def test_the_kline_probe_does_not_change_the_exit_code(monkeypatch, trading_day, capsys):
-    # iFind is currently unavailable in production, so this probe prints
-    # "no data" every morning.  That must stay informational.
     _install(
         monkeypatch,
-        ifind_quote=None,
-        fallback=({"price": 10.0}, SimpleNamespace(provider="tickflow", is_live=True, error_message="")),
-        kline=None,
+        quote=({"price": 10.0}, _provenance("tickflow")),
+        klines=([], _provenance("tushare", "no bars")),
     )
 
-    code = asyncio.run(verify_module.verify("600000.SH", require_ifind=False))
+    code = asyncio.run(verify_module.verify("600000.SH"))
 
     assert code == 0
-    assert "ifind-kline: no data" in capsys.readouterr().out
+    assert "market-data-kline: no data" in capsys.readouterr().out
 
 
 def test_the_kline_probe_reports_the_latest_bar(monkeypatch, trading_day, capsys):
     _install(
         monkeypatch,
-        ifind_quote=_quote(10.0),
-        fallback=({"price": 10.0}, SimpleNamespace(provider="ifind", is_live=True, error_message="")),
-        kline=[{"date": "2026-09-18", "close": 9.5}, {"date": "2026-09-19", "close": 9.8}],
+        quote=({"price": 10.0}, _provenance("tickflow")),
+        klines=(
+            [{"date": "2026-09-18", "close": 9.5}, {"date": "2026-09-19", "close": 9.8}],
+            _provenance("tushare"),
+        ),
     )
 
-    code = asyncio.run(verify_module.verify("600000.SH", require_ifind=False))
+    code = asyncio.run(verify_module.verify("600000.SH"))
 
     assert code == 0
     out = capsys.readouterr().out
-    assert "ifind-kline: OK 2 bars" in out
-    assert "2026-09-19" in out
+    assert "2 bars" in out and "2026-09-19" in out
+    assert "provider=tushare" in out
+
+
+def test_the_provider_is_reported_not_asserted(monkeypatch, trading_day, capsys):
+    # Whichever provider wins the dynamic ranking, the script reports it.
+    _install(
+        monkeypatch,
+        quote=({"price": 10.0}, _provenance("some-other-provider")),
+        klines=([], _provenance("x", "none")),
+    )
+
+    asyncio.run(verify_module.verify("600000.SH"))
+
+    assert "provider=some-other-provider" in capsys.readouterr().out
 
 
 def test_a_non_trading_day_skips_before_probing(monkeypatch, capsys):
@@ -119,9 +118,9 @@ def test_a_non_trading_day_skips_before_probing(monkeypatch, capsys):
 
     monkeypatch.setattr(verify_module, "get_trading_day_status", status)
     monkeypatch.setattr(
-        verify_module.ifind, "get_quote",
+        verify_module.source_manager, "get_realtime_quote",
         lambda code: pytest.fail("must not probe on a non-trading day"),
     )
 
-    assert asyncio.run(verify_module.verify("600000.SH", require_ifind=True)) == 0
+    assert asyncio.run(verify_module.verify("600000.SH")) == 0
     assert "non-trading day" in capsys.readouterr().out

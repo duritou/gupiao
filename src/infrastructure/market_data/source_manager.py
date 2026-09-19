@@ -350,18 +350,6 @@ class SourceManager:
 
     def _init_sources(self):
         """Register available data sources with their capabilities."""
-        # Primary: iFind (同花顺 QuantAPI) — production-grade, all data types
-        self._sources["ifind"] = SourceStatus(
-            name="ifind",
-            is_available=False,
-        )
-        self._capabilities["ifind"] = SourceCapability(
-            realtime_quotes=True,
-            kline_history=True,
-            max_kline_days=365 * 10,
-            rate_limited=True,
-            requires_auth=True,
-        )
 
         # Fallback 1: mootdx (通达信 TCP) — real-time quotes, no IP blocking
         self._sources["mootdx"] = SourceStatus(
@@ -611,7 +599,6 @@ class SourceManager:
         """Dispatch quote request to the right provider implementation."""
         dispatcher = {
             "tickflow": self._try_tickflow_quote,
-            "ifind": self._try_ifind_quote,
             "mootdx": self._try_mootdx_quote,
             "tushare": self._try_tushare_quote,
             "akshare": self._try_akshare_quote,
@@ -640,7 +627,6 @@ class SourceManager:
         """Dispatch K-line request to the right provider implementation."""
         dispatcher = {
             "tickflow": lambda c, n: self._try_tickflow_kline(c, n),
-            "ifind": lambda c, n: self._try_ifind_kline(c, n),
             "mootdx": lambda c, n: self._try_mootdx_kline(c, n),
             "tushare": lambda c, n: self._try_tushare_kline(c, n),
             "akshare": lambda c, n: self._try_akshare_kline(c, n),
@@ -1180,89 +1166,6 @@ class SourceManager:
     # ================================================================
     # Internal — Provider implementations
     # ================================================================
-
-    # ================================================================
-    # iFind (QuantAPI) provider — production-grade, paid
-    # ================================================================
-
-    async def _try_ifind_quote(self, code: str) -> tuple[dict | None, DataProvenance]:
-        source = self._sources["ifind"]
-        source.total_calls += 1
-        t0 = datetime.now()
-        try:
-            from src.infrastructure.market_data.ifind_provider import ifind
-            result = await asyncio.to_thread(ifind.get_quote, code)
-            if result is None or result.price == 0:
-                raise ValueError(f"No quote data for {code}")
-            latency = (datetime.now() - t0).total_seconds() * 1000
-            quote = {
-                "stock_code": code, "stock_name": result.name,
-                "price": result.price, "change_pct": result.change_pct,
-                "change_amount": round(result.price - result.pre_close, 2),
-                "volume": result.volume, "amount": result.amount,
-                "amount_yi": round(result.amount / 1e8, 2) if result.amount else 0,
-                "high": result.high, "low": result.low,
-                "open": result.open, "pre_close": result.pre_close,
-                "turnover": result.turnover, "pe": result.pe,
-                "pb": result.pb, "total_market_cap": result.total_market_cap,
-            }
-            source.is_available = True
-            source.last_success_at = datetime.now().isoformat()
-            source.latency_ms = latency
-            source.success_count += 1
-            source.consecutive_failures = 0
-            dyn_trust = self._record_call("ifind", "quote", True, latency)
-            return quote, DataProvenance(
-                provider="ifind", source_name="iFind QuantAPI",
-                fetched_at=datetime.now().isoformat(),
-                data_age_seconds=0, is_live=True, trust_score=dyn_trust,
-            )
-        except Exception as e:
-            source.is_available = False
-            source.last_error = str(e)[:200]
-            source.consecutive_failures += 1
-            latency = (datetime.now() - t0).total_seconds() * 1000
-            dyn_trust = self._record_call("ifind", "quote", False, latency, str(e)[:100])
-            return None, DataProvenance(
-                provider="ifind", source_name="iFind QuantAPI",
-                fetched_at=datetime.now().isoformat(),
-                is_live=False, trust_score=dyn_trust,
-                error_message=f"iFind: {str(e)[:100]}",
-            )
-
-    async def _try_ifind_kline(self, code: str, count: int) -> tuple[list[dict] | None, DataProvenance]:
-        source = self._sources["ifind"]
-        source.total_calls += 1
-        t0 = datetime.now()
-        try:
-            from src.infrastructure.market_data.ifind_provider import ifind
-            klines = await asyncio.to_thread(ifind.get_kline, code, "day", count)
-            if not klines:
-                raise ValueError(f"No K-line data for {code}")
-            latency = (datetime.now() - t0).total_seconds() * 1000
-            source.is_available = True
-            source.last_success_at = datetime.now().isoformat()
-            source.latency_ms = latency
-            source.success_count += 1
-            source.consecutive_failures = 0
-            dyn_trust = self._record_call("ifind", "kline", True, latency)
-            return klines, DataProvenance(
-                provider="ifind", source_name="iFind QuantAPI (K线)",
-                fetched_at=datetime.now().isoformat(),
-                data_age_seconds=0, is_live=True, trust_score=dyn_trust,
-            )
-        except Exception as e:
-            source.is_available = False
-            source.last_error = str(e)[:200]
-            source.consecutive_failures += 1
-            latency = (datetime.now() - t0).total_seconds() * 1000
-            dyn_trust = self._record_call("ifind", "kline", False, latency, str(e)[:100])
-            return None, DataProvenance(
-                provider="ifind", source_name="iFind QuantAPI",
-                fetched_at=datetime.now().isoformat(),
-                is_live=False, trust_score=dyn_trust,
-                error_message=f"iFind K线: {str(e)[:100]}",
-            )
 
     # ================================================================
     # mootdx provider — 通达信 TCP 7709, real-time, no IP blocking
@@ -4494,7 +4397,6 @@ class SourceManager:
     @staticmethod
     def _provider_display_name(name: str) -> str:
         names = {
-            "ifind": "同花顺 iFind (QuantAPI)",
             "mootdx": "通达信 (mootdx TCP)",
             "tushare": "Tushare Pro",
             "akshare": "东方财富 (AkShare)",

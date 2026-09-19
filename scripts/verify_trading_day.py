@@ -1,15 +1,21 @@
 """Verify live A-share data sources for the daily Task Scheduler job.
 
 The check is safe to run every morning. It respects the official trading
-calendar when available, reports iFind separately from the provider fallback,
-and only fails on a trading day when no real-time quote can be obtained.
+calendar when available and only fails on a trading day when no real-time quote
+can be obtained from any provider.
+
+It reports which provider answered rather than asserting a specific one: the
+chain is ranked dynamically by observed reliability, and naming a winner here
+would just be a second place for that ranking to drift out of sync with.
+
+iFind (同花顺 QuantAPI) was removed from the chain on 2026-09-19 when the
+account expired; the checks that named it are gone with it.
 """
 
 from __future__ import annotations
 
 import argparse
 import asyncio
-import os
 import sys
 from pathlib import Path
 
@@ -25,26 +31,16 @@ from investment_common import load_runtime_env  # noqa: E402
 load_runtime_env(PROJECT_ROOT)
 
 from src.ai_os.trading_calendar import get_trading_day_status  # noqa: E402
-from src.infrastructure.market_data.ifind_provider import ifind  # noqa: E402
 from src.infrastructure.market_data.source_manager import source_manager  # noqa: E402
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Verify iFind and fallback A-share quote sources.")
+    parser = argparse.ArgumentParser(description="Verify live A-share quote and K-line sources.")
     parser.add_argument("--code", default="600000.SH", help="A-share symbol used for the probe.")
-    parser.add_argument(
-        "--require-ifind",
-        action="store_true",
-        help="Fail when iFind itself is unavailable instead of accepting a fallback provider.",
-    )
     return parser.parse_args()
 
 
-def _ifind_configured() -> bool:
-    return bool(os.getenv("IFIND_REFRESH_TOKEN") or os.getenv("IFIND_ACCESS_KEY"))
-
-
-async def verify(code: str, *, require_ifind: bool) -> int:
+async def verify(code: str) -> int:
     calendar = await get_trading_day_status()
     print(
         f"calendar: trading_day={calendar.is_trading_day} source={calendar.source}",
@@ -54,16 +50,8 @@ async def verify(code: str, *, require_ifind: bool) -> int:
         print("verification skipped: non-trading day", flush=True)
         return 0
 
-    ifind_quote = await asyncio.to_thread(ifind.get_quote, code)
-    fallback_quote, provenance = await source_manager.get_realtime_quote(code)
-    if ifind_quote is not None and ifind_quote.price:
-        print(f"ifind: OK price={ifind_quote.price}", flush=True)
-    elif _ifind_configured():
-        print("ifind: unavailable", flush=True)
-    else:
-        print("ifind: not configured (fallback provider is allowed)", flush=True)
-
-    if fallback_quote is not None:
+    quote, provenance = await source_manager.get_realtime_quote(code)
+    if quote is not None:
         print(
             f"market-data: OK provider={provenance.provider} live={provenance.is_live}",
             flush=True,
@@ -71,29 +59,29 @@ async def verify(code: str, *, require_ifind: bool) -> int:
     else:
         print(f"market-data: unavailable ({provenance.error_message})", flush=True)
 
-    # Historical bars, carried over from the older root-level script this
-    # replaces.  Informational only: a live quote already proves the session is
-    # reachable, and failing here would change when the scheduled job alarms --
-    # a decision for whoever owns that alarm, not a side effect of this probe.
-    kline = await asyncio.to_thread(ifind.get_kline, code, count=3)
-    if kline:
-        latest = kline[-1]
+    # Historical bars.  Informational only: a live quote already proves the
+    # session is reachable, and failing here would change when the scheduled
+    # job alarms -- a decision for whoever owns that alarm.
+    klines, kline_provenance = await source_manager.get_kline(code, count=3)
+    if klines:
+        latest = klines[-1]
         print(
-            f"ifind-kline: OK {len(kline)} bars, latest "
-            f"{latest.get('date')} close={latest.get('close')}",
+            f"market-data-kline: OK provider={kline_provenance.provider} "
+            f"{len(klines)} bars, latest {latest.get('date')} close={latest.get('close')}",
             flush=True,
         )
     else:
-        print("ifind-kline: no data", flush=True)
+        print(
+            f"market-data-kline: no data ({kline_provenance.error_message})",
+            flush=True,
+        )
 
-    if require_ifind and (ifind_quote is None or not ifind_quote.price):
-        return 2
-    return 0 if fallback_quote is not None else 1
+    return 0 if quote is not None else 1
 
 
 def main() -> int:
     args = parse_args()
-    return asyncio.run(verify(args.code, require_ifind=args.require_ifind))
+    return asyncio.run(verify(args.code))
 
 
 if __name__ == "__main__":

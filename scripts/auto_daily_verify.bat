@@ -1,7 +1,7 @@
 @echo off
 REM Adaptive daily market-data verification.
 REM Task Scheduler trigger: daily 09:35 after market open.
-REM Verify iFind and the configured fallback providers.
+REM Verify the live quote and K-line provider chain.
 setlocal
 set PROJECT=%~dp0..
 cd /d "%PROJECT%"

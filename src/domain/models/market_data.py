@@ -198,22 +198,11 @@ class ProviderCapability:
 # New providers just add an entry here — no code changes needed.
 
 PROVIDER_CAPABILITIES: dict[str, ProviderCapability] = {
-    "ifind": ProviderCapability(
-        provider="ifind",
-        markets=["CN"],
-        realtime_quote=True,
-        daily_kline=True,
-        minute_kline=True,
-        financial_statements=True,
-        financial_indicators=True,
-        news=True,
-        announcements=True,
-        index_data=True,
-        sector_data=True,
-        requires_auth=True,
-        rate_limited=True,
-        data_quality="excellent",
-    ),
+    # iFind (同花顺 QuantAPI) was removed 2026-09-19: the account expired and
+    # every call had been failing, so it sat first in the ranking while
+    # contribute nothing but a failed attempt per request.  Same failure mode
+    # mootdx was disabled for below -- a provider that cannot answer still
+    # advertises capability and makes the chain look healthier than it is.
     "mootdx": ProviderCapability(
         provider="mootdx",
         markets=["CN"],
