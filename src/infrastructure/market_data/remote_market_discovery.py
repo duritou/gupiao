@@ -825,8 +825,17 @@ class RemoteMarketDiscovery:
                 "turnover_pct": _as_float(values[38]),
                 "pe_ttm": _as_float(values[39]),
                 "amplitude_pct": _as_float(values[43]),
-                "market_cap_yi": _as_float(values[44]),
-                "float_mcap_yi": _as_float(values[45]),
+                # Tencent's tilde payload puts 流通市值 at 44 and 总市值 at 45,
+                # the opposite of what these names suggest.  Read the other way
+                # round, market_cap_yi held the circulating value, which is
+                # never larger -- measured over 66k rows, field 44 exceeded
+                # field 45 exactly zero times while equalling it for the 37% of
+                # stocks with no restricted shares.  41% of the universe
+                # therefore carried an impossible total < float, and the
+                # scanner's minimum-market-cap gate silently dropped 279 stocks
+                # whose real total cleared the floor.
+                "market_cap_yi": _as_float(values[45]),
+                "float_mcap_yi": _as_float(values[44]),
                 "pb": _as_float(values[46]),
                 "limit_up": _as_float(values[47]),
                 "limit_down": _as_float(values[48]),

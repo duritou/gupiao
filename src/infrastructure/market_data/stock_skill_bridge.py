@@ -131,9 +131,11 @@ def parse_tencent_quotes(raw: bytes | str, *, fetched_at: str | None = None) -> 
             "turnover_pct": _as_float(values[38]),
             "pe_ttm": _as_float(values[39]),
             "amplitude_pct": _as_float(values[43]),
-            "market_cap_yi": _as_float(values[44]),
-            "mcap_yi": _as_float(values[44]),
-            "float_mcap_yi": _as_float(values[45]),
+            # 44 is 流通市值 and 45 is 总市值 in this payload, the reverse of
+            # these names -- see the note in remote_market_discovery.
+            "market_cap_yi": _as_float(values[45]),
+            "mcap_yi": _as_float(values[45]),
+            "float_mcap_yi": _as_float(values[44]),
             "pb": _as_float(values[46]),
             "limit_up": _as_float(values[47]),
             "limit_down": _as_float(values[48]),

@@ -115,8 +115,13 @@ def test_stock_skill_tencent_parser_keeps_short_term_fields():
     values[38] = "8.10"
     values[39] = "25.4"
     values[43] = "3.59"
-    values[44] = "1500"
-    values[45] = "1000"
+    # 44 is 流通市值 and 45 is 总市值, so 44 is the smaller of the two.  The
+    # fixture used to hold 1500 at 44 and 1000 at 45, an ordering that never
+    # occurs in the real payload: over 66k stored rows field 44 exceeded field
+    # 45 zero times.  It was written to match a parser that had the pair
+    # reversed, so it could not have caught the reversal.
+    values[44] = "1000"
+    values[45] = "1500"
     values[46] = "2.1"
     values[47] = "70.40"
     values[48] = "57.60"
@@ -134,6 +139,8 @@ def test_stock_skill_tencent_parser_keeps_short_term_fields():
     assert quote["amplitude_pct"] == 3.59
     assert quote["limit_up"] == 70.40
     assert quote["float_mcap_yi"] == 1000
+    assert quote["market_cap_yi"] == 1500
+    assert quote["market_cap_yi"] >= quote["float_mcap_yi"]
     assert quote["source"] == "stock_skill_tencent_live_quote"
     assert quote["data_date"] == "2026-08-17"
     assert quote["active_volume_ratio"] == 0.2
