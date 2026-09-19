@@ -233,20 +233,28 @@ def apply_industry_concentration(
     *,
     max_industry_pct: float = 0.40,
 ) -> IndustryConcentrationResult:
-    """Keep the strongest names while capping known industry concentration."""
+    """Keep the strongest names while capping industry concentration.
+
+    A candidate whose industry metadata is missing is bucketed as unknown and
+    capped like any other group.  It used to be retained unconditionally, which
+    meant a day with poor metadata had *fewer* names under the cap -- the risk
+    control loosened exactly when the data was worst, and did so silently,
+    since `applied` was still reported as true.
+    """
+    unknown_industry = "__unknown__"
     items = [item for item in assessments if not item.excluded]
-    known = [item for item in items if item.industry]
-    if not known or max_industry_pct <= 0:
+    if not items or max_industry_pct <= 0:
         return IndustryConcentrationResult(
             retained_codes=tuple(item.stock_code for item in items),
         )
 
-    limit = max(1, math.ceil(len(known) * min(1.0, max_industry_pct)))
+    limit = max(1, math.ceil(len(items) * min(1.0, max_industry_pct)))
     by_industry: dict[str, list[UniverseAssessment]] = {}
-    for item in known:
-        by_industry.setdefault(item.industry, []).append(item)
+    for item in items:
+        group = str(item.industry or "").strip() or unknown_industry
+        by_industry.setdefault(group, []).append(item)
 
-    retained = [item.stock_code for item in items if not item.industry]
+    retained: list[str] = []
     excluded: list[str] = []
     reasons: dict[str, tuple[str, ...]] = {}
     capped: dict[str, int] = {}

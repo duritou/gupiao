@@ -3882,6 +3882,13 @@ class MarketDatabase:
         price_date = str(decision.get("market_price_date") or "")
         source = str(decision.get("market_price_source") or "").strip()
         fetched_at = str(decision.get("market_price_fetched_at") or "")
+        if not price_date and not source and not fetched_at:
+            # No quote was ever acquired for this decision.  The pipeline only
+            # fills these fields for the candidates it selected for a live
+            # fetch, so a blank set means "never attempted", not "stale".  It
+            # used to be reported as a stale date, which named the wrong cause
+            # for roughly half of all rejections.
+            return None, "quote_never_fetched"
         if price_date != trade_date:
             return None, "stale_or_future_quote_date"
         verified, reason = validate_post_signal_quote(
