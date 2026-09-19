@@ -61,7 +61,12 @@ SELECT s.id AS keep_sd_id, k.keep_id
 
 
 def build_plan(conn: sqlite3.Connection) -> dict:
-    conn.executescript(_KEEP_JOURNAL + ";" + _KEEP_STRATEGY + ";")
+    # One statement at a time: executescript() issues an implicit COMMIT first,
+    # which would silently end the migration's BEGIN IMMEDIATE transaction.
+    conn.execute("DROP TABLE IF EXISTS temp.keep_journal")
+    conn.execute("DROP TABLE IF EXISTS temp.keep_strategy")
+    conn.execute(_KEEP_JOURNAL)
+    conn.execute(_KEEP_STRATEGY)
 
     def scalar(sql: str) -> int:
         return int(conn.execute(sql).fetchone()[0])
@@ -76,12 +81,25 @@ def build_plan(conn: sqlite3.Connection) -> dict:
         plan["journal_rows_before"] - plan["unique_groups"]
     )
 
-    # Outcome columns that only exist off the survivor.
-    plan["outcomes_merged_forward"] = scalar(
+    # Outcome rows living off the survivor.  Most groups already carry one on
+    # the survivor, so this overstates the work; the merged count below is the
+    # number of rows this actually changes.
+    plan["outcome_rows_off_survivor"] = scalar(
         """SELECT COUNT(*) FROM decision_journal d
              JOIN keep_journal k
                ON k.decision_date = d.decision_date AND k.stock_code = d.stock_code
             WHERE d.outcome_known = 1 AND d.id <> k.keep_id"""
+    )
+    # Rows the merge would actually write: survivor has none, a sibling does.
+    plan["outcomes_merged_forward"] = scalar(
+        """SELECT COUNT(*) FROM decision_journal t
+             JOIN keep_journal k
+               ON k.decision_date = t.decision_date AND k.stock_code = t.stock_code
+            WHERE t.id = k.keep_id AND t.outcome_known = 0
+              AND EXISTS (SELECT 1 FROM decision_journal d
+                           WHERE d.decision_date = t.decision_date
+                             AND d.stock_code = t.stock_code
+                             AND d.outcome_known = 1)"""
     )
     plan["outcome_conflicts"] = scalar(
         """SELECT COUNT(*) FROM (
@@ -265,7 +283,8 @@ def main() -> int:
     print(f"    将删除            {plan['journal_rows_deleted']} 行")
     print()
     print(f"  outcome 合并        {plan['outcomes_merged_forward']} 行需前移"
-          f"（同组值冲突 {plan['outcome_conflicts']} 处）")
+          f"（组外另有 {plan['outcome_rows_off_survivor']} 条结果行，"
+          f"同组值冲突 {plan['outcome_conflicts']} 处）")
     print()
     print(f"  strategy_decision   {plan['strategy_rows_before']} 行")
     print(f"    保留最全的一条    重指 {plan['strategy_rows_repointed']} 条，删除 {plan['strategy_rows_deleted']} 条")
