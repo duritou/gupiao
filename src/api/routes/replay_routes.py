@@ -171,6 +171,17 @@ async def replay_report(
         "date": target_date,
         "market_data_date": ctx.market_data_date,
         "lookahead_safe": ctx.lookahead_safe,
+        # What these numbers are and are not about.  "lookahead_safe" answers
+        # whether the replay respected the point-in-time cutoff; it does not
+        # mean the live strategy has been validated, and the two get conflated
+        # the moment this reaches a screen without saying so.
+        "scope": {
+            "replays": "技术指标评分口径（macd/rsi/kdj/ma/volume/boll 的固定权重向量）",
+            "does_not_replay": (
+                "线上决策管道 —— 横截面评分、证据门禁、AI 深度分析与终审均未参与"
+            ),
+            "accuracy_is_about": "被重放的评分配置，不是 live strategy 的验证结论",
+        },
         "market_regime": ctx.market_regime,
         "context": ctx.to_dict(),
         "pipeline_result": {

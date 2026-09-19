@@ -3,6 +3,18 @@
 Replay never downloads current quotes and never falls back to another date.
 Every technical signal is computed from bars at or before the selected market
 date. Forward bars are used only in the labelled evaluation and what-if layers.
+
+Scope: this replays technical-indicator scoring policies, nothing else.  The
+"models" below are fixed weight vectors over macd/rsi/kdj/ma/volume/boll, and
+comparing them says how those weightings would have scored -- it says nothing
+about the live strategy, which routes candidates through cross-sectional
+scoring, evidence gates and an AI review that this engine never invokes.
+
+That distinction has to stay visible wherever these numbers surface.  A reader
+who takes an accuracy figure here for a verdict on the live pipeline is reading
+a number about a different system.  Do not add a policy here that claims to be
+the live algorithm unless the live algorithm is actually reimplemented, and
+then not here -- a second implementation drifts, silently.
 """
 
 from __future__ import annotations
@@ -48,7 +60,9 @@ MODEL_ALIASES = {
     "v4.2": "balanced-v2",
     "v5.0": "defensive-v2",
     "v6.0": "balanced-v2",
-    "current": "balanced-v2",
+    # "current" used to map to balanced-v2.  No caller ever passed it, so it
+    # never did anything -- except tell the next reader that balanced-v2 is
+    # what the system runs today.  It is not, and nothing here can know what is.
 }
 
 DEFAULT_SCENARIOS = [
