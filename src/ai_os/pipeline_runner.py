@@ -2948,6 +2948,15 @@ class AIPipelineRunner:
                 "strategy_version": result.strategy_version,
                 "code_hash": str(run_metadata.get("code_hash") or ""),
                 "config_hash": str(run_metadata.get("config_hash") or ""),
+                # The enrichment summary is the only record of how much
+                # candidate evidence was actually fetched on this run.  It was
+                # computed into market_data_quality every run and then dropped
+                # here, so no endpoint could report it and a run that fetched
+                # nothing looked identical to one that fetched everything.
+                "candidate_evidence_enrichment": (
+                    result.market_data_quality.get("candidate_evidence_enrichment")
+                    or {}
+                ),
             }
             audit_persistence = {"status": "unverified", "readback_verified": False}
             try:
