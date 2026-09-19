@@ -429,7 +429,7 @@ async def enrich_candidate_evidence(
     *,
     quote_fetcher: QuoteFetcher | None = None,
     max_candidates: int = 80,
-    min_ranking_score: float = 65.0,
+    min_ranking_score: float = 0.0,
     concurrency: int = 4,
     timeout_seconds: float = 10.0,
     target_trade_date: str = "",
@@ -440,6 +440,16 @@ async def enrich_candidate_evidence(
     existing score guard and deep allocator see the same evidence packet.  It
     never manufactures a quote and leaves an explicit failure reason when a
     provider cannot answer.
+
+    ``min_ranking_score`` is a soft floor, not a quality gate, and defaults to
+    0 (no floor).  The queue is bounded by ``max_candidates`` instead: the
+    highest-ranked candidates are filled first and the remainder are deferred
+    with ``enrichment_queue_budget_exhausted``.  It must not be set to the BUY
+    threshold -- this runs before ``apply_score_guard``, so the only readable
+    score is the technical/discovery composite, which sits far below the BUY
+    gate.  A floor of 65 there skipped ~99.5% of candidates, and a skipped
+    candidate never gets a quote, which in turn makes ``assess_evidence``
+    report ``market_context_missing`` for it.
     """
     ordered = sorted(
         (item for item in decisions if _code(item.get("stock_code"))),

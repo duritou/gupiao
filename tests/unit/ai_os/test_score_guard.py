@@ -43,14 +43,19 @@ def test_learning_adjustment_accepts_decayed_fractional_observations():
     assert result["symbol_adjustment"] > 0
 
 
-def test_missing_evidence_caps_score_and_blocks_buy():
+def test_missing_evidence_blocks_buy_without_capping_score():
     decision = {"ai_score": 70.4, "fusion_score": 70.4, "direction": "buy"}
 
     apply_score_guard(decision, {})
 
-    assert decision["ai_score"] == 60.0
+    # The score states the research conclusion and is not reduced ...
+    assert decision["ai_score"] == 70.4
+    assert decision["action_score"] == 70.4
+    # ... non-executability is carried by these fields instead.
     assert decision["direction"] == "neutral"
     assert decision["recommendation"] == "观望"
+    assert decision["execution_evidence_complete"] is False
+    assert is_buy_signal(decision) is False
     assert decision["score_guarded"] is True
     assert decision["decision_status"] == "data_blocked"
     assert "fundamental_evidence_missing" in decision["score_guard_reasons"]
@@ -64,7 +69,7 @@ def test_score_guard_distinguishes_missing_market_data_from_research_candidate()
     assert decision["decision_status"] == "data_blocked"
 
 
-def test_loss_forecast_caps_score_more_aggressively():
+def test_loss_forecast_blocks_buy_without_capping_score():
     decision = {"ai_score": 82.0, "fusion_score": 82.0, "direction": "buy"}
     discovery = {
         "sources": ["cninfo"],
@@ -74,9 +79,11 @@ def test_loss_forecast_caps_score_more_aggressively():
 
     apply_score_guard(decision, discovery)
 
-    assert decision["ai_score"] == 45.0
+    assert decision["ai_score"] == 82.0
     assert decision["direction"] == "neutral"
     assert decision["recommendation"] == "回避"
+    assert decision["execution_evidence_complete"] is False
+    assert is_buy_signal(decision) is False
     assert "fundamental_loss_risk" in decision["score_guard_reasons"]
 
 
@@ -102,8 +109,8 @@ def test_guarded_score_does_not_replace_ranking_score():
 
     assert decision["ranking_score"] == 82.0
     assert decision["raw_ai_score"] == 82.0
-    assert decision["action_score"] == 60.0
-    assert decision["ai_score"] == 60.0
+    assert decision["action_score"] == 82.0
+    assert decision["ai_score"] == 82.0
 
 
 def test_deep_analysis_is_not_market_context():

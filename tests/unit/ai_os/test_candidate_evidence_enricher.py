@@ -73,23 +73,24 @@ async def test_enrichment_fetches_only_bounded_high_score_candidates(monkeypatch
     )
 
     assert requested == ["000001.SZ"]
-    assert stats["eligible_count"] == 2
+    # Every candidate is eligible now that the queue has no ranking floor; the
+    # budget, not a score cut, is what defers the rest.
+    assert stats["eligible_count"] == 3
     assert stats["attempted_count"] == 1
     assert stats["quote_success_count"] == 1
     assert stats["not_scheduled_count"] == 2
     assert stats["not_scheduled_reason_counts"] == {
-        "below_min_ranking_score": 1,
-        "enrichment_queue_budget_exhausted": 1,
+        "enrichment_queue_budget_exhausted": 2,
     }
     assert discovery["000001.SZ"]["quote"]["price"] == 10.0
     assert "tickflow_live_quote" in decisions[0]["market_sources"]
     assert decisions[0]["evidence_enrichment"]["quote_available"] is True
     assert decisions[2]["quote_enrichment_status"] == "not_scheduled"
-    assert decisions[2]["quote_enrichment_reason"] == "below_min_ranking_score"
+    assert decisions[2]["quote_enrichment_reason"] == "enrichment_queue_budget_exhausted"
     assert decisions[2]["flow_fallback_observation"] == {
         "attempted": False,
         "status": "not_scheduled",
-        "reason": "below_min_ranking_score",
+        "reason": "enrichment_queue_budget_exhausted",
     }
     assert decisions[1]["quote_enrichment_reason"] == "enrichment_queue_budget_exhausted"
     assert decisions[1]["flow_fallback_observation"]["status"] == "not_scheduled"
@@ -285,7 +286,11 @@ async def test_local_complete_components_are_hydrated_before_network(monkeypatch
         [decision], discovery, quote_fetcher=fetch
     )
 
-    assert requested == []
+    # Flow and financials come from the local cache, but a quote is not a
+    # cacheable component -- it has to be fetched fresh, so this candidate is
+    # still queued.  (It used to be skipped silently by a 65-point ranking
+    # floor, which is what made this assertion look like "no network needed".)
+    assert requested == [code]
     assert stats["cached_flow_count"] == 1
     assert stats["cached_financial_count"] == 1
     assert decision["flow_state"] == "positive"

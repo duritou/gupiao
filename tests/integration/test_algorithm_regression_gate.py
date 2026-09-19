@@ -42,7 +42,9 @@ def test_candidate_evidence_and_shadow_gates_are_fail_closed():
     assert stats == {"eligible_count": 1, "ineligible_count": 1, "selected_count": 1}
     apply_score_guard(missing, {})
     assert missing["decision_status"] == "data_blocked"
-    assert missing["action_score"] == 60.0
+    # Fail-closed is carried by these fields; the score itself is not reduced.
+    assert missing["execution_evidence_complete"] is False
+    assert missing["action_score"] == 99.0
 
     shadow = build_shadow_report(
         "2026-09-01",

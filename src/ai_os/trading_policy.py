@@ -147,6 +147,15 @@ def is_buy_signal(decision: dict[str, Any]) -> bool:
     """Return whether the effective decision is a score-qualified BUY."""
     if decision.get("actionable") is False:
         return False
+    # Blocking is carried by these fields, not by the score, so they are
+    # checked explicitly.  A later stage could otherwise set the direction back
+    # to "buy" and let scored-but-unvetted candidate through.
+    if decision.get("execution_evidence_complete") is False:
+        return False
+    if str(decision.get("decision_status") or "").strip().lower() in {
+        "data_blocked", "risk_blocked", "review_blocked"
+    }:
+        return False
     score = decision.get("action_score", decision.get("ai_score"))
     return (
         float(score or 50) >= PAPER_MIN_BUY_SCORE

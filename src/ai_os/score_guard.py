@@ -7,8 +7,6 @@ from typing import Any
 
 from src.ai_os.evidence_policy import assess_evidence
 
-MISSING_EVIDENCE_SCORE_CAP = 60.0
-FUNDAMENTAL_RISK_SCORE_CAP = 45.0
 MARKET_DATA_BLOCK_REASONS = frozenset({
     "market_context_missing",
     "market_data_degraded",
@@ -195,23 +193,23 @@ def apply_score_guard(
         or "neutral"
     ).strip().lower()
     review_blocked = decision.get("decision_status") == "review_blocked"
-    if review_blocked:
-        guarded_score = min(
-            _numeric(decision.get("ai_score"), 50.0) or 50.0,
-            research_score,
-        )
-    elif hard_fundamental_risk:
-        guarded_score = min(research_score, FUNDAMENTAL_RISK_SCORE_CAP)
-    elif reasons:
-        guarded_score = min(research_score, MISSING_EVIDENCE_SCORE_CAP)
-    else:
-        guarded_score = research_score
+    # The score reports the research conclusion only.  It is deliberately not
+    # capped for missing evidence or for a fundamental risk: blocking is
+    # expressed by `reasons` / `decision_status` / `execution_evidence_complete`
+    # below, and a score cap could not block reliably anyway (it collided with
+    # the BUY threshold, and because this runs several times per pipeline it
+    # also made the value monotonically decreasing, so a candidate could never
+    # recover once it was capped).
+    guarded_score = research_score
 
     decision["raw_ai_score"] = round(raw_score, 1)
     decision["ranking_score"] = round(raw_score, 1)
     decision["research_score"] = round(research_score, 1)
     decision["predicted_direction"] = predicted_direction
+    # `score_guarded` only ever meant "guard reasons are present"; it no longer
+    # implies the score was reduced, so carry the honest name alongside it.
     decision["score_guarded"] = bool(reasons)
+    decision["evidence_gapped"] = bool(reasons)
     decision["score_guard_reasons"] = reasons
     decision["fundamental_evidence_available"] = fundamental_available
     decision["market_evidence_complete"] = evidence_assessment.market_complete

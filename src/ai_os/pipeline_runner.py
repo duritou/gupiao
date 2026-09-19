@@ -425,6 +425,44 @@ async def _apply_ai_preselection(
     return matched, True, ""
 
 
+def _preauthorize_final_review(
+    decisions: list[dict], stock_codes: set[str] | None = None
+) -> None:
+    """Record a fail-closed review state before the review is attempted.
+
+    `_apply_final_ai_review` is what writes `final_review_required` and
+    `final_buy_approved`, but the caller skips it entirely once the research
+    deadline is spent.  `deep_buy_rejection_reason` treats "neither key is
+    present" as approval, so a skipped stage used to open the buy gate without
+    any final review -- exactly when the analysis budget, and therefore the
+    analysis quality, was worst.
+
+    Values are only filled in when absent.  The review is attempted twice (the
+    first batch, then the full set), and a later skip must not discard a
+    verdict the earlier attempt already reached.
+    """
+    review_code_keys = (
+        {_model_code_key(code) for code in stock_codes}
+        if stock_codes is not None
+        else None
+    )
+    for item in decisions:
+        if not item.get("deep_analysis_available"):
+            continue
+        if review_code_keys is not None and _model_code_key(
+            item.get("stock_code")
+        ) not in review_code_keys:
+            continue
+        item.setdefault(
+            "final_review_required",
+            str(item.get("deep_rating") or "").lower() in {"buy", "overweight"},
+        )
+        item.setdefault("final_review_available", False)
+        item.setdefault("final_review_verdict", "unavailable")
+        item.setdefault("final_buy_approved", False)
+        item.setdefault("final_review_error", "final_review_not_invoked")
+
+
 async def _apply_final_ai_review(
     decisions: list[dict],
     ai_router: Any,
@@ -2058,7 +2096,10 @@ class AIPipelineRunner:
             max_candidates=getattr(
                 settings, "SCANNER_EVIDENCE_ENRICHMENT_COUNT", 80
             ),
-            min_ranking_score=65.0,
+            # No ranking floor: this runs before apply_score_guard, so the only
+            # readable score is the technical/discovery composite, which does
+            # not reach the BUY gate.  The bounded queue below is what limits
+            # the work; see enrich_candidate_evidence's docstring.
             concurrency=getattr(
                 settings, "SCANNER_EVIDENCE_ENRICHMENT_CONCURRENCY", 4
             ),
@@ -2465,6 +2506,7 @@ class AIPipelineRunner:
             },
         )
 
+        _preauthorize_final_review(decisions)
         stage_started = time.perf_counter()
         remaining_seconds = max(
             0.1,
@@ -2653,6 +2695,7 @@ class AIPipelineRunner:
                     continuation_stop_reason = "continuation_completed"
                     # Re-run the final review over the complete researched set
                     # so the final gate sees one coherent batch.
+                    _preauthorize_final_review(decisions, set(deep_by_code))
                     remaining_seconds = max(
                         0.1,
                         research_deadline_seconds
