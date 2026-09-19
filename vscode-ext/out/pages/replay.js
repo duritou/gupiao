@@ -20,10 +20,17 @@ function buildReplayPage(data) {
 <div style="padding:22px 24px 8px">
 <div class="flex-between" style="align-items:flex-start;gap:16px;flex-wrap:wrap">
 <div>
-<h1 style="font-size:20px;color:#A78BFA;margin-bottom:4px">Replay · 历史决策验证</h1>
-<div style="font-size:12px;color:#8b949e">严格冻结到所选日期；未来K线只用于事后验证，不参与信号计算</div>
+<h1 style="font-size:20px;color:#A78BFA;margin-bottom:4px">Replay · 技术评分口径回放</h1>
+<div style="font-size:12px;color:#8b949e">严格冻结到所选日期；未来K线只用于事后评估，不参与信号计算</div>
 </div>
 <span style="font-size:11px;color:#22C55E;border:1px solid #14532D;background:#052E16;padding:4px 8px;border-radius:999px">✓ Lookahead Safe</span>
+</div>
+<div style="margin:12px 0 0;padding:10px 12px;background:#2A1E05;border:1px solid #713F12;border-radius:7px;font-size:11px;color:#FCD34D;line-height:1.6">
+<b>这里回放的是技术指标评分配置，不是线上策略。</b>
+被比较的 technical-v1 / balanced-v2 / defensive-v2 是 macd/rsi/kdj/ma/volume/boll 的固定权重向量；
+线上的横截面评分、证据门禁、AI 深度分析与终审<b>都不参与</b>。
+下方任何「准确率」「最优口径」都只描述这些评分配置，
+<b>不能作为线上策略已验证的依据</b>。
 </div>
 </div>
 
@@ -175,7 +182,7 @@ async function runWechatSync() {
 
 document.getElementById('replayDate').addEventListener('change', updateReplayDateInfo);
 updateReplayDateInfo();`;
-    return (0, layout_1.pageShell)('replay', 'Replay · 历史决策验证', content, extraScript);
+    return (0, layout_1.pageShell)('replay', 'Replay · 技术评分口径回放', content, extraScript);
 }
 function _escapeHtml(value) {
     return String(value ?? '').replace(/[&<>'"]/g, character => ({
