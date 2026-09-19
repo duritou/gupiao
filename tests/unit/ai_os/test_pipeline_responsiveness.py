@@ -15,8 +15,12 @@ from src.infrastructure.market_data.real_data_provider import (
 from src.infrastructure.storage.market_database import market_db
 
 
+@pytest.mark.slow
 @pytest.mark.asyncio
 async def test_full_market_scan_keeps_event_loop_responsive(monkeypatch):
+    # Slow by construction rather than by network: the fixture sleeps per bar
+    # to give the heartbeat something to interleave with.  Marked slow because
+    # 77s of deliberate sleeping does not belong in the default gate either.
     universe = [
         {"code": f"60{index:04d}.SH", "name": f"stock-{index}"}
         for index in range(80)

@@ -54,6 +54,7 @@ class TestSignalsRoutes:
         # Real data may succeed or return data/error — both are valid
         assert "fusion_score" in data or "error" in data or "detail" in data
 
+    @pytest.mark.slow
     def test_compute_signals_batch(self):
         """Batch signals from real data."""
         r = client.post("/api/v1/signals/batch", json={
@@ -66,6 +67,7 @@ class TestSignalsRoutes:
 
 
 class TestScannerRoutes:
+    @pytest.mark.slow
     def test_run_scanner(self):
         """v7.5: Scanner uses real baostock universe + signals."""
         r = client.post("/api/v1/scanner/run?top_n=5")
@@ -98,6 +100,11 @@ class TestKnowledgeRoutes:
 
 
 class TestResearchRoutes:
+    # Both run a real research pipeline and fetch from external providers.
+    # Measured at 105s and 72s; the same tests can come back in 0.08s when a
+    # request happens to short-circuit, which is exactly why they cannot be
+    # part of a gate that has to mean the same thing every run.
+    @pytest.mark.slow
     def test_run_research_pipeline(self):
         r = client.post("/api/v1/research/run?pool_size=10&top_n=3&mode=pipeline")
         assert r.status_code == 200
@@ -105,6 +112,7 @@ class TestResearchRoutes:
         assert "report_id" in data
         assert "candidates" in data
 
+    @pytest.mark.slow
     def test_run_research_lite(self):
         r = client.post("/api/v1/research/run?pool_size=10&top_n=2&mode=lite")
         assert r.status_code == 200

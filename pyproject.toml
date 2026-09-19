@@ -85,9 +85,13 @@ disallow_untyped_defs = true
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
-addopts = "-v --cov=src --cov-report=term-missing"
+# Slow tests are deselected by default so the suite is a deterministic gate.
+# A run that depends on the network cannot distinguish "no regression" from
+# "the request timed out", which is exactly when a gate needs to be trusted.
+# Run them deliberately with:  pytest -m slow
+addopts = "-v --cov=src --cov-report=term-missing -m 'not slow'"
 markers = [
-    "slow: tests that may query external market-data providers",
+    "slow: queries external market-data providers or scans the full market; not run by default",
 ]
 
 [tool.black]
