@@ -6067,17 +6067,40 @@ class MarketDatabase:
             return cursor.lastrowid
 
     def get_research_case_rows(self, limit: int = 5000) -> list[dict[str, Any]]:
-        """Return persisted decisive cases for rebuilding calibration memory."""
+        """Return persisted decisive cases for rebuilding calibration memory.
+
+        One row per ``(decision_date, stock_code)``.  Several scans run each day
+        and the journal keeps a row per scan, so reading them raw inflated the
+        case library ~2.4x and weighted the confidence-calibration curve by
+        scan count rather than by decision.  The latest row for the day is kept,
+        matching the "latest write wins" rule the execution path applies and the
+        same guard ``get_pending_market_learning_decisions`` already uses -- the
+        two views must agree or calibration measures a different population
+        than learning does.
+        """
         with self._get_conn() as conn:
             rows = conn.execute(
-                """SELECT d.id, d.decision_date, d.stock_code, d.stock_name,
-                          d.ai_score, d.confidence, d.direction, d.recommendation,
-                          d.outcome_known, d.actual_return, d.was_correct,
-                          d.created_at, s.analysis_json
-                   FROM decision_journal AS d
-                   LEFT JOIN strategy_decision AS s ON s.journal_id=d.id
-                   WHERE LOWER(TRIM(COALESCE(d.direction, ''))) IN ('buy', 'sell')
-                   ORDER BY d.id DESC LIMIT ?""",
+                """WITH ranked AS (
+                       SELECT d.id, d.decision_date, d.stock_code, d.stock_name,
+                              d.ai_score, d.confidence, d.direction,
+                              d.recommendation, d.outcome_known, d.actual_return,
+                              d.was_correct, d.created_at,
+                              ROW_NUMBER() OVER (
+                                  PARTITION BY d.decision_date, d.stock_code
+                                  ORDER BY d.id DESC
+                              ) AS scan_rank
+                         FROM decision_journal AS d
+                        WHERE LOWER(TRIM(COALESCE(d.direction, '')))
+                              IN ('buy', 'sell')
+                   )
+                   SELECT r.id, r.decision_date, r.stock_code, r.stock_name,
+                          r.ai_score, r.confidence, r.direction, r.recommendation,
+                          r.outcome_known, r.actual_return, r.was_correct,
+                          r.created_at, s.analysis_json
+                     FROM ranked AS r
+                     LEFT JOIN strategy_decision AS s ON s.journal_id = r.id
+                    WHERE r.scan_rank = 1
+                    ORDER BY r.id DESC LIMIT ?""",
                 (limit,),
             ).fetchall()
         return [dict(row) for row in rows]
