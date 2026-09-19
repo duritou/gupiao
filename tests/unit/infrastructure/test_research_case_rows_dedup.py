@@ -59,7 +59,19 @@ def _insert_scan(db_path, decision_date: str, code: str, direction: str = "buy",
 
 @pytest.fixture()
 def database(tmp_path):
-    return MarketDatabase(tmp_path / "case-rows-dedup.db")
+    """A database shaped like one that predates the uniqueness constraint.
+
+    The schema now enforces one row per (decision_date, stock_code), so this
+    guard has nothing to collapse on a current database -- which is the point
+    of it. Dropping the index recreates the state it was written for: every
+    database in the field before scripts/migrate_journal_dedup.py ran, where a
+    read path that forgot to deduplicate scored duplicates as separate
+    decisions and distorted the confidence-calibration curve by 58.6%.
+    """
+    db = MarketDatabase(tmp_path / "case-rows-dedup.db")
+    with db._get_conn() as conn:
+        conn.execute("DROP INDEX IF EXISTS idx_decision_journal_unique")
+    return db
 
 
 def test_repeated_scans_of_one_day_collapse_to_one_case(database):

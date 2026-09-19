@@ -404,6 +404,19 @@ class MarketDatabase:
                 CREATE INDEX IF NOT EXISTS idx_decision_code
                     ON decision_journal(stock_code);
 
+                -- Cross-process guard for the daily pipeline.  The in-process
+                -- asyncio lock serialises runs inside one interpreter; it does
+                -- nothing when a second interpreter exists, and a second
+                -- instance does reach its lifespan startup before failing to
+                -- bind the port.  A lease rather than a lock file because a
+                -- crash must not leave the pipeline permanently unable to run:
+                -- this one expires.
+                CREATE TABLE IF NOT EXISTS pipeline_run_lease (
+                    id INTEGER PRIMARY KEY CHECK (id = 1),
+                    holder TEXT NOT NULL,
+                    acquired_at TEXT NOT NULL
+                );
+
                 CREATE TABLE IF NOT EXISTS paper_account (
                     id INTEGER PRIMARY KEY CHECK (id = 1),
                     initial_capital REAL NOT NULL DEFAULT 100000,
@@ -741,6 +754,22 @@ class MarketDatabase:
                       SET benchmark_basis='hs300_legacy'
                     WHERE COALESCE(benchmark_basis, '') = ''"""
             )
+            # One decision per stock per day.  Done here rather than inside the
+            # schema script above so a database that predates the constraint
+            # fails with something actionable: the script would surface a bare
+            # "UNIQUE constraint failed", which says nothing about what to do.
+            try:
+                conn.execute(
+                    """CREATE UNIQUE INDEX IF NOT EXISTS idx_decision_journal_unique
+                       ON decision_journal(decision_date, stock_code)"""
+                )
+            except sqlite3.IntegrityError as exc:
+                raise RuntimeError(
+                    "decision_journal still holds duplicate (decision_date, "
+                    "stock_code) rows, so the uniqueness it is supposed to have "
+                    "cannot be created. Run scripts/migrate_journal_dedup.py to "
+                    "collapse them first."
+                ) from exc
             schema_version = int(conn.execute("PRAGMA user_version").fetchone()[0])
             if schema_version not in (0, 1, 2, 3, 4, 5, DB_SCHEMA_VERSION):
                 raise RuntimeError(
@@ -3197,7 +3226,15 @@ class MarketDatabase:
     # ================================================================
 
     def save_decision(self, decision: dict) -> int:
-        """Save an AI decision to the journal. Returns row id."""
+        """Save an AI decision to the journal. Returns row id.
+
+        Same upsert as :meth:`save_decisions_batch`, and now the same shape:
+        this used to be a bare INSERT, which was only ever viable while the
+        table had no uniqueness on ``(decision_date, stock_code)`` -- true of a
+        fresh database even after the live one was migrated, so this helper let
+        tests build states production could not reach.  No production caller;
+        tests only.
+        """
         with self._get_conn() as conn:
             cursor = conn.execute(
                 """INSERT INTO decision_journal
@@ -3206,28 +3243,27 @@ class MarketDatabase:
                     fusion_score, macd_score, rsi_score, kdj_score,
                     ma_score, volume_score, buy_signals, sell_signals,
                     evidence, created_at)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                (
-                    decision.get("date", ""),
-                    decision.get("stock_code", ""),
-                    decision.get("stock_name", ""),
-                    decision.get("ai_score", 50),
-                    decision.get("direction", "neutral"),
-                    decision.get("confidence", 0),
-                    decision.get("recommendation", ""),
-                    decision.get("fusion_score", 50),
-                    decision.get("macd_score", 50),
-                    decision.get("rsi_score", 50),
-                    decision.get("kdj_score", 50),
-                    decision.get("ma_score", 50),
-                    decision.get("volume_score", 50),
-                    decision.get("buy_signals", 0),
-                    decision.get("sell_signals", 0),
-                    decision.get("evidence", ""),
-                    decision.get("signal_at") or datetime.now().isoformat(),
-                ),
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                   ON CONFLICT(decision_date, stock_code) DO UPDATE SET
+                       stock_name=excluded.stock_name,
+                       ai_score=excluded.ai_score,
+                       direction=excluded.direction,
+                       confidence=excluded.confidence,
+                       recommendation=excluded.recommendation,
+                       fusion_score=excluded.fusion_score,
+                       macd_score=excluded.macd_score,
+                       rsi_score=excluded.rsi_score,
+                       kdj_score=excluded.kdj_score,
+                       ma_score=excluded.ma_score,
+                       volume_score=excluded.volume_score,
+                       buy_signals=excluded.buy_signals,
+                       sell_signals=excluded.sell_signals,
+                       evidence=excluded.evidence,
+                       created_at=excluded.created_at
+                   RETURNING id""",
+                self._decision_journal_values(decision),
             )
-            return cursor.lastrowid
+            return int(cursor.fetchone()[0])
 
     @staticmethod
     def _decision_journal_values(decision: dict) -> tuple[Any, ...]:
@@ -3339,6 +3375,50 @@ class MarketDatabase:
         )
         return int(cursor.lastrowid) if cursor.lastrowid is not None else None
 
+    def try_acquire_pipeline_lease(self, holder: str, ttl_seconds: int) -> bool:
+        """Claim the cross-process pipeline lease, or report it is taken.
+
+        One statement, deliberately.  A read-then-write would let two processes
+        both observe an expired lease and both take it, which is the exact race
+        this exists to close.  The UPDATE is guarded on expiry, so a process
+        that died holding the lease does not block the pipeline forever.
+        """
+        now = datetime.now()
+        stale_before = (now - timedelta(seconds=max(1, int(ttl_seconds)))).isoformat()
+        with self._get_conn() as conn:
+            row = conn.execute(
+                """INSERT INTO pipeline_run_lease (id, holder, acquired_at)
+                   VALUES (1, ?, ?)
+                   ON CONFLICT(id) DO UPDATE
+                      SET holder = excluded.holder,
+                          acquired_at = excluded.acquired_at
+                    WHERE pipeline_run_lease.acquired_at < ?
+                   RETURNING holder""",
+                (holder, now.isoformat(), stale_before),
+            ).fetchone()
+        return row is not None and str(row[0]) == holder
+
+    def release_pipeline_lease(self, holder: str) -> bool:
+        """Release the lease only if this holder still owns it.
+
+        Releasing unconditionally would let a slow run whose lease already
+        expired delete the claim of whichever process took over.
+        """
+        with self._get_conn() as conn:
+            cursor = conn.execute(
+                "DELETE FROM pipeline_run_lease WHERE id = 1 AND holder = ?",
+                (holder,),
+            )
+            return cursor.rowcount > 0
+
+    def get_pipeline_lease(self) -> dict[str, Any] | None:
+        """Read the current lease holder, if any."""
+        with self._get_conn() as conn:
+            row = conn.execute(
+                "SELECT holder, acquired_at FROM pipeline_run_lease WHERE id = 1"
+            ).fetchone()
+        return dict(row) if row else None
+
     def save_decisions_batch(self, decisions: list[dict]) -> list[int]:
         """Persist a final decision batch in one transaction.
 
@@ -3363,35 +3443,41 @@ class MarketDatabase:
         with self._get_conn() as conn:
             for decision in decisions:
                 values = self._decision_journal_values(decision)
-                existing = conn.execute(
-                    """SELECT id FROM decision_journal
-                       WHERE decision_date=? AND stock_code=?
-                       ORDER BY id DESC LIMIT 1""",
-                    (values[0], values[1]),
-                ).fetchone()
-                if existing is None:
-                    cursor = conn.execute(
-                        """INSERT INTO decision_journal
-                           (decision_date, stock_code, stock_name, ai_score,
-                            direction, confidence, recommendation,
-                            fusion_score, macd_score, rsi_score, kdj_score,
-                            ma_score, volume_score, buy_signals, sell_signals,
-                            evidence, created_at)
-                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                        values,
-                    )
-                    journal_id = int(cursor.lastrowid)
-                else:
-                    journal_id = int(existing["id"])
-                    conn.execute(
-                        """UPDATE decision_journal
-                           SET stock_name=?, ai_score=?, direction=?, confidence=?,
-                               recommendation=?, fusion_score=?, macd_score=?,
-                               rsi_score=?, kdj_score=?, ma_score=?, volume_score=?,
-                               buy_signals=?, sell_signals=?, evidence=?, created_at=?
-                           WHERE id=?""",
-                        (*values[2:], journal_id),
-                    )
+                # One atomic statement instead of SELECT-then-INSERT/UPDATE.
+                # The old shape was a check-then-act: two writers could both
+                # miss the row and both insert, which used to duplicate
+                # silently and now violates UNIQUE(decision_date, stock_code)
+                # and rolls back the whole batch.  ON CONFLICT needs the unique
+                # index to exist, which it now does, and DO UPDATE keeps the id
+                # stable exactly as the manual UPDATE did.
+                cursor = conn.execute(
+                    """INSERT INTO decision_journal
+                       (decision_date, stock_code, stock_name, ai_score,
+                        direction, confidence, recommendation,
+                        fusion_score, macd_score, rsi_score, kdj_score,
+                        ma_score, volume_score, buy_signals, sell_signals,
+                        evidence, created_at)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                       ON CONFLICT(decision_date, stock_code) DO UPDATE SET
+                           stock_name=excluded.stock_name,
+                           ai_score=excluded.ai_score,
+                           direction=excluded.direction,
+                           confidence=excluded.confidence,
+                           recommendation=excluded.recommendation,
+                           fusion_score=excluded.fusion_score,
+                           macd_score=excluded.macd_score,
+                           rsi_score=excluded.rsi_score,
+                           kdj_score=excluded.kdj_score,
+                           ma_score=excluded.ma_score,
+                           volume_score=excluded.volume_score,
+                           buy_signals=excluded.buy_signals,
+                           sell_signals=excluded.sell_signals,
+                           evidence=excluded.evidence,
+                           created_at=excluded.created_at
+                       RETURNING id""",
+                    values,
+                )
+                journal_id = int(cursor.fetchone()[0])
                 journal_ids.append(journal_id)
                 self._insert_strategy_decision(conn, decision, journal_id)
         return journal_ids

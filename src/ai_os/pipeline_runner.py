@@ -21,8 +21,11 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import logging
+import os
 import re
 import time
+import uuid
 from dataclasses import dataclass, field
 from datetime import date, datetime
 from datetime import time as dt_time
@@ -57,7 +60,7 @@ from src.ai_os.recommendation_quality import (
     is_publishable_recommendation,
     sort_decisions,
 )
-from src.ai_os.strategy_version import create_strategy_run_metadata
+from src.ai_os.strategy_version import ALGORITHM_VERSION, create_strategy_run_metadata
 from src.ai_os.trading_policy import (
     PAPER_CONDITIONAL_BUY_MAX_CANDIDATES,
     PAPER_LIVENESS_LOG_LIMIT,
@@ -74,6 +77,16 @@ from src.ai_os.universe_policy import (
     assess_stock,
     config_from_settings,
 )
+
+
+logger = logging.getLogger("uvicorn.error")
+
+# How long a pipeline run may hold the cross-process lease before another
+# process may take it.  Generous against the observed worst case (a full run
+# measured ~5 minutes, deep analysis capped at 8) because preempting a live run
+# is worse than waiting out a dead one -- a crashed holder blocks only itself,
+# and only for this long.
+_PIPELINE_LEASE_TTL_SECONDS = 1800
 
 
 def _model_code_key(value: Any) -> str:
@@ -1243,21 +1256,54 @@ class AIPipelineRunner:
         Scheduled market-open and afternoon tasks pass ``True`` explicitly.
         ``force_reanalysis`` bypasses same-day deep-analysis cache and budget
         only when explicitly requested; it never enables paper execution.
+
+        Two guards, because they cover different failures.  ``_run_lock``
+        serialises callers inside this interpreter; the database lease covers a
+        second interpreter, which this process cannot see.  The lease is taken
+        before the lock so a blocked run costs nothing -- no scan, no model
+        call, no quota.
         """
         if execute_paper_trades is None:
             from src.ai_os.causal_execution import in_a_share_session
 
             execute_paper_trades = in_a_share_session(datetime.now().astimezone())
-        async with self._run_lock:
-            kwargs = {
-                "execute_paper_trades": execute_paper_trades,
-                "force_reanalysis": force_reanalysis,
-            }
-            if str(research_window or "manual").strip().lower() != "manual":
-                kwargs["research_window"] = research_window
-            return await self._run_daily_pipeline_once(
-                codes, save_to_journal, **kwargs
+
+        from src.infrastructure.storage.market_database import market_db
+
+        holder = f"{os.getpid()}:{uuid.uuid4().hex[:8]}"
+        if not market_db.try_acquire_pipeline_lease(holder, _PIPELINE_LEASE_TTL_SECONDS):
+            held = market_db.get_pipeline_lease() or {}
+            logger.warning(
+                "[pipeline] 另一个进程正在运行(%s, 自 %s)，本次跳过",
+                held.get("holder"), held.get("acquired_at"),
             )
+            return PipelineResult(
+                run_date=date.today().isoformat(),
+                strategy_version=ALGORITHM_VERSION,
+                market_data_quality={
+                    "concurrency_guard": {
+                        "status": "blocked_by_other_process",
+                        "holder": str(held.get("holder") or ""),
+                        "acquired_at": str(held.get("acquired_at") or ""),
+                        "ttl_seconds": _PIPELINE_LEASE_TTL_SECONDS,
+                    }
+                },
+            )
+        try:
+            async with self._run_lock:
+                kwargs = {
+                    "execute_paper_trades": execute_paper_trades,
+                    "force_reanalysis": force_reanalysis,
+                }
+                if str(research_window or "manual").strip().lower() != "manual":
+                    kwargs["research_window"] = research_window
+                return await self._run_daily_pipeline_once(
+                    codes, save_to_journal, **kwargs
+                )
+        finally:
+            # Ownership-checked, so a run whose lease already expired does not
+            # delete the claim of the process that took over.
+            market_db.release_pipeline_lease(holder)
 
     async def execute_persisted_strategy(
         self, *, intraday_monitor: bool = False,
