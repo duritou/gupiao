@@ -526,6 +526,48 @@ class TushareProvider:
             rows, "daily", rows[-1]["trade_date"] if rows else "", row_count=len(rows)
         )
 
+    async def fetch_index_history(
+        self, code: str, *, start_date: str = "", end_date: str = "", count: int = 1000
+    ) -> TusharePayload:
+        """Fetch a bounded, chronological reference-index history.
+
+        Mirrors :meth:`fetch_daily_history` but hits ``index_daily``, whose
+        bars live in their own table because indices are not part of the
+        tradeable universe and must never enter a scanner pool.
+        """
+        kwargs: dict[str, Any] = {
+            "ts_code": str(code or "").strip().upper(),
+            "limit": max(1, min(int(count), 1000)),
+            "fields": "ts_code,trade_date,open,high,low,close,pre_close,pct_chg,vol,amount",
+        }
+        if start_date:
+            kwargs["start_date"] = str(start_date).replace("-", "")
+        if end_date:
+            kwargs["end_date"] = str(end_date).replace("-", "")
+        payload = await self._call("index_daily", **kwargs)
+        rows = []
+        for raw in payload.data.to_dict("records"):
+            trade_date = _date(raw.get("trade_date"))
+            if not trade_date:
+                continue
+            rows.append({
+                "ts_code": str(raw.get("ts_code") or code).strip().upper(),
+                "trade_date": trade_date,
+                "open": _number(raw.get("open")),
+                "high": _number(raw.get("high")),
+                "low": _number(raw.get("low")),
+                "close": _number(raw.get("close")),
+                "pre_close": _number(raw.get("pre_close")),
+                "change_pct": _number(raw.get("pct_chg")),
+                "volume": _number(raw.get("vol")),
+                "amount": (_number(raw.get("amount")) or 0.0) * 1000.0,
+                "source": "tushare",
+            })
+        rows.sort(key=lambda item: item["trade_date"])
+        return TusharePayload(
+            rows, "index_daily", rows[-1]["trade_date"] if rows else "", row_count=len(rows)
+        )
+
     async def fetch_adjustment_factors(
         self, code: str, *, start_date: str = "", end_date: str = "", count: int = 1000
     ) -> TusharePayload:

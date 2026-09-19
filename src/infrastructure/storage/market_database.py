@@ -307,6 +307,28 @@ class MarketDatabase:
 
                 CREATE INDEX IF NOT EXISTS idx_market_daily_date
                     ON market_daily(trade_date);
+
+                -- Reference indices, kept locally so a benchmark comparison is
+                -- reproducible offline.  The learning label no longer uses
+                -- these (it scores against the equal-weight universe), but the
+                -- 沪深300 series was previously fetched over the network on
+                -- every backfill and existed nowhere but in one run's memory.
+                CREATE TABLE IF NOT EXISTS index_daily (
+                    ts_code TEXT NOT NULL,
+                    trade_date TEXT NOT NULL,
+                    open REAL DEFAULT 0,
+                    high REAL DEFAULT 0,
+                    low REAL DEFAULT 0,
+                    close REAL DEFAULT 0,
+                    pre_close REAL DEFAULT 0,
+                    change_pct REAL DEFAULT 0,
+                    volume REAL DEFAULT 0,
+                    amount REAL DEFAULT 0,
+                    PRIMARY KEY (ts_code, trade_date)
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_index_daily_date
+                    ON index_daily(trade_date);
                 CREATE INDEX IF NOT EXISTS idx_market_daily_code
                     ON market_daily(ts_code);
 
@@ -857,6 +879,62 @@ class MarketDatabase:
         if len(text) == 8 and text.isdigit():
             return f"{text[:4]}-{text[4:6]}-{text[6:]}"
         return text[:10]
+
+    def upsert_index_daily(self, rows: list[dict[str, Any]]) -> dict[str, int]:
+        """Insert reference-index bars without overwriting existing ones."""
+        clean: list[tuple[Any, ...]] = []
+        for item in rows:
+            code = str(item.get("ts_code") or "").strip().upper()
+            trade_date = self._normalize_date(item.get("trade_date"))
+            close = item.get("close")
+            if not code or not trade_date or close in (None, ""):
+                continue
+            clean.append((
+                code, trade_date, item.get("open"), item.get("high"), item.get("low"),
+                close, item.get("pre_close"), item.get("change_pct"), item.get("volume"),
+                item.get("amount"),
+            ))
+        if not clean:
+            return {"stored_count": 0, "input_count": len(rows)}
+        with self._get_conn() as conn:
+            before = conn.total_changes
+            conn.executemany(
+                """INSERT INTO index_daily
+                   (ts_code, trade_date, open, high, low, close, pre_close,
+                    change_pct, volume, amount)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                   ON CONFLICT(ts_code, trade_date) DO NOTHING""",
+                clean,
+            )
+            stored = conn.total_changes - before
+        return {"stored_count": stored, "input_count": len(rows)}
+
+    def get_index_bars(self, code: str, limit: int = 400) -> list[dict]:
+        """Local reference-index bars, ascending. No network."""
+        with self._get_conn() as conn:
+            rows = conn.execute(
+                """SELECT trade_date, open, high, low, close, change_pct
+                     FROM index_daily WHERE ts_code=?
+                    ORDER BY trade_date DESC LIMIT ?""",
+                (str(code or "").strip().upper(), int(limit)),
+            ).fetchall()
+        return [dict(row) for row in reversed(rows)]
+
+    def get_index_coverage(self, code: str) -> dict[str, Any]:
+        """How much of one reference index is stored locally."""
+        with self._get_conn() as conn:
+            row = conn.execute(
+                """SELECT COUNT(*) AS n, MIN(trade_date) AS first_date,
+                          MAX(trade_date) AS last_date
+                     FROM index_daily WHERE ts_code=?""",
+                (str(code or "").strip().upper(),),
+            ).fetchone()
+        return {
+            "code": str(code or "").strip().upper(),
+            "bars": int(row["n"] or 0),
+            "first_date": str(row["first_date"] or ""),
+            "last_date": str(row["last_date"] or ""),
+        }
 
     def upsert_tushare_daily_history(self, rows: list[dict[str, Any]]) -> dict[str, int]:
         """Insert historical raw daily bars without overwriting existing bars."""

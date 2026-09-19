@@ -737,6 +737,17 @@ class TaskExecutor:
         """同步市场数据。"""
         from src.infrastructure.storage.market_database import market_db
 
+        # Reference indices are independent of the stock-bar freshness check
+        # below, which returns early on an already-fresh day.  A failure here
+        # must not fail the market sync -- the learning label reads none of it.
+        index_sync: dict = {}
+        try:
+            from src.infrastructure.market_data.index_sync import sync_reference_indices
+
+            index_sync = await sync_reference_indices()
+        except Exception as exc:
+            index_sync = {"errors": [f"{type(exc).__name__}: {exc}"]}
+
         stats = await asyncio.to_thread(market_db.get_stats)
         latest = str(stats.get("latest_data_date") or "")
         completed_day = await get_latest_completed_trading_day(date.today())
@@ -751,6 +762,7 @@ class TaskExecutor:
                 "daily_bars": stats.get("daily_bars", 0),
                 "calendar_source": completed_day.source,
                 "metadata_sync": metadata_sync,
+                "index_sync": index_sync,
             }
 
         missing_days = (
@@ -783,6 +795,7 @@ class TaskExecutor:
                     "calendar_source": completed_day.source,
                     "sync_errors": sync_errors[:3],
                     "metadata_sync": metadata_sync,
+                    "index_sync": index_sync,
                     "note": (
                         "BaoStock 同步不可用，继续使用本地历史行情扫描；"
                         "模拟成交仍必须通过信号后的新鲜行情校验。"
@@ -800,6 +813,7 @@ class TaskExecutor:
             "calendar_source": completed_day.source,
             "calendar_degraded": completed_day.degraded,
             "metadata_sync": metadata_sync,
+            "index_sync": index_sync,
         }
 
     async def _sync_current_metadata(self, as_of_date: str) -> dict:
