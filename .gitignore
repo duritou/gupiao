@@ -56,10 +56,37 @@ coverage.xml
 *.db-shm
 
 # Deployment runtime state (release manifests never contain credentials)
-runtime/releases/
-runtime/active-manifest.json
-runtime/maintenance.json
-runtime/deployment.lock
+runtime/
 
 # Local dev convenience scripts
 restart.ps1
+
+# Third-party checkouts (nested git repo -- vendoring one would create a
+# broken gitlink, and the code is never imported from here)
+0713/
+
+# Build and tooling artifacts
+.skill-build/
+.codex-remote-attachments/
+vscode-ext/*.vsix
+
+# Node dependencies (note: vscode-ext/node_modules is already tracked in this
+# repo from before this rule existed -- ignoring it only stops NEW files being
+# added; untracking the existing ones is a separate decision)
+node_modules/
+
+# Generated logs and reports
+logs/
+reports/
+test-reports/
+
+# Data root -- only its subdirectories were ignored before, so the top level
+# (e.g. the 11 MB evidence_last_good.json) was still being tracked
+data/*
+!data/.gitkeep
+
+# Stray files left by shell redirects and one-off debug runs
+/=
+.tmp_dailybrief.json
+tmp_002156_tech.json
+tmp_probe_debug*.db*
