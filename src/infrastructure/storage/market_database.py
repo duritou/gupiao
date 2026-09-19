@@ -3365,15 +3365,41 @@ class MarketDatabase:
     def _insert_strategy_decision(
         cls, conn: sqlite3.Connection, decision: dict, journal_id: int | None = None
     ) -> int | None:
+        """Persist the model result, keeping a result a later scan did not produce.
+
+        Only about five candidates a day get deep analysis, and a later scan
+        whose evidence no longer matches the cached fingerprint gets none at
+        all -- it reaches here with deep_rating empty.  Writing that would erase
+        the day's real result, and get_cached_deep_analyses reads this table, so
+        the erasure also empties the cache.  deep_rating gates buying, so the
+        loss is not cosmetic.
+
+        The guard is "a scan that produced no model result does not replace a
+        stored one" rather than a field-by-field merge of the deep subset.
+        Merging would need the deep keys enumerated, and the next added
+        ``deep_*`` field would silently stop being preserved.
+        """
         cursor = conn.execute(
-            """INSERT OR REPLACE INTO strategy_decision
+            """INSERT INTO strategy_decision
                (journal_id, decision_date, stock_code, strategy_name,
                 strategy_version, technical_score, deep_rating,
                 effective_direction, analysis_json, created_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+               ON CONFLICT(decision_date, stock_code, strategy_name) DO UPDATE SET
+                   journal_id=excluded.journal_id,
+                   strategy_version=excluded.strategy_version,
+                   technical_score=excluded.technical_score,
+                   deep_rating=excluded.deep_rating,
+                   effective_direction=excluded.effective_direction,
+                   analysis_json=excluded.analysis_json,
+                   created_at=excluded.created_at
+               WHERE excluded.deep_rating <> ''
+                  OR COALESCE(strategy_decision.deep_rating, '') = ''
+               RETURNING id""",
             cls._strategy_decision_values(decision, journal_id),
         )
-        return int(cursor.lastrowid) if cursor.lastrowid is not None else None
+        row = cursor.fetchone()
+        return int(row[0]) if row is not None else None
 
     def try_acquire_pipeline_lease(self, holder: str, ttl_seconds: int) -> bool:
         """Claim the cross-process pipeline lease, or report it is taken.
@@ -6177,97 +6203,18 @@ class MarketDatabase:
             )
             return int(cursor.lastrowid)
 
-    def save_strategy_decision(self, decision: dict, journal_id: int | None = None) -> int:
-        """Persist one immutable model result linked to its exact journal row.
+    def save_strategy_decision(self, decision: dict, journal_id: int | None = None) -> int | None:
+        """Persist one model result linked to its exact journal row.
 
-        The legacy key used one row per stock/day, so an afternoon technical
-        scan replaced the morning TradingAgents result. A journal-scoped key
-        keeps every run separate while remaining compatible with the existing
-        SQLite uniqueness constraint.
+        Delegates to :meth:, which is what the batch
+        writers already use.  This method used to carry its own INSERT OR
+        REPLACE and a narrower analysis payload, so the two paths drifted: the
+        guard that stops a scan without a model result from erasing the day's
+        one had to be written twice, and was written once.  Kept as a named
+        entry point because the tests drive it directly; no production caller.
         """
-        analysis = {
-            key: decision.get(key)
-            for key in (
-                "deep_analysis", "deep_thesis", "deep_trader_plan",
-                "deep_analysis_available", "deep_analysis_error",
-                "deep_provider", "deep_model", "deep_source", "deep_runtime",
-                "deep_cached", "deep_duration_seconds", "deep_input_fingerprint",
-                "deep_kline_evidence",
-                "deep_evidence_consumption",
-                "deep_evidence_gaps",
-                "tradingagents_rating", "tradingagents_direction",
-                "tradingagents_score", "final_review_required",
-                "preselection_input_sha256", "preselection_input_chars",
-                "preselection_input_count", "preselection_input_fields",
-                "preselection_provider", "preselection_model", "preselection_called",
-                "final_review_available", "final_review_verdict",
-                "final_review_reason", "final_review_risk",
-                 "final_review_provider", "final_review_model",
-                 "final_review_fallback_used", "final_review_error",
-                 "preselection_input_sha256", "preselection_input_chars",
-                 "preselection_input_count", "preselection_input_fields",
-                 "final_review_input_sha256", "final_review_input_chars",
-                 "final_review_input_count", "final_review_input_fields",
-                 "final_buy_approved",
-                 "decision_status",
-                 "predicted_direction", "executable_direction",
-                 "raw_ai_score", "scanner_score", "preselection_base_score",
-                 "preselection_adjusted_score", "deep_base_score", "deep_score",
-                 "research_score", "primary_score", "primary_score_label",
-                 "ranking_score_label", "display_state", "display_state_label",
-                 "ranking_score", "action_score", "score_lineage",
-                 "score_guarded", "score_guard_reasons",
-                 "fundamental_evidence_available", "execution_evidence_complete",
-                 "market_evidence_complete", "market_evidence_sources",
-                 "market_evidence_reasons", "evidence_status", "actionability_status",
-                 "evidence_enrichment",
-                 "quote_enrichment_status", "quote_enrichment_reason",
-                 "quote_enrichment_ranking_score",
-                 "quote_enrichment_min_ranking_score",
-                 "publication_blocked", "publication_block_reasons",
-                 "recommendation_tier", "technical_data_through",
-                 "run_id", "strategy_name", "strategy_version",
-                 "config_snapshot", "config_hash", "code_hash", "run_created_at",
-                 "actionable", "deep_candidate_eligible",
-                 "deep_candidate_exclusion_reason",
-                 "pre_gate_direction", "final_direction", "flow_state",
-                 "flow_sources", "flow_source", "flow_status", "fallback_attempted",
-                 "fallback_status", "market_sources", "market_reasons",
-                 "market_flow", "market_price", "market_pre_close",
-                 "market_change_pct", "market_price_source", "market_price_date",
-                 "market_price_fetched_at", "market_price_exchange_at",
-                 "market_volume_ratio", "market_active_volume_ratio",
-                 "data_cutoff_at", "signal_at",
-                 "gate_reasons", "non_flow_gates_passed",
-                 "execution_disposition", "execution_block_reason",
-                 "execution_status_label", "execution_quote_verified",
-                 "evidence", "confidence", "fusion_score", "macd_score",
-                "rsi_score", "kdj_score", "ma_score", "volume_score",
-            )
-            if decision.get(key) not in (None, "")
-        }
-        strategy_name = (
-            f"adaptive-paper:journal:{journal_id}"
-            if journal_id is not None
-            else f"adaptive-paper:standalone:{time.time_ns()}"
-        )
         with self._get_conn() as conn:
-            cursor = conn.execute(
-                """INSERT OR REPLACE INTO strategy_decision
-                   (journal_id, decision_date, stock_code, strategy_name,
-                    strategy_version, technical_score, deep_rating,
-                    effective_direction, analysis_json, created_at)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                (
-                    journal_id, decision.get("date", ""), decision.get("stock_code", ""),
-                    strategy_name,
-                    decision.get("strategy_version") or "2.1",
-                    decision.get("technical_score", decision.get("ai_score", 50)),
-                    decision.get("deep_rating", ""), decision.get("direction", "neutral"),
-                    json.dumps(analysis, ensure_ascii=False), datetime.now().isoformat(),
-                ),
-            )
-            return cursor.lastrowid
+            return self._insert_strategy_decision(conn, decision, journal_id)
 
     def get_research_case_rows(self, limit: int = 5000) -> list[dict[str, Any]]:
         """Return persisted decisive cases for rebuilding calibration memory.

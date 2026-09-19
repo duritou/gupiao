@@ -141,23 +141,19 @@ def test_paper_strategy_fails_closed_without_tradingagents_buy(tmp_path):
     }
 
 
-@pytest.mark.xfail(
-    reason=(
-        "Documents a regression the journal de-duplication introduced. This "
-        "protection came from the journal-scoped strategy key: one journal row "
-        "per scan meant one strategy row per scan, so an afternoon scan that "
-        "skipped deep analysis could not erase the morning's. The journal now "
-        "holds one row per (date, code), get_cached_deep_analyses reads "
-        "strategy_decision, and save_strategy_decision replaces that row -- so "
-        "an empty deep_rating from a later scan wipes the day's real one and "
-        "the cache then finds nothing. The test was passing only because test "
-        "databases lacked the unique index production had; it now fails on "
-        "both. Fixing it changes deep_rating, which gates buying, so it needs "
-        "a decision rather than a patch."
-    ),
-    strict=True,
-)
-def test_strategy_rows_are_not_overwritten_by_later_same_day_scan(tmp_path):
+def test_a_scan_without_a_model_result_keeps_the_days_model_result(tmp_path):
+    """The day's deep result must survive a later scan that produced none.
+
+    This used to be protected structurally: the journal-scoped strategy key
+    gave every scan its own row, so an afternoon scan could not touch the
+    morning's. The journal now holds one row per (date, code), so the
+    protection has to be explicit -- and it has to be, because
+    get_cached_deep_analyses reads this table and deep_rating gates buying.
+    An empty rating from a later scan used to erase the day's real one.
+
+    The journal is the opposite: it is the decision record and must show the
+    latest scan, which is asserted below alongside the preserved rating.
+    """
     database = MarketDatabase(tmp_path / "strategy-history.db")
     morning = _decision()
     morning_id = database.save_decision(morning)
@@ -174,11 +170,18 @@ def test_strategy_rows_are_not_overwritten_by_later_same_day_scan(tmp_path):
     afternoon_id = database.save_decision(afternoon)
     database.save_strategy_decision(afternoon, afternoon_id)
 
+    # One row per (date, code): both scans address the same record.
+    assert afternoon_id == morning_id
+
     rows = database.get_decisions_for_date("2026-08-14")
     by_id = {row["id"]: row for row in rows}
-    assert by_id[morning_id]["deep_rating"] == "Overweight"
-    assert not by_id[afternoon_id]["deep_analysis_available"]
+    row = by_id[morning_id]
+    # The model result is the morning's -- not replaced by a scan that had none.
+    assert row["deep_rating"] == "Overweight"
     assert database.count_cached_deep_analyses("2026-08-14") == 1
+    # ...while the decision record itself is the afternoon's.
+    assert row["ai_score"] == 55
+    assert row["direction"] == "neutral"
 
 
 def test_held_decision_is_kept_below_the_top_300_cutoff():
