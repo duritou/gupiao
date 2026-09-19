@@ -1,16 +1,20 @@
 """Decision Outcome Backfiller — 让软件开始"学习"。
 
 决策结果回填闭环:
-  查到期未验证决策 → 对比决策后 5 个交易日真实收益(个股 vs 沪深300 基准)
+  查到期未验证决策 → 对比决策后 5 个交易日真实收益(个股 vs 等权基准)
   → 回填 was_correct / actual_return → 喂 Calibration(_case_history)
 
 这是系统从"规则引擎"变成"会进化系统"的开关:有了 verified case,
 Confidence Calibration 才有数据校准、案例库才开始积累。
 
-was_correct 标准 = 基准超额:excess = 个股收益 - 沪深300 同期收益
+was_correct 标准 = 基准超额:excess = 个股收益 - 全市场等权同期收益
   BUY       : excess > 0          为对
   SELL      : excess < 0          为对
   HOLD/其它 : |excess| < 0.5%     为对(相对基准横盘)
+
+基准从沪深300 换成等权:扫描器在全市场(20 亿市值下限)排序,候选里 82.7%
+低于 200 亿、只有 3.1% 高于 1000 亿,拿大盘指数做基准会把规模因子记成选股
+能力。等权基准的定义与 point-in-time 可投资域见 src/explain/benchmark.py。
 
 触发:POST /decision/backfill(手动)或 APScheduler 每日 16:05(定时)。
 幂等:只处理 outcome_known=0,UPDATE 带 outcome_known=0 守卫。
@@ -22,19 +26,16 @@ import asyncio
 import logging
 from datetime import date as dt_date
 from datetime import datetime, timedelta
+from typing import Any
 
 from src.explain.evidence_quality import EvidenceGrade, ResearchCase, archive_case
-from src.infrastructure.market_data.baostock_lock import mark_sync_end, mark_sync_start
 from src.infrastructure.storage.market_database import market_db
 
 logger = logging.getLogger("uvicorn.error")
 
 N_TRADING_DAYS = 5           # 回填窗口:决策后 5 个交易日
 HOLD_EXCESS_BAND = 0.005     # HOLD 方向正确阈值:|excess| < 0.5%
-HS300_CODE = "sh.000300"     # 沪深300(baostock 格式,指数,不在 market_daily)
-HS300_TUSHARE_CODE = "000300.SH"
 
-_benchmark_source = ""
 
 # 当次回填运行状态(单 worker,模块级即可)
 _backfill_state: dict = {
@@ -54,61 +55,6 @@ def _compute_was_correct(direction: str, excess: float) -> bool:
         return abs(excess) < HOLD_EXCESS_BAND
     # buy 及其它默认按多头判定
     return excess > 0
-
-
-def _fetch_hs300_bars(days: int = 60) -> dict[str, float]:
-    """Fetch沪深300 closes from Tushare first, then BaoStock."""
-    global _benchmark_source
-    _benchmark_source = ""
-    try:
-        from src.infrastructure.market_data.tushare_provider import tushare_provider
-
-        payload = asyncio.run(
-            tushare_provider.fetch_index_closes(HS300_TUSHARE_CODE, days)
-        )
-        if len(payload.data) > N_TRADING_DAYS:
-            _benchmark_source = "tushare"
-            return dict(payload.data)
-        logger.warning("[backfill] Tushare 沪深300 数据不足(%d 日)", len(payload.data))
-    except Exception as exc:
-        logger.warning("[backfill] Tushare 沪深300 获取失败: %s", exc)
-
-    # BaoStock 兜底直连拉沪深300；指数不在本地 market_daily。
-    import baostock as bs
-    mapping: dict[str, float] = {}
-    mark_sync_start()
-    try:
-        lg = bs.login()
-        if lg.error_code != '0':
-            logger.warning("[backfill] 沪深300 login 失败: %s", lg.error_msg)
-            return mapping
-        try:
-            end = dt_date.today().strftime('%Y-%m-%d')
-            start = (dt_date.today() - timedelta(days=days)).strftime('%Y-%m-%d')
-            rs = bs.query_history_k_data_plus(
-                HS300_CODE, 'date,close',
-                start_date=start, end_date=end,
-                frequency='d', adjustflag='3',
-            )
-            if rs.error_code != '0':
-                logger.warning("[backfill] 沪深300 query 失败: %s", rs.error_msg)
-                return mapping
-            while (rs.error_code == '0') & rs.next():
-                row = rs.get_row_data()
-                if row[0] and row[1]:
-                    mapping[row[0]] = float(row[1])
-            if mapping:
-                _benchmark_source = "baostock"
-        finally:
-            try:
-                bs.logout()
-            except Exception:
-                pass
-    except Exception as e:
-        logger.warning("[backfill] 拉沪深300 异常: %s", e)
-    finally:
-        mark_sync_end()
-    return mapping
 
 
 def _return_between(bars_by_date: dict[str, float], start_date: str, n: int) -> float | None:
@@ -146,42 +92,62 @@ def _return_between_with_date(
     return (end_close - base_close) / base_close, observation_date
 
 
+def _window_end(
+    calendar: list[str], decision_date: str, horizon_days: int
+) -> str | None:
+    """The horizon_days-th session after decision_date on the market calendar."""
+    days = [d for d in calendar if decision_date <= d <= dt_date.today().isoformat()]
+    if not days:
+        return None
+    base = days.index(decision_date) if decision_date in days else 0
+    if base + horizon_days >= len(days):
+        return None
+    return days[base + horizon_days]
+
+
 def _build_market_observation(
     stock_by_date: dict[str, float],
-    benchmark_by_date: dict[str, float],
+    calendar: list[str],
     decision_date: str,
     horizon_days: int,
-) -> dict[str, float | str] | None:
-    """Build one comparable stock-vs-benchmark sample or reject it."""
-    stock_return, observation_date = _return_between_with_date(
+) -> dict[str, Any] | None:
+    """Build one comparable stock-vs-benchmark sample or reject it.
+
+    The window end is fixed by the market calendar rather than by whichever
+    series supplies the benchmark.  A stock suspended across the horizon then
+    lands on a different date and is rejected, instead of being scored against
+    a benchmark that covered a different window.
+    """
+    observation_date = _window_end(calendar, decision_date, horizon_days)
+    if observation_date is None:
+        return None
+    stock_return, stock_observation_date = _return_between_with_date(
         stock_by_date, decision_date, horizon_days
     )
-    benchmark_return, benchmark_observation_date = _return_between_with_date(
-        benchmark_by_date, decision_date, horizon_days
+    if stock_return is None or stock_observation_date != observation_date:
+        return None
+    benchmark_return, basis = market_db.equal_weight_benchmark(
+        decision_date, observation_date
     )
-    if (
-        stock_return is None
-        or benchmark_return is None
-        or observation_date is None
-        or observation_date != benchmark_observation_date
-    ):
+    if benchmark_return is None:
         return None
     return {
         "stock_return": stock_return,
         "benchmark_return": benchmark_return,
         "excess_return": stock_return - benchmark_return,
         "observation_date": observation_date,
+        "benchmark_basis": basis.status,
     }
 
 
 def _observation_skip_reason(
-    stock_by_date: dict[str, float], benchmark_by_date: dict[str, float],
+    stock_by_date: dict[str, float], calendar: list[str],
     decision_date: str, horizon_days: int, expected_absences: dict[str, str],
 ) -> str:
     """Explain deferred labels without equating missing bars with failure."""
-    if not benchmark_by_date:
-        return "benchmark_unavailable"
-    dates = sorted(day for day in benchmark_by_date
+    if not calendar:
+        return "market_calendar_unavailable"
+    dates = sorted(day for day in calendar
                    if decision_date <= day <= dt_date.today().isoformat())
     if len(dates) <= horizon_days:
         return "horizon_not_ready_or_benchmark_pending"
@@ -196,14 +162,14 @@ def _observation_skip_reason(
 
 def _record_observation_skip(
     stats: dict, decision: dict, stock_by_date: dict[str, float],
-    benchmark_by_date: dict[str, float], horizon_days: int,
+    calendar: list[str], horizon_days: int,
 ) -> None:
-    dates = [day for day in benchmark_by_date
+    dates = [day for day in calendar
              if decision["decision_date"] <= day <= dt_date.today().isoformat()]
     code = decision["stock_code"]
     expected = market_db.get_expected_market_absences([code], dates).get(code, {})
     reason = _observation_skip_reason(
-        stock_by_date, benchmark_by_date, decision["decision_date"], horizon_days, expected
+        stock_by_date, calendar, decision["decision_date"], horizon_days, expected
     )
     reasons = stats.setdefault("skip_reasons", {})
     reasons[reason] = reasons.get(reason, 0) + 1
@@ -212,7 +178,7 @@ def _record_observation_skip(
 
 def _backfill_market_observations(
     horizon_days: int,
-    benchmark_by_date: dict[str, float],
+    calendar: list[str],
     limit: int = 1000,
 ) -> dict:
     """Persist comparable directional samples for one learning horizon."""
@@ -227,13 +193,13 @@ def _backfill_market_observations(
             stock_by_date = {bar["date"]: bar["close"] for bar in stock_bars}
             sample = _build_market_observation(
                 stock_by_date,
-                benchmark_by_date,
+                calendar,
                 decision["decision_date"],
                 horizon_days,
             )
             if sample is None:
                 _record_observation_skip(
-                    stats, decision, stock_by_date, benchmark_by_date, horizon_days
+                    stats, decision, stock_by_date, calendar, horizon_days
                 )
                 continue
             saved = market_db.save_market_learning_observation(
@@ -247,6 +213,7 @@ def _backfill_market_observations(
                     decision.get("direction", "neutral"),
                     float(sample["excess_return"]),
                 ),
+                benchmark_basis=str(sample.get("benchmark_basis") or ""),
             )
             stats["verified" if saved else "skipped"] += 1
         except Exception as exc:
@@ -261,7 +228,7 @@ def _backfill_market_observations(
 
 
 def backfill_once(min_calendar_days: int = 9) -> dict:
-    """跑一次回填,返回统计 {pending, verified, skipped, failed, hs300_ok}。"""
+    """跑一次回填,返回统计 {pending, verified, skipped, failed, benchmark_ok}。"""
     if _backfill_state["running"]:
         return {"status": "already_running"}
     _backfill_state.update(
@@ -271,23 +238,22 @@ def backfill_once(min_calendar_days: int = 9) -> dict:
     stats = {
         "pending": 0, "verified": 0, "skipped": 0, "failed": 0,
         "daily_pending": 0, "daily_verified": 0, "daily_skipped": 0,
-        "hs300_ok": False,
-        "benchmark_source": "",
+        "benchmark_ok": False,
+        "benchmark_source": "equal_weight",
         "learning_horizons": {},
     }
     try:
-        # 1. 拉沪深300 基准(当次缓存,所有决策共用)
-        hs300 = _fetch_hs300_bars(days=60)
-        stats["hs300_ok"] = len(hs300) > N_TRADING_DAYS
-        stats["benchmark_source"] = _benchmark_source
-        if not stats["hs300_ok"]:
-            logger.warning("[backfill] 沪深300 基准数据不足(%d 日),跳过超额收益样本", len(hs300))
+        # 1. 取市场交易日历(本地,无网络)。等权基准逐窗计算,不再需要预取序列。
+        calendar = market_db.get_market_calendar()
+        stats["benchmark_ok"] = len(calendar) > N_TRADING_DAYS
+        if not stats["benchmark_ok"]:
+            logger.warning("[backfill] 本地交易日历不足(%d 日),跳过超额收益样本", len(calendar))
 
         # 2. 保存1日快速样本和20日长期样本。所有样本必须有可比的
-        # 沪深300结果；基准缺失时安全跳过，不能退化为绝对收益。
-        if stats["hs300_ok"]:
-            daily_learning = _backfill_market_observations(1, hs300)
-            long_learning = _backfill_market_observations(20, hs300)
+        # 等权基准结果；基准缺失时安全跳过，不能退化为绝对收益。
+        if stats["benchmark_ok"]:
+            daily_learning = _backfill_market_observations(1, calendar)
+            long_learning = _backfill_market_observations(20, calendar)
         else:
             daily_learning = {"pending": 0, "verified": 0, "skipped": 0, "failed": 0}
             long_learning = {"pending": 0, "verified": 0, "skipped": 0, "failed": 0}
@@ -312,7 +278,7 @@ def backfill_once(min_calendar_days: int = 9) -> dict:
         # 3. 查 5 日正式 pending 决策
         pending = market_db.get_pending_outcome_decisions(min_calendar_days)
         stats["pending"] = len(pending)
-        logger.info("[backfill] 待回填 %d 条 (沪深300 %d 日)", len(pending), len(hs300))
+        logger.info("[backfill] 待回填 %d 条 (交易日历 %d 日)", len(pending), len(calendar))
 
         for d in pending:
             try:
@@ -320,14 +286,16 @@ def backfill_once(min_calendar_days: int = 9) -> dict:
                 decision_date = d["decision_date"]
                 direction = d.get("direction", "neutral")
 
-                # 4-5. 个股与沪深300必须在同一观测日都有5日收益。
+                # 4-5. 个股与等权基准必须在同一观测日都有5日收益。
                 stock_bars = market_db.get_daily_bars(code, limit=250)
                 stock_by_date = {b["date"]: b["close"] for b in stock_bars}
                 sample = _build_market_observation(
-                    stock_by_date, hs300, decision_date, N_TRADING_DAYS
+                    stock_by_date, calendar, decision_date, N_TRADING_DAYS
                 )
                 if sample is None:
-                    _record_observation_skip(stats, d, stock_by_date, hs300, N_TRADING_DAYS)
+                    _record_observation_skip(
+                        stats, d, stock_by_date, calendar, N_TRADING_DAYS
+                    )
                     continue
                 stock_ret = float(sample["stock_return"])
                 bench_ret = float(sample["benchmark_return"])
@@ -341,6 +309,7 @@ def backfill_once(min_calendar_days: int = 9) -> dict:
                     benchmark_return=bench_ret,
                     excess_return=excess,
                     was_correct=_compute_was_correct(direction, excess),
+                    benchmark_basis=str(sample.get("benchmark_basis") or ""),
                 )
 
                 # 6. 判定 + 回填

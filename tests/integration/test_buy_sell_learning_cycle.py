@@ -75,6 +75,25 @@ def test_buy_sell_then_learning_profile_consumes_observation(tmp_path, monkeypat
             "amount": 10000,
             "turnover": 1,
         })
+    # The benchmark is the equal-weight universe, so a single-stock fixture
+    # would make it identical to the stock under test and force excess to zero.
+    # Flat peers give the pick something to beat.
+    for peer in ("600000.SH", "600001.SH", "600002.SH"):
+        for offset in range(25):
+            day = (start + timedelta(days=offset)).isoformat()
+            rows.append({
+                "ts_code": peer,
+                "trade_date": day,
+                "open": 20.0,
+                "high": 20.0,
+                "low": 20.0,
+                "close": 20.0,
+                "pre_close": 20.0,
+                "change_pct": 0,
+                "volume": 1000,
+                "amount": 20000,
+                "turnover": 1,
+            })
     database.upsert_tushare_daily_history(rows)
 
     buy = _decision(code, "2026-08-13", 10.0)
@@ -96,13 +115,12 @@ def test_buy_sell_then_learning_profile_consumes_observation(tmp_path, monkeypat
     assert [action["action"] for action in sold["actions"]] == ["SELL"]
 
     monkeypatch.setattr(outcome_backfiller, "market_db", reopened)
+    # The benchmark is now derived per window from the local bar table rather
+    # than handed in as a prefetched series, so this passes the session
+    # calendar and lets `reopened` supply the equal-weight universe.
     stats = outcome_backfiller._backfill_market_observations(
         1,
-        {
-            "2026-08-13": 100.0,
-            "2026-08-14": 102.0,
-            "2026-08-15": 102.5,
-        },
+        ["2026-08-13", "2026-08-14", "2026-08-15"],
     )
     assert stats["verified"] == 2
 

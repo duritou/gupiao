@@ -85,18 +85,18 @@ async def test_all_suspended_needs_no_provider_and_creates_no_flow(tmp_path, mon
     assert result["requests_attempted"] == 0
 
 
-@pytest.mark.parametrize("stock,benchmark,absences,expected", [
-    ({}, {}, {}, "benchmark_unavailable"),
-    ({}, {"2026-09-03": 10}, {}, "horizon_not_ready_or_benchmark_pending"),
-    ({"2026-09-03": 10}, {"2026-09-03": 10, "2026-09-04": 11},
+@pytest.mark.parametrize("stock,calendar,absences,expected", [
+    ({}, [], {}, "market_calendar_unavailable"),
+    ({}, ["2026-09-03"], {}, "horizon_not_ready_or_benchmark_pending"),
+    ({"2026-09-03": 10}, ["2026-09-03", "2026-09-04"],
      {"2026-09-04": "suspended"}, "suspended"),
-    ({"2026-09-03": 10}, {"2026-09-03": 10, "2026-09-04": 11},
+    ({"2026-09-03": 10}, ["2026-09-03", "2026-09-04"],
      {}, "stock_data_missing_unclassified"),
 ])
-def test_learning_skip_reasons(monkeypatch, stock, benchmark, absences, expected):
+def test_learning_skip_reasons(monkeypatch, stock, calendar, absences, expected):
     from src.explain import outcome_backfiller
 
     monkeypatch.setattr(outcome_backfiller, "dt_date", SimpleNamespace(
         today=lambda: SimpleNamespace(isoformat=lambda: "2026-09-09")
     ))
-    assert _observation_skip_reason(stock, benchmark, "2026-09-03", 1, absences) == expected
+    assert _observation_skip_reason(stock, calendar, "2026-09-03", 1, absences) == expected

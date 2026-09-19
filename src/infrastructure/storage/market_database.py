@@ -28,6 +28,7 @@ from pathlib import Path
 from typing import Any
 
 from src.ai_os.numeric_policy import finite_or
+from src.explain.benchmark import BenchmarkBasis, equal_weight_return
 from src.ai_os.price_limit_policy import (
     at_limit_down,
     at_limit_up,
@@ -516,6 +517,7 @@ class MarketDatabase:
                     excess_return REAL NOT NULL,
                     sources_json TEXT DEFAULT '[]',
                     feature_json TEXT DEFAULT '{}',
+                    benchmark_basis TEXT DEFAULT '',
                     created_at TEXT NOT NULL,
                     UNIQUE(decision_id, horizon_days)
                 );
@@ -698,10 +700,25 @@ class MarketDatabase:
                 ("stock_metadata_history", "turnover_pct", "REAL"),
                 ("stock_metadata_history", "market_cap_source", "TEXT DEFAULT ''"),
                 ("stock_metadata_history", "market_cap_fetched_at", "TEXT DEFAULT ''"),
+                # Which benchmark a learning observation was scored against.
+                # Rows predating the equal-weight switch carry 沪深300 excess and
+                # must never be pooled with the new basis.
+                ("market_learning_observation", "benchmark_basis", "TEXT DEFAULT ''"),
             ):
                 columns = {row["name"] for row in conn.execute(f"PRAGMA table_info({table})")}
                 if column not in columns:
                     conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
+            # Every observation written before the equal-weight switch carries
+            # 沪深300 excess in a column that did not exist yet, so its basis
+            # reads as the default.  Label it instead of deleting it: the two
+            # bases must never be pooled, and the old rows are still the record
+            # of what the broken configuration produced.  Idempotent -- new rows
+            # always carry a real basis, so '' only ever matches legacy rows.
+            conn.execute(
+                """UPDATE market_learning_observation
+                      SET benchmark_basis='hs300_legacy'
+                    WHERE COALESCE(benchmark_basis, '') = ''"""
+            )
             schema_version = int(conn.execute("PRAGMA user_version").fetchone()[0])
             if schema_version not in (0, 1, 2, 3, 4, 5, DB_SCHEMA_VERSION):
                 raise RuntimeError(
@@ -2616,6 +2633,28 @@ class MarketDatabase:
                 if self.is_stock_eligible(item["code"], as_of_date, exclude_st=exclude_st)
             ]
         return result
+
+    def get_market_calendar(self, start_date: str = "") -> list[str]:
+        """Ascending trading dates present in the local bar table.
+
+        Serves as the session calendar the learning backfill aligns windows on.
+        It used to come from the 沪深300 series it also used as the benchmark;
+        the bar table is the market itself rather than one index's sessions.
+        """
+        with self._get_conn() as conn:
+            rows = conn.execute(
+                """SELECT DISTINCT trade_date FROM market_daily
+                    WHERE trade_date >= ? ORDER BY trade_date""",
+                (start_date or "",),
+            ).fetchall()
+        return [str(row["trade_date"]) for row in rows]
+
+    def equal_weight_benchmark(
+        self, start_date: str, end_date: str
+    ) -> tuple[float | None, BenchmarkBasis]:
+        """Equal-weight universe return over one window, with its basis."""
+        with self._get_conn() as conn:
+            return equal_weight_return(conn, start_date, end_date)
 
     def get_daily_bars(
         self, code: str, limit: int = 250
@@ -6476,6 +6515,7 @@ class MarketDatabase:
         benchmark_return: float,
         excess_return: float,
         was_correct: bool,
+        benchmark_basis: str = "",
     ) -> bool:
         """Persist one idempotent next-session/future-session learning sample."""
         evidence = decision.get("evidence") or ""
@@ -6495,15 +6535,17 @@ class MarketDatabase:
                 """INSERT OR IGNORE INTO market_learning_observation
                    (decision_id, observation_date, horizon_days, stock_code,
                     direction, was_correct, stock_return, benchmark_return,
-                    excess_return, sources_json, feature_json, created_at)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    excess_return, sources_json, feature_json, benchmark_basis,
+                    created_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     decision["id"], observation_date, horizon_days,
                     decision.get("stock_code", ""), decision.get("direction", "neutral"),
                     1 if was_correct else 0, round(float(stock_return), 6),
                     round(float(benchmark_return), 6), round(float(excess_return), 6),
                     json.dumps(sources, ensure_ascii=False),
-                    json.dumps(discovery, ensure_ascii=False), datetime.now().isoformat(),
+                    json.dumps(discovery, ensure_ascii=False),
+                    benchmark_basis, datetime.now().isoformat(),
                 ),
             )
             return cursor.rowcount > 0
