@@ -16,13 +16,14 @@ os.environ["ADAPTIVE_DATABASE_URL"] = "sqlite+aiosqlite:///" + (
 ).as_posix()
 
 from src.infrastructure.market_data.provider_metrics import reliability_engine  # noqa: E402
-from src.infrastructure.metrics.collector import metrics  # noqa: E402
 
 
 @pytest.fixture(autouse=True)
 def reset_metrics():
     """每个测试前重置指标"""
-    metrics.reset()
+    # Only the provider reliability counters are live; the v1.0
+    # infrastructure/metrics collector was removed with the rest of that
+    # architecture and had no production caller.
     reliability_engine.reset_runtime_state()
     yield
     reliability_engine.reset_runtime_state()

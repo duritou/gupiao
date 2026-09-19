@@ -1,10 +1,9 @@
-"""Backtest Engine + OutcomeTracker 全套测试"""
+"""Backtest Engine 测试"""
 
 import pytest
 import math
 
 from src.backtest.engine import BacktestEngine, BacktestResult, PerformanceMetrics, Trade
-from src.backtest.tracker import OutcomeTracker, TrackedOutcome, OutcomeSummary
 from src.signals.builtin.technical import MACDSignal, RSISignal, MASignal, VolumeSignal
 from src.signals.fusion import SignalFusion
 
@@ -206,90 +205,3 @@ class TestPerformanceMetrics:
         assert m.total_return_pct == 0.0
         assert m.total_trades == 0
         assert m.win_rate_pct == 0.0
-
-
-# ===== OutcomeTracker Tests =====
-
-class TestOutcomeTracker:
-    """结果跟踪器测试"""
-
-    def test_track_single(self):
-        tracker = OutcomeTracker()
-        outcome = tracker.track(
-            report_id="rpt_001",
-            stock_code="000001.SZ",
-            stock_name="平安银行",
-            predicted_score=85.0,
-            predicted_direction="buy",
-            predicted_at="2026-07-01",
-            price_at_report=10.0,
-            price_1w=10.5,
-            price_1m=11.0,
-            price_3m=12.0,
-        )
-        assert outcome.return_1w_pct == 5.0
-        assert outcome.return_1m_pct == 10.0
-        assert outcome.return_3m_pct == 20.0
-        assert outcome.direction_correct is True
-        assert outcome.score_accuracy == "accurate"
-
-    def test_track_wrong_direction(self):
-        tracker = OutcomeTracker()
-        outcome = tracker.track(
-            report_id="rpt_002",
-            stock_code="000002.SZ",
-            stock_name="test",
-            predicted_score=80.0,
-            predicted_direction="buy",
-            predicted_at="2026-07-01",
-            price_at_report=10.0,
-            price_1w=9.5,
-            price_1m=9.0,
-            price_3m=8.0,
-        )
-        assert outcome.direction_correct is False
-        assert outcome.score_accuracy == "wrong"
-
-    def test_summarize(self):
-        tracker = OutcomeTracker()
-        tracker.track("r1", "000001.SZ", "A", 85, "buy", "2026-07-01", 10, 11, 12, 13)
-        tracker.track("r2", "000002.SZ", "B", 75, "buy", "2026-07-01", 10, 9, 8, 7)
-        tracker.track("r3", "000003.SZ", "C", 60, "neutral", "2026-07-01", 10, 10, 10, 10)
-
-        summary = tracker.summarize()
-        assert summary.total_tracked == 3
-        assert summary.best_prediction is not None
-        assert summary.worst_prediction is not None
-
-    def test_direction_accuracy(self):
-        tracker = OutcomeTracker()
-        tracker.track("r1", "A", "A", 85, "buy", "", 10, 11, 12, 13)    # correct
-        tracker.track("r2", "B", "B", 80, "buy", "", 10, 9, 8, 7)        # wrong
-        tracker.track("r3", "C", "C", 85, "buy", "", 10, 11, 12, 13)     # correct
-
-        summary = tracker.summarize()
-        assert summary.direction_accuracy_pct == pytest.approx(66.7, 0.1)
-
-    def test_empty_summary(self):
-        tracker = OutcomeTracker()
-        summary = tracker.summarize()
-        assert summary.total_tracked == 0
-
-    def test_count(self):
-        tracker = OutcomeTracker()
-        assert tracker.count == 0
-        tracker.track("r1", "A", "A", 50, "neutral", "", 10)
-        assert tracker.count == 1
-
-    def test_score_correlation(self):
-        """高评分应更准确"""
-        tracker = OutcomeTracker()
-        for i in range(5):
-            tracker.track(f"r{i}", f"{i}", "test", 80 + i, "buy", "",
-                         10, 11, 12, 13)  # high score, correct
-        for i in range(5, 10):
-            tracker.track(f"r{i}", f"{i}", "test", 40, "sell", "",
-                         10, 9, 8, 7)  # low score, wrong direction for buy...
-
-        summary = tracker.summarize()
-        assert summary.score_correlation >= 0

@@ -43,18 +43,26 @@ async def system_status():
         "app": "Adaptive Investment Intelligence Platform",
         "version": _RELEASE["product_version"],
         "ai": ai_router.status(),
-        "modules": [
-            "plugin_registry",
-            "market_gateway",
-            "repository",
-            "knowledge_base",
-            "signal_engine",
-            "scanner",
-            "research_pipeline",
-            "ai_agents",
-            "backtest",
-        ],
+        # Derived, not listed.  The previous hardcoded list still advertised
+        # plugin_registry, market_gateway, repository, scanner and
+        # research_pipeline long after the v1.0 architecture that defined them
+        # was abandoned and deleted -- a status endpoint reporting subsystems
+        # that do not exist.  Reading the package tree cannot go stale.
+        "modules": _package_names(),
     }
+
+
+def _package_names() -> list[str]:
+    """Top-level packages under src/, read from disk."""
+    root = Path(__file__).resolve().parents[2]
+    try:
+        return sorted(
+            entry.name
+            for entry in root.iterdir()
+            if entry.is_dir() and entry.name != "__pycache__"
+        )
+    except OSError:
+        return []
 
 
 @router.get("/system/providers/hithink")
