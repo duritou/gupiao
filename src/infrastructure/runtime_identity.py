@@ -105,7 +105,7 @@ def create_manifest(root: str | Path, release_id: str | None = None) -> dict[str
         "manifest_version": 1,
         "release_id": release_id or f"worktree-{artifact_hash[:16]}",
         "created_at": datetime.now().astimezone().isoformat(),
-        "algorithm_version": "2.2.0-evidence-routing",
+        "algorithm_version": "2.3.0-evidence-integrity",
         "schema_version": 5,
         "hash_scope": "runtime_source_files",
         "product_version": release.get("product_version", ""),
@@ -197,7 +197,7 @@ def startup_identity() -> dict[str, Any]:
         "algorithm_version": (
             manifest.get("algorithm_version")
             if manifest
-            else "2.2.0-evidence-routing"
+            else "2.3.0-evidence-integrity"
         ),
         "schema_version": manifest.get("schema_version") if manifest else 5,
         "pid": os.getpid(),

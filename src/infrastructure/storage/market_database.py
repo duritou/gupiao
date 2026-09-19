@@ -3228,23 +3228,53 @@ class MarketDatabase:
         The old caller opened and committed a new SQLite connection for every
         journal and strategy row.  This keeps the same row shapes and IDs while
         reducing hundreds of write transactions to one atomic transaction.
+
+        Several scans run each day, so the same ``(decision_date, stock_code)``
+        previously reached this table once per scan and multiplied every call
+        4-7x.  The existing row is updated in place instead, which preserves its
+        ``id``: ``strategy_decision.journal_id`` points at that id, so
+        ``INSERT OR REPLACE`` would change it and orphan the child row.  A
+        stable id is also what finally lets ``strategy_decision`` dedupe, since
+        its ``strategy_name`` is derived from ``journal_id`` and a fresh id per
+        scan defeated UNIQUE(decision_date, stock_code, strategy_name).  Outcome
+        columns are deliberately untouched so a backfilled return survives a
+        later scan of the same day.
         """
         if not decisions:
             return []
         journal_ids: list[int] = []
         with self._get_conn() as conn:
             for decision in decisions:
-                cursor = conn.execute(
-                    """INSERT INTO decision_journal
-                       (decision_date, stock_code, stock_name, ai_score,
-                        direction, confidence, recommendation,
-                        fusion_score, macd_score, rsi_score, kdj_score,
-                        ma_score, volume_score, buy_signals, sell_signals,
-                        evidence, created_at)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                    self._decision_journal_values(decision),
-                )
-                journal_id = int(cursor.lastrowid)
+                values = self._decision_journal_values(decision)
+                existing = conn.execute(
+                    """SELECT id FROM decision_journal
+                       WHERE decision_date=? AND stock_code=?
+                       ORDER BY id DESC LIMIT 1""",
+                    (values[0], values[1]),
+                ).fetchone()
+                if existing is None:
+                    cursor = conn.execute(
+                        """INSERT INTO decision_journal
+                           (decision_date, stock_code, stock_name, ai_score,
+                            direction, confidence, recommendation,
+                            fusion_score, macd_score, rsi_score, kdj_score,
+                            ma_score, volume_score, buy_signals, sell_signals,
+                            evidence, created_at)
+                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                        values,
+                    )
+                    journal_id = int(cursor.lastrowid)
+                else:
+                    journal_id = int(existing["id"])
+                    conn.execute(
+                        """UPDATE decision_journal
+                           SET stock_name=?, ai_score=?, direction=?, confidence=?,
+                               recommendation=?, fusion_score=?, macd_score=?,
+                               rsi_score=?, kdj_score=?, ma_score=?, volume_score=?,
+                               buy_signals=?, sell_signals=?, evidence=?, created_at=?
+                           WHERE id=?""",
+                        (*values[2:], journal_id),
+                    )
                 journal_ids.append(journal_id)
                 self._insert_strategy_decision(conn, decision, journal_id)
         return journal_ids
@@ -6357,9 +6387,14 @@ class MarketDatabase:
         return {"buckets": buckets, "data_source": "strategy_decision"}
 
     def get_learning_log(self, limit: int = 30) -> list[dict]:
+        # Order by business date, not insertion id.  Outcome rows are written in
+        # bulk by the backfiller and take high ids while carrying old
+        # learning_dates, so `ORDER BY id DESC` let them fill 12 of the 30 slots
+        # with entries days or weeks stale.  Ties keep newest-first.
         with self._get_conn() as conn:
             rows = conn.execute(
-                "SELECT * FROM learning_log ORDER BY id DESC LIMIT ?", (limit,)
+                """SELECT * FROM learning_log
+                   ORDER BY learning_date DESC, id DESC LIMIT ?""", (limit,)
             ).fetchall()
         result = []
         for row in rows:

@@ -1,9 +1,13 @@
 """One real call must produce one learning observation, not one per scan.
 
-Several scans run each day and `save_decisions_batch` appends a row per scan,
-so the same `(decision_date, stock_code)` accumulated many rows.  The pending
-queue joined on `decision_id`, which differs per row, so every duplicate became
-its own sample for `market_learning`.
+Several scans run each day and `save_decisions_batch` used to append a row per
+scan, so the same `(decision_date, stock_code)` accumulated many rows.  The
+pending queue joined on `decision_id`, which differs per row, so every
+duplicate became its own sample for `market_learning`.
+
+The write side now upserts on `(decision_date, stock_code)` and reuses the
+existing row id, so a repeated scan collapses before the queue is consulted and
+the read-side guard below is the second line of defence rather than the first.
 """
 
 import sqlite3
@@ -58,7 +62,9 @@ def test_repeated_scans_of_one_day_yield_a_single_observation(database):
         _journal_row("2026-08-10", "000001.SZ"),
         _journal_row("2026-08-10", "000001.SZ"),
     ])
-    assert _raw(database.db_path, "SELECT COUNT(*) FROM decision_journal")[0][0] == 3
+    # The write side upserts on (decision_date, stock_code), so the three scans
+    # collapse to one row before the pending queue is even consulted.
+    assert _raw(database.db_path, "SELECT COUNT(*) FROM decision_journal")[0][0] == 1
 
     pending = database.get_pending_market_learning_decisions(horizon_days=1)
 

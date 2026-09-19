@@ -10,7 +10,11 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-ALGORITHM_VERSION = "2.2.0-evidence-routing"
+# Bump by hand.  This is not derived from anything, and two literals must be
+# changed with it or the audit chain silently disagrees with itself:
+# runtime_identity.create_manifest (:108) and the startup_identity fallback
+# (:200) each hardcode their own copy rather than importing this constant.
+ALGORITHM_VERSION = "2.3.0-evidence-integrity"
 _RUNTIME_SOURCE_FILES = (
     "src/infrastructure/market_data/research_flow.py",
     "src/infrastructure/market_data/source_manager.py",

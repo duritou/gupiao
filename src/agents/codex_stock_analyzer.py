@@ -452,6 +452,37 @@ def _extract_object(text: str) -> dict[str, Any]:
     return {}
 
 
+_ANALYSIS_INSTRUCTIONS = (
+    "请以技术分析师、新闻/公告分析师、基本面分析师、多头、空头和风险经理"
+    "六个角色完成一次A股深度研究，然后由组合经理给出唯一结论。只能使用输入证据，"
+    "不得联网、读取文件或编造缺失数据。日线研究按research_calendar中的最近已完成交易日"
+    "判断新鲜度，周末/节假日的上一交易日日线不因自然日变化而滞后；日历未验证则明确未知。"
+    "日线不是盘中可成交报价，开仓必须另取执行时有效报价。日线早于已验证截止日、证据矛盾、涨停追高、"
+    "财务/公告证据不足时不得给Buy或Overweight。单票正常仓位上限20%，T+1风险必须纳入。"
+    "只返回一个JSON对象，不要Markdown："
+    '{"rating":"Buy|Overweight|Hold|Underweight|Sell","score":0,'
+    '"thesis":"支持与反对证据摘要","decision":"最终决策及风险",'
+    '"trader_plan":"买卖条件、仓位、止损/退出条件","evidence_gaps":["缺失项"]}\n\n'
+    "JSON还必须包含falsification_conditions数组、weakest_assumption、"
+    "monitoring_signals数组和review_by；数据源失败与确实无记录不得混为一谈。\n\n"
+)
+
+_SYSTEM_PROMPT = (
+    "你是只读的A股多角色投资研究协调器。严格依据输入证据，输出可解析JSON；"
+    "不保证收益，不执行交易，不得把数据缺失解释为利好。"
+)
+
+# Identity of the prompt text itself, shared by the writer and the cache reader.
+# deep_input_fingerprint decides whether a stored same-day deep analysis may be
+# reused, so a frozen version string let an edited prompt keep serving results
+# the new prompt would not produce.  Deriving it from the text makes the cache
+# invalidate itself instead.  pipeline_runner imports this same constant, and
+# the two must agree or the lookup never matches what was stored.
+PROMPT_VERSION = hashlib.sha256(
+    (_SYSTEM_PROMPT + _ANALYSIS_INSTRUCTIONS).encode("utf-8")
+).hexdigest()[:16]
+
+
 def _analysis_prompt(
     candidate: dict[str, Any], evidence: dict[str, Any], trade_date: str, past_context: str
 ) -> str:
@@ -464,21 +495,7 @@ def _analysis_prompt(
         "evidence": evidence,
         "recent_learning": str(past_context or "")[-5000:],
     }
-    return (
-        "请以技术分析师、新闻/公告分析师、基本面分析师、多头、空头和风险经理"
-        "六个角色完成一次A股深度研究，然后由组合经理给出唯一结论。只能使用输入证据，"
-        "不得联网、读取文件或编造缺失数据。日线研究按research_calendar中的最近已完成交易日"
-        "判断新鲜度，周末/节假日的上一交易日日线不因自然日变化而滞后；日历未验证则明确未知。"
-        "日线不是盘中可成交报价，开仓必须另取执行时有效报价。日线早于已验证截止日、证据矛盾、涨停追高、"
-        "财务/公告证据不足时不得给Buy或Overweight。单票正常仓位上限20%，T+1风险必须纳入。"
-        "只返回一个JSON对象，不要Markdown："
-        '{"rating":"Buy|Overweight|Hold|Underweight|Sell","score":0,'
-        '"thesis":"支持与反对证据摘要","decision":"最终决策及风险",'
-        '"trader_plan":"买卖条件、仓位、止损/退出条件","evidence_gaps":["缺失项"]}\n\n'
-        "JSON还必须包含falsification_conditions数组、weakest_assumption、"
-        "monitoring_signals数组和review_by；数据源失败与确实无记录不得混为一谈。\n\n"
-        + json.dumps(payload, ensure_ascii=False)
-    )
+    return _ANALYSIS_INSTRUCTIONS + json.dumps(payload, ensure_ascii=False)
 
 
 async def _analyze_one(
@@ -497,10 +514,7 @@ async def _analyze_one(
         "verified": bool(calendar.day and not calendar.degraded),
         "scope": "daily_research_not_execution_quote",
     }
-    system_prompt = (
-        "你是只读的A股多角色投资研究协调器。严格依据输入证据，输出可解析JSON；"
-        "不保证收益，不执行交易，不得把数据缺失解释为利好。"
-    )
+    system_prompt = _SYSTEM_PROMPT
     prompt = _analysis_prompt(candidate, evidence, trade_date, past_context)
     request_payload = json.dumps(
         {"system_prompt": system_prompt, "prompt": prompt},
@@ -562,6 +576,7 @@ async def _analyze_one(
             trade_date,
             strategy_version=str(candidate.get("strategy_version") or ""),
             model=settings.CODEX_MODEL,
+            prompt_version=PROMPT_VERSION,
         ),
         "falsification_conditions": parsed.get("falsification_conditions") or [],
         "weakest_assumption": str(parsed.get("weakest_assumption") or ""),

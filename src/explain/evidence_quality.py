@@ -95,6 +95,9 @@ class ResearchCase:
 
     # Actual outcome (filled later)
     outcome_known: bool = False
+    # Despite the name this is the N_TRADING_DAYS (5) trading-day return that
+    # outcome_backfiller computes and feeds in as a ratio, not a percentage.
+    # The name is kept because the key is part of the /cases API response.
     actual_30d_return: float = 0.0
     was_correct: bool | None = None
     outcome_analyzed_at: str = ""
@@ -119,7 +122,12 @@ class ResearchCase:
             "predicted_30d_return": round(self.predicted_30d_return, 1),
             "predicted_30d_probability": round(self.predicted_30d_probability, 2),
             "outcome_known": self.outcome_known,
-            "actual_30d_return": round(self.actual_30d_return, 1) if self.outcome_known else None,
+            # 4 decimals, matching what update_decision_outcome stores.  A ratio
+            # rounded to 1 decimal quantises to 10 percentage points: 0.0148
+            # became 0.0 and -0.0489 became -0.0.
+            "actual_30d_return": (
+                round(self.actual_30d_return, 4) if self.outcome_known else None
+            ),
             "was_correct": self.was_correct,
             "outcome_analysis": self.outcome_analysis,
             "is_replayable": self.is_replayable,

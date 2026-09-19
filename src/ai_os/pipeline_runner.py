@@ -2165,12 +2165,17 @@ class AIPipelineRunner:
         )
         result.market_data_quality["deep_candidate_eligibility"] = deep_allocation
         deep_codes = [str(item.get("stock_code") or "") for item in deep_candidates]
+        # Imported here because the fingerprint must carry exactly the prompt
+        # identity the analyzer stores, or a cache lookup never matches.
+        from src.agents.codex_stock_analyzer import PROMPT_VERSION
+
         input_fingerprints = {
             str(item.get("stock_code") or "").strip().upper(): deep_input_fingerprint(
                 item,
                 date.today().isoformat(),
                 strategy_version=str(run_metadata.get("strategy_version") or ""),
                 model=settings.CODEX_MODEL,
+                prompt_version=PROMPT_VERSION,
             )
             for item in deep_candidates
             if item.get("stock_code")

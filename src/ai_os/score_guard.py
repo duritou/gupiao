@@ -18,6 +18,33 @@ MARKET_DATA_BLOCK_REASONS = frozenset({
     "universe_metadata_incomplete",
 })
 
+# Phrases that raise fundamental_loss_risk, which is a hard block.
+_LOSS_PHRASES = ("预亏", "预计亏损", "净利润为负", "业绩由盈转亏")
+
+# A negation sitting immediately in front of a phrase inverts it: "未预亏" means
+# the company is *not* expected to lose.  Matching it anyway blocked a healthy
+# candidate.  The set is deliberately limited to negations that cannot be part
+# of a compound with the opposite meaning -- "非" would swallow "除非预计亏损"
+# and "不" would swallow "不但预计亏损，而且...", both of which assert a real
+# loss.  Missing a real loss costs more than blocking a healthy candidate, so
+# anything ambiguous keeps its block.
+_LOSS_NEGATIONS = ("未", "没有")
+
+
+def _has_unnegated_loss_phrase(text: str) -> bool:
+    """True when a loss phrase appears without a negation directly in front.
+
+    Only an adjacent negation counts, so a sentence that negates one clause and
+    asserts another ("未预亏，但子公司预计亏损") still trips on the assertion.
+    """
+    for phrase in _LOSS_PHRASES:
+        start = 0
+        while (index := text.find(phrase, start)) >= 0:
+            if not text[:index].endswith(_LOSS_NEGATIONS):
+                return True
+            start = index + 1
+    return False
+
 
 def _has_content(value: Any) -> bool:
     if value is None or value is False or value == "":
@@ -113,10 +140,7 @@ def _has_fundamental_risk(payload: Any) -> bool:
                 pass
 
     text = _text_content(payload)
-    return any(
-        phrase in text
-        for phrase in ("预亏", "预计亏损", "净利润为负", "业绩由盈转亏")
-    )
+    return _has_unnegated_loss_phrase(text)
 
 
 def classify_decision_status(decision: dict[str, Any]) -> str:
