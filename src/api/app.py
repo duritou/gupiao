@@ -419,8 +419,19 @@ async def lifespan(app):
                             "--required-bars", "250", "--periods", "8",
                             "--flow-days", "20",
                             "--write-production", "--confirm-production",
-                            "--batch-deadline-seconds", "60",
-                            "--lease-seconds", "300",
+                            # 300 codes take roughly 150s (measured).  The old
+                            # 60s deadline stopped every run about 40% of the
+                            # way through, and because the checkpoint partition
+                            # embeds the pipeline run id -- which changes on
+                            # every scan -- the next run started over instead of
+                            # resuming.  Coverage therefore never converged, the
+                            # 95% gate in post_backfill_rerun kept blocking the
+                            # research rerun, and the missing financial evidence
+                            # kept the deep model on Hold.
+                            "--batch-deadline-seconds", "600",
+                            # The lease has to outlive the batch deadline or it
+                            # expires mid-run and a second worker can claim it.
+                            "--lease-seconds", "900",
                         ]
                         worker_codes = [await _run_research_backfill_worker(
                             [*common_args, "--recover-pending"],
